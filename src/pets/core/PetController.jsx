@@ -106,7 +106,7 @@ export default function PetController({
 
   // React to state changes from the StateMachine
   useEffect(() => {
-    if (animState === ANIMATION_STATES.WALK && !forcedState) {
+    if ((animState === ANIMATION_STATES.WALK || animState === ANIMATION_STATES.RUN) && !forcedState) {
       if (!roaming) {
         stateMachineRef.current?.setState(ANIMATION_STATES.SIT);
         return;

@@ -62,14 +62,14 @@ export default function DesktopPetWindow() {
   }, []);
 
   // Autonomous desktop roaming (strolling by moving window position)
-  const executeDesktopWalk = useCallback(() => {
+  const executeDesktopWalk = useCallback((isRun = false) => {
     if (!roaming || !window.island?.movePetBy) return;
     const dir = Math.random() > 0.5 ? DIRECTIONS.RIGHT : DIRECTIONS.LEFT;
     setFacing(dir);
 
-    const steps = 30 + Math.floor(Math.random() * 25);
+    const steps = isRun ? 22 : 30 + Math.floor(Math.random() * 25);
     let stepCount = 0;
-    const stepDist = dir * 2.5;
+    const stepDist = dir * (isRun ? 5.0 : 2.5);
 
     clearInterval(walkIntervalRef.current);
     walkIntervalRef.current = setInterval(() => {
@@ -80,7 +80,7 @@ export default function DesktopPetWindow() {
         setFacing(DIRECTIONS.RIGHT);
         stateMachineRef.current?.transitionToAutonomous(mood);
       }
-    }, 40);
+    }, isRun ? 28 : 40);
   }, [roaming, mood]);
 
   useEffect(() => {
@@ -89,7 +89,13 @@ export default function DesktopPetWindow() {
         stateMachineRef.current?.setState(ANIMATION_STATES.SIT);
         return;
       }
-      executeDesktopWalk();
+      executeDesktopWalk(false);
+    } else if (animState === ANIMATION_STATES.RUN) {
+      if (!roaming) {
+        stateMachineRef.current?.setState(ANIMATION_STATES.SIT);
+        return;
+      }
+      executeDesktopWalk(true);
     }
   }, [animState, roaming, executeDesktopWalk]);
 

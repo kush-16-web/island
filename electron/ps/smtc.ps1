@@ -111,6 +111,24 @@ while ($true) {
                 $lastArt = $null
             }
 
+            $posSec = $timeline.Position.TotalSeconds
+            $durSec = ($timeline.EndTime - $timeline.StartTime).TotalSeconds
+
+            # Account for playback progression since SMTC timeline was last updated
+            if ($status -eq 'Playing' -and $timeline.LastUpdatedTime) {
+                try {
+                    $lastUpdatedUtc = $timeline.LastUpdatedTime.UtcDateTime
+                    $sinceUpdate = ([DateTime]::UtcNow - $lastUpdatedUtc).TotalSeconds
+                    if ($sinceUpdate -gt 0 -and $sinceUpdate -lt 86400) {
+                        $posSec = $posSec + $sinceUpdate
+                    }
+                } catch {}
+            }
+
+            if ($durSec -gt 0 -and $posSec -gt $durSec) {
+                $posSec = $durSec
+            }
+
             $payload = @{
                 ok     = $true
                 key    = $key
@@ -119,8 +137,8 @@ while ($true) {
                 artist = '' + $props.Artist
                 album  = '' + $props.AlbumTitle
                 status = $status
-                pos    = $timeline.Position.TotalSeconds
-                dur    = ($timeline.EndTime - $timeline.StartTime).TotalSeconds
+                pos    = $posSec
+                dur    = $durSec
                 art    = $lastArt
             }
 
@@ -139,7 +157,8 @@ while ($true) {
             }
 
             $now = [DateTime]::UtcNow
-            if ($changed -or (($now - $lastEmit).TotalSeconds -ge 5)) {
+            # Emit on state/track change, or every 1 second during active playback for 1:1 timeline sync
+            if ($changed -or (($now - $lastEmit).TotalSeconds -ge 1)) {
                 Emit $payload
                 $lastEmit = $now
             }

@@ -11,6 +11,9 @@ export const SPECIES = {
 export const ANIMATION_STATES = {
   IDLE: 'idle',
   WALK: 'walk',
+  RUN: 'run',
+  JUMP: 'jump',
+  PLAY: 'play',
   SIT: 'sit',
   SLEEP: 'sleep',
   DANCE: 'dance',

@@ -121,8 +121,31 @@ export default function Island() {
   else if (nextTimer) mode = 'timer';
   else if (playing) mode = 'media';
 
+  const getDynamicHubHeight = () => {
+    switch (tab) {
+      case 'playing':
+        return media.active ? 262 : 190;
+      case 'clock': {
+        const count = schedule.length;
+        if (count === 0) return 214;
+        return Math.min(384, 214 + count * 56);
+      }
+      case 'inbox': {
+        const count = inbox.length;
+        if (count === 0) return 175;
+        return Math.min(340, 105 + count * 58);
+      }
+      case 'pet':
+        return 410;
+      case 'settings':
+        return 315;
+      default:
+        return 280;
+    }
+  };
+
   const width = mode === 'hub' ? HUB_W : SIZE[mode].w;
-  const height = mode === 'hub' ? HUB_H[tab] : SIZE[mode].h;
+  const height = mode === 'hub' ? getDynamicHubHeight() : SIZE[mode].h;
 
   const dragRef = useRef({
     active: false,

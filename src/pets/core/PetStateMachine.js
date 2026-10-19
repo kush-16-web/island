@@ -52,24 +52,30 @@ export class PetStateMachine {
       return;
     }
 
-    // Natural behavior distribution:
-    // 40% Sit peacefully, 30% Take a 4-legged walk, 20% Stand idle & look around, 10% Happy stretch/wiggle
+    // Natural playful behavior distribution:
+    // 25% Sit peacefully, 20% 4-legged walk, 15% Playful run, 15% Jump/Pounce, 15% Play with toy ball, 10% Happy purr/stretch
     const roll = Math.random();
     let next = ANIMATION_STATES.SIT;
-    let dur = 9000;
+    let dur = 7000;
 
-    if (roll < 0.4) {
+    if (roll < 0.25) {
       next = ANIMATION_STATES.SIT;
-      dur = 8000 + Math.random() * 8000;
-    } else if (roll < 0.7) {
+      dur = 7000 + Math.random() * 6000;
+    } else if (roll < 0.45) {
       next = ANIMATION_STATES.WALK;
       dur = 3500 + Math.random() * 2500;
-    } else if (roll < 0.9) {
-      next = ANIMATION_STATES.IDLE;
-      dur = 5000 + Math.random() * 4000;
+    } else if (roll < 0.60) {
+      next = ANIMATION_STATES.RUN;
+      dur = 2800 + Math.random() * 2000;
+    } else if (roll < 0.75) {
+      next = ANIMATION_STATES.JUMP;
+      dur = 2400;
+    } else if (roll < 0.90) {
+      next = ANIMATION_STATES.PLAY;
+      dur = 4500 + Math.random() * 3000;
     } else {
       next = ANIMATION_STATES.HAPPY;
-      dur = 3000;
+      dur = 3200;
     }
 
     this.setState(next, { duration: dur });

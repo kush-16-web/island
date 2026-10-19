@@ -69,26 +69,47 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   z-index: 2;
   flex: none;
   overflow: hidden;
-  background: #000;
+  background: rgba(14, 15, 20, 0.82);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
   color: var(--text);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.07),
-    0 4px 12px -2px rgba(0, 0, 0, 0.38);
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 8px 24px -3px rgba(0, 0, 0, 0.45);
   transition: box-shadow 0.35s var(--ease);
 }
 
 .island:not([data-mode='idle']) {
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 6px 14px -3px rgba(0, 0, 0, 0.42);
+    0 0 0 1px rgba(255, 255, 255, 0.09),
+    0 10px 28px -4px rgba(0, 0, 0, 0.52);
 }
 
 .island[data-mode='media'],
 .island[data-mode='both'] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--music-accent, var(--accent, #a855f7)) 12%, rgba(14, 15, 20, 0.86)) 0%,
+    rgba(12, 13, 17, 0.90) 100%
+  );
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.09),
-    0 8px 24px -4px rgba(0, 0, 0, 0.5),
-    0 0 24px -4px color-mix(in srgb, var(--music-accent, var(--accent, #a855f7)) 30%, transparent);
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 12px 32px -4px rgba(0, 0, 0, 0.58),
+    0 0 28px -4px color-mix(in srgb, var(--music-accent, var(--accent, #a855f7)) 35%, transparent);
+}
+
+.island[data-mode='hub'] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--music-accent, var(--accent, #8f9cff)) 8%, rgba(15, 16, 22, 0.88)) 0%,
+    rgba(13, 14, 19, 0.92) 100%
+  );
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 16px 42px -6px rgba(0, 0, 0, 0.65),
+    0 0 32px -6px color-mix(in srgb, var(--music-accent, var(--accent, #8f9cff)) 26%, transparent);
 }
 
 .island[data-mode='idle'] { cursor: pointer; }

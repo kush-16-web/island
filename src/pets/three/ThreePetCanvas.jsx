@@ -179,12 +179,40 @@ export default function ThreePetCanvas({
     rightCup.rotation.z = 0.12;
     headsetGroup.add(rightCup);
 
+    // 4c. Interactive Toy Yarn Ball (for play, batting, chasing)
+    const ballGroup = new THREE.Group();
+    ballGroup.name = 'cat-toy-ball';
+    ballGroup.visible = false;
+    scene.add(ballGroup);
+
+    const ballGeo = new THREE.SphereGeometry(0.13, 24, 24);
+    const ballMat = new THREE.MeshStandardMaterial({
+      color: 0xff477e,
+      roughness: 0.7,
+      metalness: 0.1,
+    });
+    const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+    ballGroup.add(ballMesh);
+
+    const threadGeo = new THREE.TorusGeometry(0.132, 0.016, 12, 32);
+    const threadMat = new THREE.MeshStandardMaterial({
+      color: 0xffd166,
+      roughness: 0.8,
+    });
+    const threadMesh = new THREE.Mesh(threadGeo, threadMat);
+    threadMesh.rotation.x = Math.PI / 3;
+    ballGroup.add(threadMesh);
+
     let kittenMesh = null;
     let baseMeshScale = 1;
 
-    // 5. Load the Authentic Sketchfab Chibi Kitten Model
+    // 5. Load the Authentic Cute Tabby Kitten Model from Downloaded ZIP
     const loader = new GLTFLoader();
-    const modelPaths = ['models/chibi_kitten.glb', 'models/chibi-kitten/source/pool3333.glb'];
+    const modelPaths = [
+      'models/tabby_kitten.glb',
+      'models/tabby_kitten/source/pool2319.glb',
+      'models/chibi_kitten.glb',
+    ];
 
     const tryLoad = (idx) => {
       if (idx >= modelPaths.length) return;
@@ -193,14 +221,14 @@ export default function ThreePetCanvas({
         (gltf) => {
           kittenMesh = gltf.scene;
 
-          // Material preservation: enhance original PBR textures
+          // Material preservation: enhance original PBR textures with zero reduction
           kittenMesh.traverse((child) => {
             if (child.isMesh) {
               child.castShadow = false;
               child.receiveShadow = false;
               if (child.material) {
-                child.material.roughness = Math.min(child.material.roughness || 0.6, 0.65);
-                child.material.metalness = Math.max(child.material.metalness || 0.1, 0.15);
+                child.material.roughness = Math.min(child.material.roughness ?? 0.65, 0.75);
+                child.material.metalness = Math.max(child.material.metalness ?? 0.05, 0.1);
                 child.material.needsUpdate = true;
               }
             }
@@ -294,21 +322,66 @@ export default function ThreePetCanvas({
         }
       }
 
-      // Behavioral Kinematics
+      // Hide toy ball by default unless in 'play' state
+      if (currentState !== 'play') {
+        ballGroup.visible = false;
+        pivotGroup.position.x = 0;
+      }
+
+      // Behavioral Kinematics & Locomotion
       if (currentState === 'walk') {
         // Coordinated quadruped trot
         walkPhase += delta * 8.0;
-
-        // Alternating diagonal trot roll & step bobbing
-        const trotRoll = Math.sin(walkPhase) * 0.075;
-        const trotPitch = Math.cos(walkPhase) * 0.045;
-        const trotBob = Math.abs(Math.sin(walkPhase * 2)) * 0.055;
+        const trotRoll = Math.sin(walkPhase) * 0.085;
+        const trotPitch = Math.cos(walkPhase) * 0.05;
+        const trotBob = Math.abs(Math.sin(walkPhase * 2)) * 0.06;
 
         pivotGroup.rotation.z = trotRoll;
         pivotGroup.rotation.x = trotPitch;
         pivotGroup.position.y = trotBob;
+        breatheGroup.scale.set(1.0, 1.0, 1.0);
+      } else if (currentState === 'run') {
+        // High-energy gallop stride
+        walkPhase += delta * 13.0;
+        const gallopBob = Math.abs(Math.sin(walkPhase)) * 0.13;
+        const gallopPitch = 0.16 + Math.cos(walkPhase) * 0.09;
+        const gallopRoll = Math.sin(walkPhase) * 0.08;
 
-        // Forward stride elongation
+        pivotGroup.position.y = gallopBob;
+        pivotGroup.rotation.x = gallopPitch;
+        pivotGroup.rotation.z = gallopRoll;
+        breatheGroup.scale.set(0.96, 1.04, 0.96);
+      } else if (currentState === 'jump') {
+        // Spring leap in arc with squash and stretch landing
+        const jumpTime = (t * 2.8) % Math.PI;
+        const jumpHeight = Math.sin(jumpTime) * 0.38;
+        const jumpTilt = Math.cos(jumpTime) * -0.22;
+
+        pivotGroup.position.y = jumpHeight;
+        pivotGroup.rotation.x = jumpTilt;
+        pivotGroup.rotation.z = 0;
+
+        if (jumpTime < 0.35) {
+          breatheGroup.scale.set(1.12, 0.82, 1.12);
+        } else if (jumpTime > Math.PI - 0.45) {
+          breatheGroup.scale.set(1.15, 0.85, 1.15);
+        } else {
+          breatheGroup.scale.set(0.92, 1.12, 0.92);
+        }
+      } else if (currentState === 'play') {
+        // Interactive batting & chasing the yarn toy ball
+        ballGroup.visible = true;
+        const ballX = Math.sin(t * 3.5) * 0.52;
+        const ballY = Math.abs(Math.sin(t * 7.0)) * 0.16 + 0.13;
+        ballGroup.position.set(ballX, ballY, 0.12);
+        ballMesh.rotation.z += delta * 7;
+        ballMesh.rotation.y += delta * 3.5;
+
+        // Kitten chases and bats ball
+        pivotGroup.position.x = ballX * 0.42;
+        pivotGroup.position.y = Math.abs(Math.sin(t * 7.0)) * 0.07;
+        pivotGroup.rotation.z = Math.sin(t * 3.5) * 0.16;
+        pivotGroup.rotation.x = 0.12;
         breatheGroup.scale.set(1.0, 1.0, 1.0);
       } else if (currentState === 'sleep') {
         // Deep resting pose: curled posture and slow 4.2s breathing
@@ -367,6 +440,10 @@ export default function ThreePetCanvas({
       cupMat.dispose();
       ringGeo.dispose();
       headsetGlowMat.dispose();
+      ballGeo.dispose();
+      ballMat.dispose();
+      threadGeo.dispose();
+      threadMat.dispose();
 
       renderer.dispose();
       renderer.forceContextLoss();
