@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { SPECIES } from '../pets/core/PetTypes';
 import CatVisual from '../pets/species/cat/CatVisual';
 import DogVisual from '../pets/species/dog/DogVisual';
+import ThreePetCanvas from '../pets/three/ThreePetCanvas';
 import { Switch } from './bits';
 
 /**
@@ -64,11 +65,11 @@ export default function PetStudioPanel({ setTyping }) {
       {/* Top Preview Card */}
       <div className="pet-preview-card">
         <div className="pet-preview-viewport">
-          <div style={{ transform: `scale(${scale / 100})`, width: 86, height: 74 }}>
+          <div style={{ transform: `scale(${Math.min(1.2, scale / 100)})`, width: 86, height: 74, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {species === SPECIES.DOG ? (
               <DogVisual state="sit" mood="normal" />
             ) : (
-              <CatVisual state="sit" mood="normal" />
+              <ThreePetCanvas state="sit" mood="normal" scale={75} />
             )}
           </div>
         </div>

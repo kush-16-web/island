@@ -20,6 +20,18 @@ export default function PetSystem({
   const [activeSpecies, setActiveSpecies] = useState(() => {
     return localStorage.getItem(STORAGE_KEY) || SPECIES.CAT;
   });
+  const [visible, setVisible] = useState(() => {
+    return localStorage.getItem('island_pet_visible') !== 'false';
+  });
+
+  useEffect(() => {
+    const handleSettingsChange = () => {
+      setActiveSpecies(localStorage.getItem(STORAGE_KEY) || SPECIES.CAT);
+      setVisible(localStorage.getItem('island_pet_visible') !== 'false');
+    };
+    window.addEventListener('island:pet-settings-changed', handleSettingsChange);
+    return () => window.removeEventListener('island:pet-settings-changed', handleSettingsChange);
+  }, []);
 
   useEffect(() => {
     if (forcedSpecies) {
@@ -31,6 +43,10 @@ export default function PetSystem({
     setActiveSpecies(next);
     localStorage.setItem(STORAGE_KEY, next);
   };
+
+  if (!visible && !forcedSpecies) {
+    return null;
+  }
 
   const showBoth = activeSpecies === 'both' || forcedSpecies === 'both';
 

@@ -25,6 +25,27 @@ export default function PetController({
 
   const stateMachineRef = useRef(null);
   const walkLoopTimerRef = useRef(null);
+  const [roaming, setRoaming] = useState(() => localStorage.getItem('island_pet_roaming') !== 'false');
+
+  // Sync settings and handle reset position
+  useEffect(() => {
+    const handleSettingsChange = () => {
+      setRoaming(localStorage.getItem('island_pet_roaming') !== 'false');
+    };
+    const handleResetPos = () => {
+      const defaultX = side === 'right' ? islandWidth / 2 + 32 : -islandWidth / 2 - 32;
+      setPosX(defaultX);
+      setFacing(side === 'right' ? DIRECTIONS.LEFT : DIRECTIONS.RIGHT);
+      stateMachineRef.current?.setState(ANIMATION_STATES.SIT);
+    };
+
+    window.addEventListener('island:pet-settings-changed', handleSettingsChange);
+    window.addEventListener('island:pet-reset-pos', handleResetPos);
+    return () => {
+      window.removeEventListener('island:pet-settings-changed', handleSettingsChange);
+      window.removeEventListener('island:pet-reset-pos', handleResetPos);
+    };
+  }, [islandWidth, side]);
 
   // Initialize State Machine
   useEffect(() => {
@@ -86,9 +107,13 @@ export default function PetController({
   // React to state changes from the StateMachine
   useEffect(() => {
     if (animState === ANIMATION_STATES.WALK && !forcedState) {
+      if (!roaming) {
+        stateMachineRef.current?.setState(ANIMATION_STATES.SIT);
+        return;
+      }
       executeWalk();
     }
-  }, [animState, forcedState, executeWalk]);
+  }, [animState, forcedState, roaming, executeWalk]);
 
   // React to mood changes (e.g., music starts playing or pet dozes off)
   useEffect(() => {

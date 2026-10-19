@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { SPECIES } from './PetTypes';
 import CatVisual from '../species/cat/CatVisual';
 import DogVisual from '../species/dog/DogVisual';
+import ThreePetCanvas from '../three/ThreePetCanvas';
 
 /**
  * PetRenderer: Visual wrapper for the pet character.
  * Connects cursor tracking, handles foot-anchored rendering,
- * and manages species switching.
+ * and manages species switching with Three.js 3D Kitten support.
  */
 export default function PetRenderer({
   species = SPECIES.CAT,
@@ -18,12 +19,23 @@ export default function PetRenderer({
 }) {
   const [eyePos, setEyePos] = useState({ lx: 0, ly: 0 });
   const [hearts, setHearts] = useState([]);
+  const [scale, setScale] = useState(() => Number(localStorage.getItem('island_pet_scale')) || 100);
   const containerRef = useRef(null);
 
-  // Smooth cursor tracking for the pet's pupils
+  // Sync scale from Pet Studio
+  useEffect(() => {
+    const handleSettingsChange = () => {
+      const s = Number(localStorage.getItem('island_pet_scale')) || 100;
+      setScale(s);
+    };
+    window.addEventListener('island:pet-settings-changed', handleSettingsChange);
+    return () => window.removeEventListener('island:pet-settings-changed', handleSettingsChange);
+  }, []);
+
+  // Smooth cursor tracking for 2D pet's pupils (if Dog selected)
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return undefined;
+    if (!el || species === SPECIES.CAT) return undefined;
 
     const handleMouseMove = (e) => {
       const rect = el.getBoundingClientRect();
@@ -45,10 +57,10 @@ export default function PetRenderer({
 
     document.addEventListener('mousemove', handleMouseMove, { passive: true });
     return () => document.removeEventListener('mousemove', handleMouseMove);
-  }, [facing]);
+  }, [facing, species]);
 
   const handleClick = (e) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
     onPet?.();
 
     // Spawn floating heart
@@ -58,6 +70,32 @@ export default function PetRenderer({
       setHearts((prev) => prev.filter((id) => id !== heartId));
     }, 1200);
   };
+
+  // Real 3D Kitten
+  if (species === SPECIES.CAT) {
+    return (
+      <div
+        ref={containerRef}
+        className="pet-container pet-species--cat pet-species--3d"
+        data-hit
+        role="button"
+        aria-label="Your desktop 3D kitten"
+        style={{
+          transform: `scale(${scale / 100})`,
+          transformOrigin: 'bottom center',
+        }}
+      >
+        <ThreePetCanvas
+          state={state}
+          mood={mood}
+          facing={facing}
+          musicAccent={musicAccent}
+          scale={scale}
+          onPet={handleClick}
+        />
+      </div>
+    );
+  }
 
   const VisualComponent = species === SPECIES.DOG ? DogVisual : CatVisual;
 
@@ -70,7 +108,8 @@ export default function PetRenderer({
       role="button"
       aria-label={`Your desktop ${species}`}
       style={{
-        transform: `scaleX(${facing})`,
+        transform: `scaleX(${facing}) scale(${scale / 100})`,
+        transformOrigin: 'bottom center',
       }}
     >
       <VisualComponent

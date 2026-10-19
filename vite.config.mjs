@@ -6,9 +6,9 @@ const csp = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'none'",
+  "connect-src 'self' data: blob:",
   "object-src 'none'",
   "base-uri 'none'",
 ].join('; ');
