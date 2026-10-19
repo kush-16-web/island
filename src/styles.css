@@ -87,6 +87,33 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
     0 2px 6px rgba(0, 0, 0, 0.22);
 }
 
+/* Full Island Apple Music & YouTube Music Ambient Blurred Album Art Background */
+.island__ambient-art {
+  position: absolute;
+  inset: -40px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+  user-select: none;
+}
+.island__ambient-art-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.45);
+  filter: blur(54px) saturate(220%) brightness(0.40);
+  opacity: 0.95;
+  transition: opacity 0.6s ease;
+}
+.island__ambient-art-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 75% 30%, transparent 15%, rgba(10, 11, 16, 0.72) 85%),
+    linear-gradient(180deg, rgba(10, 11, 16, 0.25) 0%, rgba(10, 11, 16, 0.88) 100%);
+}
+
 .island[data-mode='media'],
 .island[data-mode='both'] {
   background: linear-gradient(
@@ -122,6 +149,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 .content {
   position: absolute;
   inset: 0;
+  z-index: 1;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -323,14 +351,15 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   align-items: center;
   flex: 1;
   min-height: 0;
+  margin-bottom: 8px;
 }
 
 .np__left {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   flex: none;
-  width: 114px;
+  width: 104px;
   min-width: 0;
 }
 
@@ -339,28 +368,29 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1.5px;
 }
 .np__title {
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 700;
   letter-spacing: -0.01em;
+  line-height: 1.25;
   white-space: nowrap;
   color: #ffffff;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 .np__artist {
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 500;
   color: var(--text-2);
   white-space: nowrap;
 }
 .chip-app {
   align-self: flex-start;
-  margin-top: 2px;
-  padding: 1.5px 7px;
-  border-radius: 8px;
-  font-size: 10px;
+  margin-top: 1px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 9.5px;
   font-weight: 600;
   color: var(--text-2);
   background: rgba(255, 255, 255, 0.08);
@@ -377,7 +407,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   align-items: center;
 }
 
-/* Marquee text (YouTube Music / Spotify auto-scroll) */
+/* Marquee text (YouTube Music / Spotify auto-scroll: calm, slow, generous pause) */
 .marquee-container {
   overflow: hidden;
   white-space: nowrap;
@@ -394,13 +424,13 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   will-change: transform;
 }
 .marquee-content.is-marquee {
-  animation: marqueeScroll var(--marquee-duration, 5s) cubic-bezier(0.45, 0, 0.55, 1) 1.5s infinite alternate;
+  animation: marqueeScroll var(--marquee-duration, 9s) cubic-bezier(0.37, 0, 0.63, 1) 3s infinite alternate;
 }
 @keyframes marqueeScroll {
-  0%, 22% {
+  0%, 32% {
     transform: translateX(0);
   }
-  78%, 100% {
+  68%, 100% {
     transform: translateX(var(--marquee-offset, -30px));
   }
 }

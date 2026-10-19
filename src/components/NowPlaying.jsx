@@ -143,18 +143,10 @@ export default function NowPlaying({
 
   return (
     <div className="np">
-      {/* Apple Music & YouTube Music Ambient Blurred Album Art Background */}
-      {media.art && (
-        <div className="ambient-art-bg" aria-hidden="true">
-          <img src={media.art} alt="" className="ambient-art-bg__img" />
-          <div className="ambient-art-bg__overlay" />
-        </div>
-      )}
-
       <div className="np__main">
         {/* Left Column: Cover + Title + Artist + App chip */}
         <div className="np__left">
-          <Art src={media.art} seed={seed} size={76} radius={14} />
+          <Art src={media.art} seed={seed} size={64} radius={12} />
           <div className="np__meta">
             <MarqueeText text={media.title} className="np__title" />
             <MarqueeText text={media.artist || 'Unknown artist'} className="np__artist" />
@@ -201,7 +193,7 @@ export default function NowPlaying({
             )}
           </div>
           <span className="np__time-text">
-            {hasDuration ? `-${formatTrackTime(media.durationMs - displayPosition)}` : 'Live'}
+            {hasDuration ? formatTrackTime(media.durationMs) : 'Live'}
           </span>
         </div>
 

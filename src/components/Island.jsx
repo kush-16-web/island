@@ -13,7 +13,7 @@ import PetSystem from '../pets/PetSystem';
 import { isMock } from '../lib/bridge';
 
 const HUB_W = 468;
-const HUB_H = { playing: 262, clock: 384, inbox: 340, pet: 410, settings: 340 };
+const HUB_H = { playing: 282, clock: 384, inbox: 340, pet: 410, settings: 340 };
 const SIZE = {
   idle: { w: 136, h: 36 },
   timer: { w: 184, h: 40 },
@@ -378,6 +378,14 @@ export default function Island() {
         onPointerMove={onIslandPointerMove}
         onPointerUp={onIslandPointerUp}
       >
+        {/* Apple Music & YouTube Music Full-Island Ambient Blurred Art Background */}
+        {media.active && media.art && (
+          <div className="island__ambient-art" aria-hidden="true">
+            <img src={media.art} alt="" className="island__ambient-art-img" />
+            <div className="island__ambient-art-overlay" />
+          </div>
+        )}
+
         <AnimatePresence initial={false}>
           <motion.div
             key={contentKey}

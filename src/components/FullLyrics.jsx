@@ -234,7 +234,7 @@ export default function FullLyrics({
             )}
           </div>
           <span className="time-text">
-            {hasDuration ? `-${formatTrackTime(media.durationMs - effectivePosition)}` : 'Live'}
+            {hasDuration ? formatTrackTime(media.durationMs) : 'Live'}
           </span>
         </div>
 

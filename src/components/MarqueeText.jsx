@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
  * If text fits in container, renders normally with ellipsis safety.
  * If text overflows, smoothly marquees with pause at edges and soft alpha fade mask.
  */
-export default function MarqueeText({ text = '', className = '', speed = 26, style = {} }) {
+export default function MarqueeText({ text = '', className = '', speed = 15, style = {} }) {
   const containerRef = useRef(null);
   const textRef = useRef(null);
   const [overflow, setOverflow] = useState(false);
@@ -27,7 +27,8 @@ export default function MarqueeText({ text = '', className = '', speed = 26, sty
     return () => ro.disconnect();
   }, [text]);
 
-  const duration = Math.max(3.5, offset / speed);
+  // Leisurely duration with generous pauses at both ends
+  const duration = Math.max(8.5, (offset / speed) + 5.5);
 
   return (
     <div
