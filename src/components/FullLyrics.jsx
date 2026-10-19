@@ -35,7 +35,8 @@ export default function FullLyrics({
 
   // Smart auto-scroll to keep current line vertically centered
   useEffect(() => {
-    if (userScrollingRef.current) return;
+    // When lyric line advances, immediately resume auto-scrolling to current line
+    userScrollingRef.current = false;
     if (!containerRef.current || !activeLineRef.current) return;
 
     const container = containerRef.current;
@@ -127,8 +128,13 @@ export default function FullLyrics({
         </button>
 
         <div className="full-lyrics__track-info">
-          <MarqueeText text={media?.title} className="full-lyrics__title" />
-          <span className="full-lyrics__artist">{media?.artist}</span>
+          {media?.art && (
+            <img src={media.art} alt="" className="full-lyrics__thumb-art" />
+          )}
+          <div className="full-lyrics__meta">
+            <MarqueeText text={media?.title} className="full-lyrics__title" />
+            <span className="full-lyrics__artist">{media?.artist}</span>
+          </div>
         </div>
 
         {hasWordSync ? (

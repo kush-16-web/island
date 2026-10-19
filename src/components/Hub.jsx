@@ -44,7 +44,18 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, 
       <div className="hub__head">
         <div className="seg" role="tablist" aria-label="Island sections">
           {TABS.map(({ id, label, Glyph }) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} className={`seg__btn${tab === id ? ' is-active' : ''}`} onClick={() => setTab(id)}>
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              className={`seg__btn${tab === id ? ' is-active' : ''}`}
+              onClick={() => {
+                if (tab === id) onClose?.();
+                else setTab(id);
+              }}
+              title={tab === id ? `Click to collapse ${label}` : label}
+            >
               {tab === id && <motion.span layoutId="seg-pill" className="seg__pill" transition={SPRING} />}
               <span className="seg__label">
                 <Glyph width={15} height={15} />
@@ -54,9 +65,6 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, 
             </button>
           ))}
         </div>
-        <button type="button" className="icon-btn" aria-label="Collapse island" onClick={onClose}>
-          <Icon.Chevron width={18} height={18} />
-        </button>
       </div>
 
       <div className="hub__body">

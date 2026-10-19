@@ -66,6 +66,38 @@ export default function NowPlaying({
     onLyricsViewChange?.(mode === 'lyrics');
   };
 
+  // Favorite track state
+  const trackKey = `${media.title || ''}|${media.artist || ''}`;
+  const [isFavorite, setIsFavorite] = useState(() => {
+    try {
+      const favs = JSON.parse(localStorage.getItem('island_fav_tracks') || '{}');
+      return Boolean(favs[trackKey]);
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const favs = JSON.parse(localStorage.getItem('island_fav_tracks') || '{}');
+      setIsFavorite(Boolean(favs[trackKey]));
+    } catch {
+      setIsFavorite(false);
+    }
+  }, [trackKey]);
+
+  const toggleFavorite = (e) => {
+    e.stopPropagation();
+    try {
+      const favs = JSON.parse(localStorage.getItem('island_fav_tracks') || '{}');
+      const next = !isFavorite;
+      if (next) favs[trackKey] = { title: media.title, artist: media.artist, addedAt: Date.now() };
+      else delete favs[trackKey];
+      localStorage.setItem('island_fav_tracks', JSON.stringify(favs));
+      setIsFavorite(next);
+    } catch {}
+  };
+
   // Reset to player view if active track changes
   useEffect(() => {
     handleSetViewMode('player');
@@ -150,7 +182,23 @@ export default function NowPlaying({
           <div className="np__meta">
             <MarqueeText text={media.title} className="np__title" />
             <MarqueeText text={media.artist || 'Unknown artist'} className="np__artist" />
-            {media.app && <span className="chip-app">{media.app}</span>}
+            <div className="np__tag-row">
+              {media.app && <span className="chip-app">{media.app}</span>}
+              <button
+                type="button"
+                className={`heart-btn${isFavorite ? ' is-favorite' : ''}`}
+                onClick={toggleFavorite}
+                aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                style={{ '--heart-color': accentColor || 'var(--music-accent, #ff3b69)' }}
+                title={isFavorite ? 'Favorited' : 'Favorite track'}
+              >
+                {isFavorite ? (
+                  <Icon.HeartSolid width={14} height={14} />
+                ) : (
+                  <Icon.Heart width={14} height={14} />
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
