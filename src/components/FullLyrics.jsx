@@ -17,12 +17,15 @@ export default function FullLyrics({
   onControl,
   accentColor,
   onSeek,
+  isFavorite = false,
+  toggleFavorite,
 }) {
   const [karaokeEnabled, setKaraokeEnabled] = useState(false);
   const containerRef = useRef(null);
   const activeLineRef = useRef(null);
   const userScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef(null);
+  const scrollAnimRef = useRef(null);
 
   // Bottom bar scrubbing state
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -35,7 +38,7 @@ export default function FullLyrics({
 
   const isProgrammaticScrollRef = useRef(false);
 
-  // Smart auto-scroll to keep current line vertically centered
+  // Silky cubic-bezier auto-scroll (Apple Music fluid motion)
   useEffect(() => {
     userScrollingRef.current = false;
     if (!containerRef.current || !activeLineRef.current) return;
@@ -47,18 +50,38 @@ export default function FullLyrics({
     const activeOffset = activeEl.offsetTop;
     const activeHeight = activeEl.clientHeight;
 
-    const targetScroll = activeOffset - containerHeight / 2 + activeHeight / 2;
+    const targetScroll = Math.max(0, activeOffset - containerHeight / 2 + activeHeight / 2);
+
+    if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
+
+    const start = container.scrollTop;
+    const change = targetScroll - start;
+    if (Math.abs(change) < 1) return;
+
+    const startTime = performance.now();
+    const duration = 520;
+    // Silky Apple Music ease-out cubic
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const step = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      container.scrollTop = start + change * easeOutCubic(progress);
+
+      if (progress < 1) {
+        scrollAnimRef.current = requestAnimationFrame(step);
+      } else {
+        scrollAnimRef.current = null;
+        isProgrammaticScrollRef.current = false;
+      }
+    };
 
     isProgrammaticScrollRef.current = true;
-    container.scrollTo({
-      top: Math.max(0, targetScroll),
-      behavior: 'smooth',
-    });
+    scrollAnimRef.current = requestAnimationFrame(step);
 
-    const timer = setTimeout(() => {
-      isProgrammaticScrollRef.current = false;
-    }, 450);
-    return () => clearTimeout(timer);
+    return () => {
+      if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
+    };
   }, [activeLineIndex]);
 
   // Detect user manual scroll to prevent fighting the user
@@ -121,7 +144,25 @@ export default function FullLyrics({
         {/* Left: Album cover thumbnail + Title & Artist */}
         <div className="full-lyrics__track-info">
           {media?.art && (
-            <img src={media.art} alt="" className="full-lyrics__thumb-art" />
+            <div className="full-lyrics__thumb-wrap">
+              <img src={media.art} alt="" className="full-lyrics__thumb-art" />
+              {toggleFavorite && (
+                <button
+                  type="button"
+                  className={`heart-btn heart-btn--thumb${isFavorite ? ' is-favorite' : ''}`}
+                  onClick={toggleFavorite}
+                  aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  style={{ '--heart-color': accentColor || 'var(--music-accent, #ff3b69)' }}
+                  title={isFavorite ? 'Favorited' : 'Favorite track'}
+                >
+                  {isFavorite ? (
+                    <Icon.HeartSolid width={11} height={11} />
+                  ) : (
+                    <Icon.Heart width={11} height={11} />
+                  )}
+                </button>
+              )}
+            </div>
           )}
           <div className="full-lyrics__meta">
             <MarqueeText text={media?.title} className="full-lyrics__title" />

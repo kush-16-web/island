@@ -99,6 +99,16 @@ function RingView({ ring, actions }) {
   );
 }
 
+const measureTextWidth = (text, font = '500 12.5px Geist, -apple-system, sans-serif') => {
+  if (!text || typeof document === 'undefined') return 60;
+  if (!measureTextWidth.canvas) {
+    measureTextWidth.canvas = document.createElement('canvas');
+  }
+  const context = measureTextWidth.canvas.getContext('2d');
+  context.font = font;
+  return context.measureText(text).width;
+};
+
 export default function Island() {
   const { state: s, actions } = useIsland();
   const now = useNow(1000);
@@ -149,7 +159,26 @@ export default function Island() {
     }
   };
 
-  const width = mode === 'hub' ? HUB_W : SIZE[mode].w;
+  const getDynamicWidth = () => {
+    if (mode === 'hub') return HUB_W;
+    if (mode === 'media') {
+      const textWidth = Math.ceil(measureTextWidth(media?.title || ''));
+      // Art(26) + padding(22) + gap(9) + textWidth + clean gap(10) + eq(18) = textWidth + 85
+      return Math.min(280, Math.max(148, textWidth + 85));
+    }
+    if (mode === 'both') {
+      const textWidth = Math.ceil(measureTextWidth(media?.title || ''));
+      return Math.min(320, Math.max(220, textWidth + 122));
+    }
+    if (mode === 'timer') {
+      const label = nextTimer?.label || '';
+      const textWidth = Math.ceil(measureTextWidth(label));
+      return Math.min(260, Math.max(168, textWidth + 116));
+    }
+    return SIZE[mode]?.w || 252;
+  };
+
+  const width = getDynamicWidth();
   const height = mode === 'hub' ? getDynamicHubHeight() : SIZE[mode].h;
 
   const dragRef = useRef({

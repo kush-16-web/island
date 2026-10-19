@@ -165,6 +165,8 @@ export default function NowPlaying({
         onControl={onControl}
         onClose={() => handleSetViewMode('player')}
         accentColor={accentColor}
+        isFavorite={isFavorite}
+        toggleFavorite={toggleFavorite}
         onSeek={(posSec) => {
           setOptimisticSeek({ posMs: posSec * 1000, timestamp: Date.now() });
           island?.media?.seek?.(posSec);
