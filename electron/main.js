@@ -9,6 +9,7 @@ const { Store } = require('./store');
 const { Scheduler } = require('./scheduler');
 const { createNotifyServer, DEFAULT_PORT } = require('./notify-server');
 const { MediaWatcher } = require('./media');
+const { FullscreenWatcher } = require('./fullscreen');
 
 const DEV_URL = process.env.ISLAND_DEV_URL || '';
 const WIN_W = 720;
@@ -24,6 +25,7 @@ let scheduler = null;
 let media = null;
 let notifyServer = null;
 let notifyPort = DEFAULT_PORT;
+let fullscreenWatcher = null;
 let inbox = [];
 let mediaState = { active: false };
 let visible = true;
@@ -385,6 +387,38 @@ function wireIpc() {
       win.setFocusable(false);
     }
   });
+
+  // Fullscreen autohide settings
+  handle('settings:get-autohide', () => (store ? store.get('autohide_fullscreen') !== false : true));
+  handle('settings:set-autohide', (enabled) => {
+    if (store) store.set('autohide_fullscreen', Boolean(enabled));
+    return true;
+  });
+  handle('settings:get-autohide-pet', () => (store ? store.get('autohide_pet_fullscreen') !== false : true));
+  handle('settings:set-autohide-pet', (enabled) => {
+    if (store) store.set('autohide_pet_fullscreen', Boolean(enabled));
+    return true;
+  });
+}
+
+function wireFullscreen() {
+  const scriptSource = fs.readFileSync(path.join(__dirname, 'ps', 'fullscreen.ps1'), 'utf8');
+  fullscreenWatcher = new FullscreenWatcher({ workDir: path.join(app.getPath('userData'), 'scripts'), scriptSource });
+  fullscreenWatcher.on('change', (isFullscreen) => {
+    const autoHide = store ? store.get('autohide_fullscreen') !== false : true;
+    if (isFullscreen && autoHide) {
+      if (win && !win.isDestroyed()) {
+        win.setOpacity(0);
+      }
+      send('fullscreen:change', true);
+    } else {
+      if (win && !win.isDestroyed()) {
+        win.setOpacity(1);
+      }
+      send('fullscreen:change', false);
+    }
+  });
+  fullscreenWatcher.start();
 }
 
 // ---------------------------------------------------------------- lifecycle
@@ -412,6 +446,7 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     wireMedia();
     wireNotifyServer();
+    wireFullscreen();
 
     globalShortcut.register(HUB_SHORTCUT, openHub);
 
@@ -423,6 +458,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     if (media) media.stop();
+    if (fullscreenWatcher) fullscreenWatcher.stop();
     if (scheduler) scheduler.stop();
     if (notifyServer) notifyServer.close();
     if (store) store.flush();

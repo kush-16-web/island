@@ -49,17 +49,32 @@ if ($Mode -eq 'control') {
     exit 0
 }
 
+$asStreamMethod = ([System.IO.WindowsRuntimeStreamExtensions].GetMethods() | Where-Object {
+    $_.Name -eq 'AsStream' -and $_.GetParameters().Count -eq 1
+})[0]
+
 function Get-Art($props) {
     try {
         $ref = $props.Thumbnail
         if (-not $ref) { return $null }
         $stream = Await ($ref.OpenReadAsync()) $streamType
-        $net = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($stream)
+        if (-not $stream) { return $null }
+        $net = $asStreamMethod.Invoke($null, @($stream))
+        if (-not $net) { return $null }
         $memory = New-Object System.IO.MemoryStream
         $net.CopyTo($memory)
         $bytes = $memory.ToArray()
         if ($bytes.Length -eq 0 -or $bytes.Length -gt 3000000) { return $null }
-        return 'data:' + $stream.ContentType + ';base64,' + [Convert]::ToBase64String($bytes)
+        
+        $ct = '' + $stream.ContentType
+        if (-not $ct) {
+            if ($bytes.Length -gt 4 -and $bytes[0] -eq 0x89 -and $bytes[1] -eq 0x50 -and $bytes[2] -eq 0x4E -and $bytes[3] -eq 0x47) {
+                $ct = 'image/png'
+            } else {
+                $ct = 'image/jpeg'
+            }
+        }
+        return 'data:' + $ct + ';base64,' + [Convert]::ToBase64String($bytes)
     } catch {
         return $null
     }

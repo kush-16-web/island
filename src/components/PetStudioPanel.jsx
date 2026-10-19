@@ -1,14 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { SPECIES } from '../pets/core/PetTypes';
-import CatVisual from '../pets/species/cat/CatVisual';
 import DogVisual from '../pets/species/dog/DogVisual';
 import ThreePetCanvas from '../pets/three/ThreePetCanvas';
 import { Switch } from './bits';
 
 /**
- * PetStudioPanel: Integrated inside the expanded Dynamic Island.
- * Allows naming the companion (future voice wake-word), selecting species,
- * adjusting size, toggling roaming, cursor tracking, and showing/hiding on desktop.
+ * PetStudioPanel: Modern, high-craft Apple-level glassmorphic companion studio.
+ * Replaces generic form blocks with an interactive 3D hero showcase and compact control deck.
  */
 export default function PetStudioPanel({ setTyping }) {
   const [petName, setPetName] = useState(() => localStorage.getItem('island_pet_name') || 'Mochi');
@@ -19,7 +17,7 @@ export default function PetStudioPanel({ setTyping }) {
   const [scale, setScale] = useState(() => Number(localStorage.getItem('island_pet_scale')) || 100);
 
   const handleNameChange = (e) => {
-    const val = e.target.value.slice(0, 24);
+    const val = e.target.value.slice(0, 20);
     setPetName(val);
     localStorage.setItem('island_pet_name', val);
     window.dispatchEvent(new CustomEvent('island:pet-settings-changed'));
@@ -49,8 +47,7 @@ export default function PetStudioPanel({ setTyping }) {
     window.dispatchEvent(new CustomEvent('island:pet-settings-changed'));
   };
 
-  const handleScaleChange = (e) => {
-    const val = Number(e.target.value);
+  const handleScaleChange = (val) => {
     setScale(val);
     localStorage.setItem('island_pet_scale', String(val));
     window.dispatchEvent(new CustomEvent('island:pet-settings-changed'));
@@ -62,125 +59,142 @@ export default function PetStudioPanel({ setTyping }) {
 
   return (
     <div className="pet-studio-panel scroll">
-      {/* Top Preview Card */}
-      <div className="pet-preview-card">
-        <div className="pet-preview-viewport">
-          <div style={{ transform: `scale(${Math.min(1.2, scale / 100)})`, width: 86, height: 74, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Hero Showcase with Authentic 3D Kitten */}
+      <div className="pet-hero">
+        <div className="pet-hero__stage">
+          <div className="pet-hero__glow" />
+          <div className="pet-hero__model">
             {species === SPECIES.DOG ? (
-              <DogVisual state="sit" mood="normal" />
+              <div style={{ transform: `scale(${Math.min(1.2, scale / 100)})`, width: 86, height: 74, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <DogVisual state="sit" mood="normal" />
+              </div>
             ) : (
-              <ThreePetCanvas state="sit" mood="normal" scale={75} />
+              <ThreePetCanvas isStudio state="sit" mood="normal" scale={scale} />
             )}
           </div>
         </div>
-        <div className="pet-preview-info">
-          <div className="pet-preview-name">{petName || 'Companion'}</div>
-          <div className="pet-preview-status">
-            {visible ? (roaming ? '🐾 Roaming desktop' : '💤 Resting beside island') : 'Hidden from screen'}
+
+        <div className="pet-hero__details">
+          {/* Editable Name */}
+          <div className="pet-hero__name-box">
+            <input
+              type="text"
+              className="pet-hero__name-input"
+              value={petName}
+              onChange={handleNameChange}
+              placeholder="Name your pet"
+              onFocus={() => setTyping?.(true)}
+              onBlur={() => setTyping?.(false)}
+            />
+            <span className="pet-hero__name-hint">Tap to rename</span>
           </div>
-          <div className="pet-preview-hint">
-            Wake phrase: <strong>"Hey {petName || 'Companion'}"</strong>
+
+          {/* Assistant Voice Command Badge */}
+          <div className="pet-hero__badge">
+            <span className="pet-hero__badge-icon">🎙</span>
+            <span className="pet-hero__badge-label">Wake: <strong>"Hey {petName || 'Companion'}"</strong></span>
+          </div>
+
+          {/* Status Indicator */}
+          <div className="pet-hero__status">
+            <span className={`pet-hero__status-dot ${visible ? 'is-live' : 'is-off'}`} />
+            <span className="pet-hero__status-text">
+              {visible ? (roaming ? 'Roaming Desktop' : 'Beside Island') : 'Hidden from Screen'}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Pet Name input */}
-      <div className="setting-row">
-        <div className="setting-label">
-          <span>Pet & Assistant Name</span>
-          <span className="setting-sub">Used as the identity and voice command wake phrase</span>
+      {/* Modern Control Grid */}
+      <div className="pet-grid">
+        {/* Species Selector */}
+        <div className="pet-card">
+          <div className="pet-card__header">
+            <span className="pet-card__title">Companion</span>
+            <span className="pet-card__sub">Species</span>
+          </div>
+          <div className="pet-segmented">
+            <button
+              type="button"
+              className={`pet-segmented__btn ${species === SPECIES.CAT ? 'is-active' : ''}`}
+              onClick={() => handleSpeciesChange(SPECIES.CAT)}
+            >
+              🐱 Cat
+            </button>
+            <button
+              type="button"
+              className={`pet-segmented__btn ${species === SPECIES.DOG ? 'is-active' : ''}`}
+              onClick={() => handleSpeciesChange(SPECIES.DOG)}
+            >
+              🐶 Dog
+            </button>
+            <button
+              type="button"
+              className={`pet-segmented__btn ${species === 'both' ? 'is-active' : ''}`}
+              onClick={() => handleSpeciesChange('both')}
+            >
+              🐾 Both
+            </button>
+          </div>
         </div>
-        <input
-          type="text"
-          className="field field--name"
-          value={petName}
-          onChange={handleNameChange}
-          placeholder="e.g. Mochi, Batman"
-          onFocus={() => setTyping?.(true)}
-          onBlur={() => setTyping?.(false)}
-        />
+
+        {/* Visual Scale */}
+        <div className="pet-card">
+          <div className="pet-card__header">
+            <span className="pet-card__title">Scale</span>
+            <span className="pet-card__tag">{scale}%</span>
+          </div>
+          <div className="pet-scale-row">
+            <input
+              type="range"
+              min="75"
+              max="135"
+              step="5"
+              value={scale}
+              onChange={(e) => handleScaleChange(Number(e.target.value))}
+              className="pet-slider"
+            />
+            <div className="pet-presets">
+              <button type="button" className={`pet-preset-btn ${scale === 80 ? 'is-active' : ''}`} onClick={() => handleScaleChange(80)}>
+                S
+              </button>
+              <button type="button" className={`pet-preset-btn ${scale === 100 ? 'is-active' : ''}`} onClick={() => handleScaleChange(100)}>
+                M
+              </button>
+              <button type="button" className={`pet-preset-btn ${scale === 125 ? 'is-active' : ''}`} onClick={() => handleScaleChange(125)}>
+                L
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop Roaming */}
+        <div className="pet-card pet-card--switch">
+          <div className="pet-card__header">
+            <span className="pet-card__title">Desktop Roaming</span>
+            <span className="pet-card__sub">Strolls along screen baseline</span>
+          </div>
+          <Switch checked={roaming} onChange={handleRoamingToggle} label="Toggle roaming" />
+        </div>
+
+        {/* 3D Cursor Following */}
+        <div className="pet-card pet-card--switch">
+          <div className="pet-card__header">
+            <span className="pet-card__title">3D Gaze Tracking</span>
+            <span className="pet-card__sub">Head & eyes follow cursor</span>
+          </div>
+          <Switch checked={tracking} onChange={handleTrackingToggle} label="Toggle tracking" />
+        </div>
       </div>
 
-      {/* Species Selection */}
-      <div className="setting-row">
-        <div className="setting-label">
-          <span>Species</span>
-          <span className="setting-sub">Choose your desktop companion species</span>
+      {/* Master Toolbar */}
+      <div className="pet-toolbar">
+        <div className="pet-toolbar__left">
+          <Switch checked={visible} onChange={handleVisibilityToggle} label="Toggle visibility" />
+          <span className="pet-toolbar__label">{visible ? 'Visible on Desktop' : 'Pet Hidden'}</span>
         </div>
-        <div className="chips">
-          <button
-            type="button"
-            className={`chip ${species === SPECIES.CAT ? 'is-active' : ''}`}
-            onClick={() => handleSpeciesChange(SPECIES.CAT)}
-          >
-            🐱 Cat
-          </button>
-          <button
-            type="button"
-            className={`chip ${species === SPECIES.DOG ? 'is-active' : ''}`}
-            onClick={() => handleSpeciesChange(SPECIES.DOG)}
-          >
-            🐶 Dog
-          </button>
-          <button
-            type="button"
-            className={`chip ${species === 'both' ? 'is-active' : ''}`}
-            onClick={() => handleSpeciesChange('both')}
-            title="Inspect both companions side-by-side"
-          >
-            🐾 Both
-          </button>
-        </div>
-      </div>
-
-      {/* Visibility Toggle */}
-      <div className="setting-row setting-row--switch">
-        <div className="setting-label">
-          <span>Show on Desktop</span>
-          <span className="setting-sub">Keep your pet companion active on screen</span>
-        </div>
-        <Switch checked={visible} onChange={handleVisibilityToggle} label="Toggle pet visibility" />
-      </div>
-
-      {/* Roaming Toggle */}
-      <div className="setting-row setting-row--switch">
-        <div className="setting-label">
-          <span>Desktop Roaming</span>
-          <span className="setting-sub">Allow pet to take strolls along the companion baseline</span>
-        </div>
-        <Switch checked={roaming} onChange={handleRoamingToggle} label="Toggle desktop roaming" />
-      </div>
-
-      {/* Cursor Following Toggle */}
-      <div className="setting-row setting-row--switch">
-        <div className="setting-label">
-          <span>Cursor Following</span>
-          <span className="setting-sub">Pet tracks mouse cursor position with its eyes</span>
-        </div>
-        <Switch checked={tracking} onChange={handleTrackingToggle} label="Toggle cursor tracking" />
-      </div>
-
-      {/* Scale Slider */}
-      <div className="setting-row">
-        <div className="setting-label">
-          <span>Size: {scale}%</span>
-          <span className="setting-sub">Adjust companion visual scale on your monitor</span>
-        </div>
-        <input
-          type="range"
-          min="75"
-          max="135"
-          step="5"
-          value={scale}
-          onChange={handleScaleChange}
-          className="slider"
-        />
-      </div>
-
-      {/* Reset Position Button */}
-      <div className="setting-actions">
-        <button type="button" className="btn btn--soft" onClick={handleResetPosition}>
-          Reset Pet Position
+        <button type="button" className="pet-btn-reset" onClick={handleResetPosition}>
+          ↺ Reset Position
         </button>
       </div>
     </div>

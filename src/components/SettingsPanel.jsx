@@ -1,15 +1,24 @@
 import React, { useEffect, useState } from 'react';
+import { Switch } from './bits';
 
 /**
  * SettingsPanel: Manages Island positioning presets, dragging behavior,
- * and application preferences inside the expanded Dynamic Island.
+ * fullscreen autohide, and application preferences inside the expanded Dynamic Island.
  */
 export default function SettingsPanel() {
   const [currentPreset, setCurrentPreset] = useState('center');
+  const [autohideIsland, setAutohideIsland] = useState(true);
+  const [autohidePet, setAutohidePet] = useState(true);
 
   useEffect(() => {
     window.island?.getWindowPos?.().then((res) => {
       if (res?.preset) setCurrentPreset(res.preset);
+    });
+    window.island?.getAutohide?.().then((res) => {
+      if (typeof res === 'boolean') setAutohideIsland(res);
+    });
+    window.island?.getAutohidePet?.().then((res) => {
+      if (typeof res === 'boolean') setAutohidePet(res);
     });
 
     if (window.island?.on) {
@@ -22,6 +31,16 @@ export default function SettingsPanel() {
   const handleSetPreset = (preset) => {
     setCurrentPreset(preset);
     window.island?.setWindowPreset?.(preset);
+  };
+
+  const handleToggleAutohideIsland = (next) => {
+    setAutohideIsland(next);
+    window.island?.setAutohide?.(next);
+  };
+
+  const handleToggleAutohidePet = (next) => {
+    setAutohidePet(next);
+    window.island?.setAutohidePet?.(next);
   };
 
   const handleResetPos = () => {
@@ -60,6 +79,23 @@ export default function SettingsPanel() {
             Right
           </button>
         </div>
+      </div>
+
+      {/* Fullscreen Autohide Options */}
+      <div className="setting-row setting-row--switch">
+        <div className="setting-label">
+          <span>Auto-hide Island in Fullscreen</span>
+          <span className="setting-sub">Hides Dynamic Island during YouTube, games, and F11 windows</span>
+        </div>
+        <Switch checked={autohideIsland} onChange={handleToggleAutohideIsland} label="Toggle island fullscreen autohide" />
+      </div>
+
+      <div className="setting-row setting-row--switch">
+        <div className="setting-label">
+          <span>Auto-hide Pet in Fullscreen</span>
+          <span className="setting-sub">Hides desktop companion during full-screen media and gaming</span>
+        </div>
+        <Switch checked={autohidePet} onChange={handleToggleAutohidePet} label="Toggle pet fullscreen autohide" />
       </div>
 
       {/* Manual Dragging Guide */}

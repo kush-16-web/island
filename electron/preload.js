@@ -3,7 +3,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-const CHANNELS = new Set(['notification', 'ring', 'media', 'scheduler:state', 'inbox:state', 'hub:toggle', 'window:blur', 'window:pos-changed']);
+const CHANNELS = new Set(['notification', 'ring', 'media', 'scheduler:state', 'inbox:state', 'hub:toggle', 'window:blur', 'window:pos-changed', 'fullscreen:change']);
 
 contextBridge.exposeInMainWorld('island', {
   getState: () => ipcRenderer.invoke('state:get'),
@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld('island', {
   resetWindowPos: () => ipcRenderer.send('window:reset-pos'),
   getWindowPos: () => ipcRenderer.invoke('window:get-pos'),
   setIslandExpanded: (expanded) => ipcRenderer.send('island:expand', Boolean(expanded)),
+
+  // Fullscreen autohide settings
+  getAutohide: () => ipcRenderer.invoke('settings:get-autohide'),
+  setAutohide: (enabled) => ipcRenderer.invoke('settings:set-autohide', enabled),
+  getAutohidePet: () => ipcRenderer.invoke('settings:get-autohide-pet'),
+  setAutohidePet: (enabled) => ipcRenderer.invoke('settings:set-autohide-pet', enabled),
 
   scheduler: {
     addAlarm: (input) => ipcRenderer.invoke('scheduler:add-alarm', input),

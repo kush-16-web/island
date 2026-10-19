@@ -12,7 +12,7 @@ const TABS = [
   { id: 'playing', label: 'Playing', Glyph: Icon.Music },
   { id: 'clock', label: 'Clock', Glyph: Icon.Timer },
   { id: 'inbox', label: 'Inbox', Glyph: Icon.Inbox },
-  { id: 'pet', label: 'Pet Studio', Glyph: Icon.Paw },
+  { id: 'pet', label: 'Pet', Glyph: Icon.Paw },
   { id: 'settings', label: 'Settings', Glyph: Icon.Settings },
 ];
 
