@@ -40,10 +40,10 @@ export default function DesktopPetWindow() {
     return window.island.on('media', (media) => {
       if (media && media.active && media.status === 'playing') {
         setMood('music');
-        stateMachineRef.current?.setState(ANIMATION_STATES.DANCE);
+        stateMachineRef.current?.setState(ANIMATION_STATES.DANCE, { duration: 15000 });
       } else {
         setMood('normal');
-        stateMachineRef.current?.setState(ANIMATION_STATES.SIT);
+        stateMachineRef.current?.transitionToAutonomous('normal');
       }
     });
   }, []);
@@ -67,9 +67,9 @@ export default function DesktopPetWindow() {
     const dir = Math.random() > 0.5 ? DIRECTIONS.RIGHT : DIRECTIONS.LEFT;
     setFacing(dir);
 
-    const steps = isRun ? 22 : 30 + Math.floor(Math.random() * 25);
+    const steps = isRun ? 24 : 35 + Math.floor(Math.random() * 20);
     let stepCount = 0;
-    const stepDist = dir * (isRun ? 5.0 : 2.5);
+    const stepDist = dir * (isRun ? 4.5 : 2.2);
 
     clearInterval(walkIntervalRef.current);
     walkIntervalRef.current = setInterval(() => {
@@ -80,26 +80,27 @@ export default function DesktopPetWindow() {
         setFacing(DIRECTIONS.RIGHT);
         stateMachineRef.current?.transitionToAutonomous(mood);
       }
-    }, isRun ? 28 : 40);
+    }, isRun ? 30 : 45);
   }, [roaming, mood]);
 
   useEffect(() => {
     if (animState === ANIMATION_STATES.WALK) {
       if (!roaming) {
-        stateMachineRef.current?.setState(ANIMATION_STATES.SIT);
+        stateMachineRef.current?.setState(ANIMATION_STATES.SIT, { duration: 4000 });
         return;
       }
       executeDesktopWalk(false);
     } else if (animState === ANIMATION_STATES.RUN) {
       if (!roaming) {
-        stateMachineRef.current?.setState(ANIMATION_STATES.SIT);
+        stateMachineRef.current?.setState(ANIMATION_STATES.SIT, { duration: 4000 });
         return;
       }
       executeDesktopWalk(true);
     }
   }, [animState, roaming, executeDesktopWalk]);
 
-  // Dragging support: user can pick up the pet and move it anywhere on desktop
+  // Robust desktop dragging: attach listeners to window so fast mouse gestures never lose drag
+  const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef({
     active: false,
     startX: 0,
@@ -107,10 +108,9 @@ export default function DesktopPetWindow() {
     lastX: 0,
     lastY: 0,
     hasMoved: false,
-    pointerId: null,
   });
 
-  const onPointerDown = (e) => {
+  const onPointerDown = useCallback((e) => {
     if (e.button !== 0) return;
     dragRef.current = {
       active: true,
@@ -119,71 +119,79 @@ export default function DesktopPetWindow() {
       lastX: e.screenX,
       lastY: e.screenY,
       hasMoved: false,
-      pointerId: e.pointerId,
     };
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
-  };
+    setIsDragging(true);
 
-  const onPointerMove = (e) => {
-    if (!dragRef.current.active) return;
-    const dx = e.screenX - dragRef.current.lastX;
-    const dy = e.screenY - dragRef.current.lastY;
-    const totalDist = Math.hypot(e.screenX - dragRef.current.startX, e.screenY - dragRef.current.startY);
+    const onPointerMove = (ev) => {
+      if (!dragRef.current.active) return;
+      const dx = ev.screenX - dragRef.current.lastX;
+      const dy = ev.screenY - dragRef.current.lastY;
+      const dist = Math.hypot(ev.screenX - dragRef.current.startX, ev.screenY - dragRef.current.startY);
 
-    if (totalDist > 3) {
-      dragRef.current.hasMoved = true;
-      if (window.island?.movePetBy) {
-        window.island.movePetBy(dx, dy);
+      if (dist > 3) {
+        dragRef.current.hasMoved = true;
+        if (window.island?.movePetBy) {
+          window.island.movePetBy(dx, dy);
+        }
+        dragRef.current.lastX = ev.screenX;
+        dragRef.current.lastY = ev.screenY;
       }
-      dragRef.current.lastX = e.screenX;
-      dragRef.current.lastY = e.screenY;
-    }
-  };
+    };
 
-  const onPointerUp = (e) => {
-    if (!dragRef.current.active) return;
-    const { hasMoved, pointerId } = dragRef.current;
-    dragRef.current.active = false;
-    try {
-      if (pointerId !== null) e.currentTarget.releasePointerCapture(pointerId);
-    } catch {}
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      setIsDragging(false);
 
-    if (!hasMoved) {
-      // Pet click: happy reaction
-      stateMachineRef.current?.setState(ANIMATION_STATES.HAPPY, { duration: 2500 });
-    }
-  };
+      if (!dragRef.current.active) return;
+      const { hasMoved } = dragRef.current;
+      dragRef.current.active = false;
+
+      if (!hasMoved) {
+        // Pet click/tap: playful kitten reactions (jumping, batting toy yarn ball, or purring)
+        const actions = [ANIMATION_STATES.HAPPY, ANIMATION_STATES.JUMP, ANIMATION_STATES.PLAY];
+        const next = actions[Math.floor(Math.random() * actions.length)];
+        stateMachineRef.current?.setState(next, { duration: 3200 });
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  }, []);
 
   if (!visible) return null;
 
   return (
     <div
       className="desktop-pet-root"
+      data-hit
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
       style={{
-        width: 150,
-        height: 130,
-        overflow: 'hidden',
+        width: '100vw',
+        height: '100vh',
+        overflow: 'visible',
         display: 'flex',
-        alignItems: 'flex-end',
+        alignItems: 'center',
         justifyContent: 'center',
         background: 'transparent',
-        cursor: 'grab',
+        cursor: isDragging ? 'grabbing' : 'grab',
         userSelect: 'none',
       }}
     >
-      <div style={{ pointerEvents: 'auto', transform: 'translateY(-2px)' }}>
+      <div style={{ pointerEvents: 'auto' }}>
         <PetRenderer
           species={species === 'both' ? SPECIES.CAT : species}
           state={animState}
           mood={mood}
           facing={facing}
           musicAccent={musicAccent}
-          onPet={() => stateMachineRef.current?.setState(ANIMATION_STATES.HAPPY, { duration: 2500 })}
+          onPet={() => {
+            const actions = [ANIMATION_STATES.HAPPY, ANIMATION_STATES.JUMP, ANIMATION_STATES.PLAY];
+            const next = actions[Math.floor(Math.random() * actions.length)];
+            stateMachineRef.current?.setState(next, { duration: 3200 });
+          }}
         />
       </div>
     </div>

@@ -32,14 +32,14 @@ function View({ w, h, className = '', children }) {
   );
 }
 
-function CompactView({ mode, media, nextTimer, now, musicColor, playing }) {
+function CompactView({ mode, media, nextTimer, now, musicColor, playing, width }) {
   const showMedia = mode === 'media' || mode === 'both';
   const showTimer = mode === 'timer' || mode === 'both';
   const remaining = nextTimer ? nextTimer.fireAt - now : 0;
   const fraction = nextTimer ? remaining / nextTimer.durationMs : 0;
   const middle = showMedia ? media.title : nextTimer && nextTimer.label;
   return (
-    <View w={SIZE[mode].w} h={SIZE[mode].h} className="compact">
+    <View w={width} h={SIZE[mode].h} className="compact">
       {showMedia ? (
         <Art src={media.art} seed={`${media.title}${media.artist}`} size={26} radius={8} />
       ) : (
@@ -144,7 +144,32 @@ export default function Island() {
     }
   };
 
-  const width = mode === 'hub' ? HUB_W : SIZE[mode].w;
+  const getDynamicWidth = () => {
+    if (mode === 'hub') return HUB_W;
+    if (mode === 'idle') return SIZE.idle.w;
+    if (mode === 'toast') return SIZE.toast.w;
+    if (mode === 'ring') return SIZE.ring.w;
+    if (mode === 'timer') {
+      const label = nextTimer?.label || '';
+      const textWidth = Math.ceil(label.length * 7.5);
+      return Math.min(260, Math.max(160, 112 + textWidth));
+    }
+    if (mode === 'media') {
+      const title = media?.title || '';
+      const textWidth = Math.ceil(title.length * 7.5);
+      // Art(26) + padding(22) + gap(10) + textWidth + space(16) + eq(18)
+      // Clamped comfortably between min 140px and max 320px
+      return Math.min(320, Math.max(140, 92 + textWidth));
+    }
+    if (mode === 'both') {
+      const title = media?.title || '';
+      const textWidth = Math.ceil(title.length * 7.5);
+      return Math.min(350, Math.max(220, 142 + textWidth));
+    }
+    return SIZE[mode]?.w || 252;
+  };
+
+  const width = getDynamicWidth();
   const height = mode === 'hub' ? getDynamicHubHeight() : SIZE[mode].h;
 
   const dragRef = useRef({
@@ -345,7 +370,7 @@ export default function Island() {
       </View>
     );
   } else {
-    view = <CompactView mode={mode} media={media} nextTimer={nextTimer} now={now} musicColor={musicColor} playing={playing} />;
+    view = <CompactView mode={mode} media={media} nextTimer={nextTimer} now={now} musicColor={musicColor} playing={playing} width={width} />;
   }
 
   const contentKey = mode === 'toast' ? `toast-${toast.id}` : mode === 'ring' ? `ring-${ring.key}` : mode;

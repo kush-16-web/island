@@ -65,14 +65,14 @@ export default function ThreePetCanvas({
     const container = mountRef.current;
     if (!container) return;
 
-    const width = isStudio ? 130 : 140;
-    const height = isStudio ? 110 : 120;
+    const width = isStudio ? 130 : 180;
+    const height = isStudio ? 110 : 160;
 
     // 1. Scene & Camera
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 50);
-    camera.position.set(0, 0.55, 3.8);
-    camera.lookAt(0, 0.4, 0);
+    const camera = new THREE.PerspectiveCamera(34, width / height, 0.1, 50);
+    camera.position.set(0, 0.65, 4.2);
+    camera.lookAt(0, 0.55, 0);
 
     // 2. High-efficiency transparent WebGL Renderer
     const renderer = new THREE.WebGLRenderer({
@@ -239,15 +239,21 @@ export default function ThreePetCanvas({
           const size = box.getSize(new THREE.Vector3());
           const center = box.getCenter(new THREE.Vector3());
 
-          // Center horizontally and ground vertically
+          // Center horizontally and ground paws at y = 0
           kittenMesh.position.set(-center.x, -box.min.y, -center.z);
 
-          // Proportional desktop scale
-          const targetHeight = isStudio ? 1.55 : 1.45;
-          baseMeshScale = targetHeight / (size.y || 1);
-          kittenMesh.scale.setScalar(baseMeshScale);
+          // Wrap mesh in group for proportional desktop scaling & orientation
+          const meshWrapper = new THREE.Group();
+          meshWrapper.add(kittenMesh);
 
-          gazeGroup.add(kittenMesh);
+          // Proportional desktop scale with complete visibility
+          const targetHeight = isStudio ? 1.35 : 1.20;
+          baseMeshScale = targetHeight / (size.y || 1);
+          meshWrapper.scale.setScalar(baseMeshScale);
+          // Model naturally faces forward (+Z) towards the user
+          meshWrapper.rotation.y = 0;
+
+          gazeGroup.add(meshWrapper);
           setModelLoaded(true);
         },
         undefined,
@@ -294,8 +300,8 @@ export default function ThreePetCanvas({
       const currentFacing = facingRef.current;
       const userScale = (scaleRef.current / 100) * (isStudio ? 0.95 : 1.0);
 
-      // Smooth horizontal turn rotation (3/4 isometric angle towards screen)
-      const targetRotY = currentFacing === -1 ? -Math.PI * 0.4 : Math.PI * 0.4;
+      // Smooth horizontal turn rotation (gentle 3/4 angle facing towards screen)
+      const targetRotY = currentFacing === -1 ? -0.28 : 0.28;
       currentYRot += (targetRotY - currentYRot) * Math.min(1, delta * 7.5);
       rootGroup.rotation.y = currentYRot;
       rootGroup.scale.setScalar(userScale);
@@ -460,8 +466,8 @@ export default function ThreePetCanvas({
       className={`three-pet-canvas${isStudio ? ' is-studio' : ''}`}
       onClick={handleCanvasClick}
       style={{
-        width: isStudio ? 130 : 140,
-        height: isStudio ? 110 : 120,
+        width: isStudio ? 130 : 180,
+        height: isStudio ? 110 : 160,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

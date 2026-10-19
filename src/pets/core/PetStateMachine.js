@@ -10,6 +10,10 @@ export class PetStateMachine {
     this.onStateChange = onStateChange;
     this.timer = null;
     this.manualOverride = false;
+    // Schedule first autonomous transition after 3 seconds
+    this.timer = setTimeout(() => {
+      this.transitionToAutonomous();
+    }, 3200);
   }
 
   setState(nextState, { isManual = false, duration = 0 } = {}) {
@@ -27,6 +31,10 @@ export class PetStateMachine {
         if (this.manualOverride && isManual) this.manualOverride = false;
         this.transitionToAutonomous();
       }, duration);
+    } else if (!isManual) {
+      this.timer = setTimeout(() => {
+        this.transitionToAutonomous();
+      }, 5000);
     }
   }
 

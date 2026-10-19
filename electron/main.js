@@ -14,8 +14,8 @@ const { FullscreenWatcher } = require('./fullscreen');
 const DEV_URL = process.env.ISLAND_DEV_URL || '';
 const WIN_W = 720;
 const WIN_H = 500;
-const PET_WIN_W = 150;
-const PET_WIN_H = 130;
+const PET_WIN_W = 190;
+const PET_WIN_H = 175;
 const INBOX_LIMIT = 100;
 const HUB_SHORTCUT = 'CommandOrControl+Alt+Space';
 const HUB_SHORTCUT_LABEL = 'Ctrl+Alt+Space';
@@ -211,7 +211,7 @@ function createPetWindow() {
     fullscreenable: false,
     skipTaskbar: true,
     hasShadow: false,
-    focusable: false,
+    focusable: true,
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -225,6 +225,7 @@ function createPetWindow() {
   });
 
   petWin.setAlwaysOnTop(true, 'screen-saver');
+  petWin.setIgnoreMouseEvents(false);
   placePetWindow();
 
   petWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -465,9 +466,14 @@ function wireIpc() {
   // Dedicated Pet Window IPC
   listen('pet:move-by', ({ dx, dy }) => {
     if (!petWin || petWin.isDestroyed()) return;
+    const { x: dispX, y: dispY, width: dispW, height: dispH } = getDisplayBounds();
     const [currX, currY] = petWin.getPosition();
-    const newX = Math.round(currX + (Number(dx) || 0));
-    const newY = Math.round(currY + (Number(dy) || 0));
+    const minX = dispX;
+    const maxX = dispX + dispW - PET_WIN_W;
+    const minY = dispY;
+    const maxY = dispY + dispH - PET_WIN_H;
+    const newX = Math.max(minX, Math.min(maxX, Math.round(currX + (Number(dx) || 0))));
+    const newY = Math.max(minY, Math.min(maxY, Math.round(currY + (Number(dy) || 0))));
     petWin.setPosition(newX, newY);
     if (store) store.set('pet_pos', { x: newX, y: newY });
     send('pet:pos-changed', { x: newX, y: newY });

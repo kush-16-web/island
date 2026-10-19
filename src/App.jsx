@@ -59,8 +59,6 @@ function DevBar() {
 export default function App() {
   const [isPetWin] = useState(() => window.location.hash === '#pet');
 
-  useClickThrough();
-
   useEffect(() => {
     if (isMock && !isPetWin) document.body.classList.add('mock');
   }, [isPetWin]);
@@ -69,6 +67,11 @@ export default function App() {
     return <DesktopPetWindow />;
   }
 
+  return <IslandApp />;
+}
+
+function IslandApp() {
+  useClickThrough();
   return (
     <>
       <Island />
