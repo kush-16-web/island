@@ -143,62 +143,79 @@ export default function NowPlaying({
 
   return (
     <div className="np">
-      <div className="np__top">
-        <Art src={media.art} seed={seed} size={88} radius={18} />
-        <div className="np__meta">
-          <MarqueeText text={media.title} className="np__title" />
-          <MarqueeText text={media.artist || 'Unknown artist'} className="np__artist" />
-          {media.app && <span className="chip-app">{media.app}</span>}
+      {/* Apple Music & YouTube Music Ambient Blurred Album Art Background */}
+      {media.art && (
+        <div className="ambient-art-bg" aria-hidden="true">
+          <img src={media.art} alt="" className="ambient-art-bg__img" />
+          <div className="ambient-art-bg__overlay" />
         </div>
-        <MiniLyrics
-          lyricsData={lyricsData}
-          loading={loading}
-          activeLineIndex={activeLineIndex}
-          accentColor={accentColor}
-          onClick={() => handleSetViewMode('lyrics')}
-        />
+      )}
+
+      <div className="np__main">
+        {/* Left Column: Cover + Title + Artist + App chip */}
+        <div className="np__left">
+          <Art src={media.art} seed={seed} size={76} radius={14} />
+          <div className="np__meta">
+            <MarqueeText text={media.title} className="np__title" />
+            <MarqueeText text={media.artist || 'Unknown artist'} className="np__artist" />
+            {media.app && <span className="chip-app">{media.app}</span>}
+          </div>
+        </div>
+
+        {/* Right Column: Mini Lyrics take all remaining horizontal space! */}
+        <div className="np__right">
+          <MiniLyrics
+            lyricsData={lyricsData}
+            loading={loading}
+            activeLineIndex={activeLineIndex}
+            accentColor={accentColor}
+            onClick={() => handleSetViewMode('lyrics')}
+          />
+        </div>
       </div>
 
-      <div className="np__progress">
-        <span className="np__time-text">{formatTrackTime(displayPosition)}</span>
-        <div
-          ref={barRef}
-          className={`np__bar${isScrubbing ? ' is-scrubbing' : ''}`}
-          onPointerDown={handlePointerDown}
-          role="slider"
-          aria-label="Seek track position"
-          aria-valuemin={0}
-          aria-valuemax={media.durationMs || 100}
-          aria-valuenow={displayPosition}
-          tabIndex={0}
-        >
-          {hasDuration && (
-            <div
-              className="np__fill"
-              style={{
-                width: `${pct}%`,
-                background: accentColor || 'var(--accent)',
-              }}
-            >
-              <div className="np__thumb" />
-            </div>
-          )}
+      <div className="np__bottom">
+        <div className="np__progress">
+          <span className="np__time-text">{formatTrackTime(displayPosition)}</span>
+          <div
+            ref={barRef}
+            className={`np__bar${isScrubbing ? ' is-scrubbing' : ''}`}
+            onPointerDown={handlePointerDown}
+            role="slider"
+            aria-label="Seek track position"
+            aria-valuemin={0}
+            aria-valuemax={media.durationMs || 100}
+            aria-valuenow={displayPosition}
+            tabIndex={0}
+          >
+            {hasDuration && (
+              <div
+                className="np__fill"
+                style={{
+                  width: `${pct}%`,
+                  background: accentColor || 'var(--accent)',
+                }}
+              >
+                <div className="np__thumb" />
+              </div>
+            )}
+          </div>
+          <span className="np__time-text">
+            {hasDuration ? `-${formatTrackTime(media.durationMs - displayPosition)}` : 'Live'}
+          </span>
         </div>
-        <span className="np__time-text">
-          {hasDuration ? `-${formatTrackTime(media.durationMs - displayPosition)}` : 'Live'}
-        </span>
-      </div>
 
-      <div className="np__controls">
-        <button type="button" className="icon-btn" aria-label="Previous track" onClick={() => onControl('previous')}>
-          <Icon.Prev width={22} height={22} />
-        </button>
-        <button type="button" className="play-btn" aria-label={playing ? 'Pause' : 'Play'} onClick={() => onControl('playpause')}>
-          {playing ? <Icon.Pause width={22} height={22} /> : <Icon.Play width={22} height={22} />}
-        </button>
-        <button type="button" className="icon-btn" aria-label="Next track" onClick={() => onControl('next')}>
-          <Icon.Next width={22} height={22} />
-        </button>
+        <div className="np__controls">
+          <button type="button" className="icon-btn" aria-label="Previous track" onClick={() => onControl('previous')}>
+            <Icon.Prev width={20} height={20} />
+          </button>
+          <button type="button" className="play-btn" aria-label={playing ? 'Pause' : 'Play'} onClick={() => onControl('playpause')}>
+            {playing ? <Icon.Pause width={20} height={20} /> : <Icon.Play width={20} height={20} />}
+          </button>
+          <button type="button" className="icon-btn" aria-label="Next track" onClick={() => onControl('next')}>
+            <Icon.Next width={20} height={20} />
+          </button>
+        </div>
       </div>
     </div>
   );

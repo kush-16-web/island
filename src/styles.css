@@ -275,14 +275,107 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 .empty__title { font-size: 14.5px; font-weight: 620; }
 .empty__hint { font-size: 12.5px; color: var(--text-2); line-height: 1.5; max-width: 340px; }
 
-/* ------------------------------------------------------------------ now playing */
+/* ------------------------------------------------------------------ now playing (Apple Music / YouTube Music Ambient) */
 
-.np { height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 2px; }
-.np__top { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
-.np__meta { min-width: 0; flex: 1; max-width: 200px; display: flex; flex-direction: column; gap: 3px; }
-.np__title { font-size: 16px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; }
-.np__artist { font-size: 12.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
-.chip-app { align-self: flex-start; margin-top: 4px; padding: 2px 9px; border-radius: 10px; font-size: 10.5px; font-weight: 600; color: var(--text-2); background: var(--fill-1); box-shadow: inset 0 0 0 1px var(--hair); }
+.np {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4px 6px 2px 6px;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+/* Apple Music & YouTube Music Ambient Blurred Album Art Background */
+.ambient-art-bg {
+  position: absolute;
+  inset: -40px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+  user-select: none;
+}
+.ambient-art-bg__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.5);
+  filter: blur(54px) saturate(220%) brightness(0.40);
+  opacity: 0.92;
+  transition: opacity 0.6s ease;
+}
+.ambient-art-bg__overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 75% 35%, transparent 20%, rgba(8, 9, 13, 0.72) 85%),
+    linear-gradient(180deg, rgba(8, 9, 13, 0.35) 0%, rgba(8, 9, 13, 0.90) 100%);
+}
+
+.np__main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex: 1;
+  min-height: 0;
+}
+
+.np__left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  width: 114px;
+  min-width: 0;
+}
+
+.np__meta {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.np__title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: #ffffff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.np__artist {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.chip-app {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1.5px 7px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.np__right {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
 
 /* Marquee text (YouTube Music / Spotify auto-scroll) */
 .marquee-container {
@@ -311,16 +404,25 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
     transform: translateX(var(--marquee-offset, -30px));
   }
 }
+
+.np__bottom {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
 .np__progress {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 10.5px;
   color: var(--text-3);
   user-select: none;
 }
 .np__time-text {
-  width: 38px;
+  width: 34px;
   font-variant-numeric: tabular-nums;
 }
 .np__time-text:last-child {
@@ -328,7 +430,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 }
 .np__bar {
   flex: 1;
-  height: 16px;
+  height: 14px;
   display: flex;
   align-items: center;
   position: relative;
@@ -339,18 +441,18 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   position: absolute;
   left: 0;
   right: 0;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--fill-2);
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
   transition: height 0.15s ease;
 }
 .np__bar:hover::before,
 .np__bar.is-scrubbing::before {
-  height: 7px;
+  height: 6px;
 }
 .np__fill {
-  height: 5px;
-  border-radius: 3px;
+  height: 4px;
+  border-radius: 2px;
   background: var(--accent);
   position: relative;
   transition: height 0.15s ease;
@@ -358,18 +460,18 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 }
 .np__bar:hover .np__fill,
 .np__bar.is-scrubbing .np__fill {
-  height: 7px;
+  height: 6px;
 }
 .np__thumb {
   position: absolute;
-  right: -5px;
+  right: -4px;
   top: 50%;
   transform: translateY(-50%) scale(0);
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
   pointer-events: none;
 }
@@ -377,18 +479,33 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 .np__bar.is-scrubbing .np__thumb {
   transform: translateY(-50%) scale(1);
 }
-.np__controls { display: flex; align-items: center; justify-content: center; gap: 22px; }
-.play-btn { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--text); color: #000; transition: transform 0.15s, background 0.2s; }
-.play-btn:hover { background: #fff; }
+.np__controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 2px 0 0 0;
+}
+.play-btn {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s, background 0.2s;
+}
+.play-btn:hover { background: #ffffff; transform: scale(1.04); }
 .play-btn:active { transform: scale(0.94); }
 
 /* ------------------------------------------------------------------ mini lyrics (Apple Music & YouTube Music Continuous Reel) */
 
 .mini-lyrics {
-  flex: 1.35;
-  min-width: 0;
-  max-width: 240px;
-  height: 84px;
+  width: 100%;
+  height: 100%;
+  min-height: 112px;
   display: flex;
   align-items: center;
   position: relative;
@@ -398,7 +515,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   cursor: pointer;
   overflow: hidden;
   user-select: none;
-  padding: 0 2px;
+  padding: 0 4px;
 }
 .mini-lyrics:hover {
   background: transparent;
@@ -417,11 +534,11 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 }
 .mini-lyrics__viewport {
   width: 100%;
-  height: 84px;
+  height: 112px;
   position: relative;
   overflow: hidden;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 24%, black 76%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 24%, black 76%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
 }
 .mini-lyrics__reel {
   width: 100%;
@@ -439,25 +556,25 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   transition: color 0.22s, opacity 0.22s, filter 0.22s, font-size 0.22s;
 }
 .mini-lyrics__line.is-active {
-  font-size: 13.5px;
-  font-weight: 700;
+  font-size: 14.5px;
+  font-weight: 750;
   color: #ffffff !important;
   opacity: 1;
   filter: none;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 }
 .mini-lyrics__line.is-adjacent {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.45);
-  opacity: 0.45;
+  color: rgba(255, 255, 255, 0.48);
+  opacity: 0.5;
   filter: blur(0.3px);
 }
 .mini-lyrics__line.is-far {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 450;
   color: rgba(255, 255, 255, 0.25);
-  opacity: 0.2;
+  opacity: 0.22;
   filter: blur(0.6px);
 }
 .mini-lyrics__expand-hint {

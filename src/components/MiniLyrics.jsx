@@ -3,7 +3,7 @@ import { Icon } from './icons';
 import MarqueeText from './MarqueeText';
 
 const LINE_HEIGHT = 28; // Standard vertical line pitch in pixels
-const VIEWPORT_HEIGHT = 84;
+const VIEWPORT_HEIGHT = 112; // 4 lines visible in continuous reel
 
 /**
  * MiniLyrics: Borderless Apple Music / YouTube Music live scrolling lyrics reel.

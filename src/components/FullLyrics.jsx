@@ -106,6 +106,14 @@ export default function FullLyrics({
 
   return (
     <div className="full-lyrics" style={{ '--lyric-accent': accentColor || 'var(--accent)' }}>
+      {/* Apple Music & YouTube Music Ambient Blurred Album Art Background */}
+      {media?.art && (
+        <div className="ambient-art-bg" aria-hidden="true">
+          <img src={media.art} alt="" className="ambient-art-bg__img" />
+          <div className="ambient-art-bg__overlay" />
+        </div>
+      )}
+
       {/* Top Header Controls */}
       <div className="full-lyrics__header">
         <button
