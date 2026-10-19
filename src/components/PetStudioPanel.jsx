@@ -3,6 +3,7 @@ import { SPECIES } from '../pets/core/PetTypes';
 import DogVisual from '../pets/species/dog/DogVisual';
 import ThreePetCanvas from '../pets/three/ThreePetCanvas';
 import { Switch } from './bits';
+import { Icon } from './icons';
 
 /**
  * PetStudioPanel: Modern, high-craft Apple-level glassmorphic companion studio.
@@ -32,6 +33,7 @@ export default function PetStudioPanel({ setTyping }) {
   const handleVisibilityToggle = (next) => {
     setVisible(next);
     localStorage.setItem('island_pet_visible', String(next));
+    window.island?.setPetVisible?.(next);
     window.dispatchEvent(new CustomEvent('island:pet-settings-changed'));
   };
 
@@ -54,6 +56,7 @@ export default function PetStudioPanel({ setTyping }) {
   };
 
   const handleResetPosition = () => {
+    window.island?.resetPetPos?.();
     window.dispatchEvent(new CustomEvent('island:pet-reset-pos'));
   };
 
@@ -91,15 +94,16 @@ export default function PetStudioPanel({ setTyping }) {
 
           {/* Assistant Voice Command Badge */}
           <div className="pet-hero__badge">
-            <span className="pet-hero__badge-icon">🎙</span>
+            <span className="pet-hero__badge-icon">
+              <Icon.Mic width={11} height={11} />
+            </span>
             <span className="pet-hero__badge-label">Wake: <strong>"Hey {petName || 'Companion'}"</strong></span>
           </div>
 
-          {/* Status Indicator */}
+          {/* Clean Status Indicator without glowing dots */}
           <div className="pet-hero__status">
-            <span className={`pet-hero__status-dot ${visible ? 'is-live' : 'is-off'}`} />
             <span className="pet-hero__status-text">
-              {visible ? (roaming ? 'Roaming Desktop' : 'Beside Island') : 'Hidden from Screen'}
+              {visible ? (roaming ? 'Desktop Roaming Active' : 'Resting Beside Island') : 'Companion Inactive'}
             </span>
           </div>
         </div>
@@ -119,21 +123,24 @@ export default function PetStudioPanel({ setTyping }) {
               className={`pet-segmented__btn ${species === SPECIES.CAT ? 'is-active' : ''}`}
               onClick={() => handleSpeciesChange(SPECIES.CAT)}
             >
-              🐱 Cat
+              <Icon.Cat width={13} height={13} />
+              <span>Cat</span>
             </button>
             <button
               type="button"
               className={`pet-segmented__btn ${species === SPECIES.DOG ? 'is-active' : ''}`}
               onClick={() => handleSpeciesChange(SPECIES.DOG)}
             >
-              🐶 Dog
+              <Icon.Dog width={13} height={13} />
+              <span>Dog</span>
             </button>
             <button
               type="button"
               className={`pet-segmented__btn ${species === 'both' ? 'is-active' : ''}`}
               onClick={() => handleSpeciesChange('both')}
             >
-              🐾 Both
+              <Icon.Paw width={13} height={13} />
+              <span>Both</span>
             </button>
           </div>
         </div>

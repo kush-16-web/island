@@ -3,12 +3,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIsland } from '../hooks/useIsland';
 import { useNow } from '../hooks/useNow';
 import { startChime, stopChime } from '../lib/chime';
+import { extractCoverColor } from '../lib/colorExtract';
 import { formatAlarmTime, formatClock, formatRemaining, hueFrom } from '../lib/format';
 import { SPRING } from '../lib/motion';
 import { Art, Avatar, Equalizer, Ring, kindColor } from './bits';
 import Hub from './Hub';
 import { Icon } from './icons';
 import PetSystem from '../pets/PetSystem';
+import { isMock } from '../lib/bridge';
 
 const HUB_W = 468;
 const HUB_H = { playing: 262, clock: 384, inbox: 340, pet: 410, settings: 340 };
@@ -30,7 +32,7 @@ function View({ w, h, className = '', children }) {
   );
 }
 
-function CompactView({ mode, media, nextTimer, now, musicColor }) {
+function CompactView({ mode, media, nextTimer, now, musicColor, playing }) {
   const showMedia = mode === 'media' || mode === 'both';
   const showTimer = mode === 'timer' || mode === 'both';
   const remaining = nextTimer ? nextTimer.fireAt - now : 0;
@@ -47,7 +49,7 @@ function CompactView({ mode, media, nextTimer, now, musicColor }) {
       {showTimer ? (
         <span className="compact__time">{formatRemaining(remaining)}</span>
       ) : (
-        <Equalizer color={musicColor} />
+        <Equalizer color={musicColor} playing={playing} />
       )}
     </View>
   );
@@ -210,7 +212,21 @@ export default function Island() {
     pettedTimer.current = setTimeout(() => setPetted(false), 1800);
   }, []);
 
-  const musicColor = `hsl(${media.active ? hueFrom(`${media.title}${media.artist}`) : 265} 80% 70%)`;
+  const [dynamicColor, setDynamicColor] = useState(null);
+
+  useEffect(() => {
+    if (media.active && media.art) {
+      extractCoverColor(media.art, (extracted) => {
+        setDynamicColor(extracted);
+      });
+    } else {
+      setDynamicColor(null);
+    }
+  }, [media.active, media.art]);
+
+  const fallbackMusicColor = `hsl(${media.active ? hueFrom(`${media.title}${media.artist}`) : 265} 80% 70%)`;
+  const musicColor = dynamicColor || fallbackMusicColor;
+
   let accent = 'var(--c-info)';
   if (ring) accent = ring.kind === 'alarm' ? 'var(--c-alarm)' : 'var(--c-timer)';
   else if (mode === 'toast') accent = kindColor(toast.kind);
@@ -286,7 +302,16 @@ export default function Island() {
   else if (mode === 'hub') {
     view = (
       <View w={HUB_W} h={height}>
-        <Hub tab={tab} setTab={setTab} onClose={() => setHubOpen(false)} s={s} actions={actions} now={now} setTyping={setTyping} />
+        <Hub
+          tab={tab}
+          setTab={setTab}
+          onClose={() => setHubOpen(false)}
+          s={s}
+          actions={actions}
+          now={now}
+          setTyping={setTyping}
+          accentColor={musicColor}
+        />
       </View>
     );
   } else if (mode === 'idle') {
@@ -297,7 +322,7 @@ export default function Island() {
       </View>
     );
   } else {
-    view = <CompactView mode={mode} media={media} nextTimer={nextTimer} now={now} musicColor={musicColor} />;
+    view = <CompactView mode={mode} media={media} nextTimer={nextTimer} now={now} musicColor={musicColor} playing={playing} />;
   }
 
   const contentKey = mode === 'toast' ? `toast-${toast.id}` : mode === 'ring' ? `ring-${ring.key}` : mode;
@@ -308,7 +333,7 @@ export default function Island() {
         className={`island ${mode !== 'hub' ? 'is-draggable' : ''}`}
         data-hit
         data-mode={mode}
-        style={{ '--accent': accent }}
+        style={{ '--accent': accent, '--music-accent': musicColor }}
         initial={false}
         animate={{ width, height, borderRadius: RADIUS[mode] }}
         transition={SPRING}
@@ -332,12 +357,14 @@ export default function Island() {
           </motion.div>
         </AnimatePresence>
       </motion.div>
-      <PetSystem
-        mood={mood}
-        islandWidth={width}
-        musicAccent={musicColor}
-        onPet={onPet}
-      />
+      {(!window.island || isMock || localStorage.getItem('island_pet_roaming') === 'false') && (
+        <PetSystem
+          mood={mood}
+          islandWidth={width}
+          musicAccent={musicColor}
+          onPet={onPet}
+        />
+      )}
     </div>
   );
 }

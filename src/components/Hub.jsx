@@ -24,7 +24,7 @@ const panelVariants = {
   exit: (dir) => ({ opacity: 0, x: -28 * dir, filter: 'blur(4px)' }),
 };
 
-export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping }) {
+export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, accentColor }) {
   const previous = useRef(tabIndex(tab));
   const dir = tabIndex(tab) >= previous.current ? 1 : -1;
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping }
             exit="exit"
             transition={{ duration: 0.26, ease: EASE_OUT }}
           >
-            {tab === 'playing' && <NowPlaying media={s.media} now={now} platform={s.platform} onControl={actions.mediaControl} />}
+            {tab === 'playing' && <NowPlaying media={s.media} now={now} platform={s.platform} onControl={actions.mediaControl} accentColor={accentColor} />}
             {tab === 'clock' && <ClockPanel schedule={s.schedule} now={now} setTyping={setTyping} />}
             {tab === 'inbox' && <InboxPanel inbox={s.inbox} now={now} port={s.port} onClear={actions.clearInbox} onRemove={actions.removeNote} />}
             {tab === 'pet' && <PetStudioPanel setTyping={setTyping} />}

@@ -96,4 +96,26 @@ export const Icon = {
       <path d="M19 12H5M12 19l-7-7 7-7" />
     </svg>
   ),
+  Cat: (p) => (
+    <svg {...base} {...p}>
+      <path d="M5 19c0-4.5 3-8 7-8s7 3.5 7 8M6.5 11.5L4.5 5l5.5 3M17.5 11.5L19.5 5l-5.5 3" />
+      <circle cx="9.5" cy="14" r="1" fill="currentColor" />
+      <circle cx="14.5" cy="14" r="1" fill="currentColor" />
+      <path d="M11 16.2c.5.4 1.5.4 2 0" />
+    </svg>
+  ),
+  Dog: (p) => (
+    <svg {...base} {...p}>
+      <path d="M6 19c0-4.5 2.5-8 6-8s6 3.5 6 8M5 9.5c-.8 2.5 0 4.5 1.8 4.5M19 9.5c.8 2.5 0 4.5-1.8 4.5" />
+      <circle cx="9.5" cy="13.5" r="1" fill="currentColor" />
+      <circle cx="14.5" cy="13.5" r="1" fill="currentColor" />
+      <circle cx="12" cy="15.5" r="1.1" fill="currentColor" />
+    </svg>
+  ),
+  Mic: (p) => (
+    <svg {...base} {...p}>
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8" />
+    </svg>
+  ),
 };

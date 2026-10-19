@@ -14,11 +14,14 @@ const { FullscreenWatcher } = require('./fullscreen');
 const DEV_URL = process.env.ISLAND_DEV_URL || '';
 const WIN_W = 720;
 const WIN_H = 500;
+const PET_WIN_W = 150;
+const PET_WIN_H = 130;
 const INBOX_LIMIT = 100;
 const HUB_SHORTCUT = 'CommandOrControl+Alt+Space';
 const HUB_SHORTCUT_LABEL = 'Ctrl+Alt+Space';
 
 let win = null;
+let petWin = null;
 let tray = null;
 let store = null;
 let scheduler = null;
@@ -34,6 +37,7 @@ let visible = true;
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  if (petWin && !petWin.isDestroyed()) petWin.webContents.send(channel, payload);
 }
 
 function trusted(event) {
@@ -183,11 +187,69 @@ function createWindow() {
   });
 }
 
+function placePetWindow() {
+  if (!petWin || petWin.isDestroyed()) return;
+  const { x: dispX, y: dispY, width: dispW, height: dispH } = getDisplayBounds();
+  const saved = store ? store.get('pet_pos', null) : null;
+  const initialX = saved && Number.isFinite(saved.x) ? saved.x : Math.round(dispX + dispW - PET_WIN_W - 60);
+  const initialY = saved && Number.isFinite(saved.y) ? saved.y : Math.round(dispY + dispH - PET_WIN_H - 60);
+  petWin.setBounds({ x: initialX, y: initialY, width: PET_WIN_W, height: PET_WIN_H });
+}
+
+function createPetWindow() {
+  petWin = new BrowserWindow({
+    width: PET_WIN_W,
+    height: PET_WIN_H,
+    show: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+      backgroundThrottling: false,
+      autoplayPolicy: 'no-user-gesture-required',
+    },
+  });
+
+  petWin.setAlwaysOnTop(true, 'screen-saver');
+  placePetWindow();
+
+  petWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  petWin.webContents.on('will-navigate', (event) => event.preventDefault());
+
+  const targetUrl = DEV_URL ? `${DEV_URL}#pet` : `file://${path.join(__dirname, '..', 'dist', 'index.html')}#pet`;
+  petWin.loadURL(targetUrl);
+
+  petWin.once('ready-to-show', () => {
+    const petVisible = store ? store.get('island_pet_visible', true) : true;
+    if (visible && petVisible !== false) petWin.showInactive();
+  });
+}
+
 function toggleVisible() {
   visible = !visible;
-  if (!win) return;
-  if (visible) win.showInactive();
-  else win.hide();
+  if (win && !win.isDestroyed()) {
+    if (visible) win.showInactive();
+    else win.hide();
+  }
+  if (petWin && !petWin.isDestroyed()) {
+    const petVisible = store ? store.get('island_pet_visible', true) : true;
+    if (visible && petVisible !== false) petWin.showInactive();
+    else petWin.hide();
+  }
   buildTrayMenu();
 }
 
@@ -399,6 +461,48 @@ function wireIpc() {
     if (store) store.set('autohide_pet_fullscreen', Boolean(enabled));
     return true;
   });
+
+  // Dedicated Pet Window IPC
+  listen('pet:move-by', ({ dx, dy }) => {
+    if (!petWin || petWin.isDestroyed()) return;
+    const [currX, currY] = petWin.getPosition();
+    const newX = Math.round(currX + (Number(dx) || 0));
+    const newY = Math.round(currY + (Number(dy) || 0));
+    petWin.setPosition(newX, newY);
+    if (store) store.set('pet_pos', { x: newX, y: newY });
+    send('pet:pos-changed', { x: newX, y: newY });
+  });
+
+  listen('pet:set-pos', ({ x, y }) => {
+    if (!petWin || petWin.isDestroyed()) return;
+    const nx = Math.round(Number(x) || 0);
+    const ny = Math.round(Number(y) || 0);
+    petWin.setPosition(nx, ny);
+    if (store) store.set('pet_pos', { x: nx, y: ny });
+    send('pet:pos-changed', { x: nx, y: ny });
+  });
+
+  listen('pet:reset-pos', () => {
+    placePetWindow();
+    if (petWin && !petWin.isDestroyed()) {
+      const [x, y] = petWin.getPosition();
+      if (store) store.set('pet_pos', { x, y });
+      send('pet:pos-changed', { x, y });
+    }
+  });
+
+  handle('pet:get-pos', () => {
+    if (!petWin || petWin.isDestroyed()) return { x: 0, y: 0 };
+    const [x, y] = petWin.getPosition();
+    return { x, y };
+  });
+
+  listen('pet:set-visible', (vis) => {
+    if (store) store.set('island_pet_visible', Boolean(vis));
+    if (!petWin || petWin.isDestroyed()) return;
+    if (vis && visible) petWin.showInactive();
+    else petWin.hide();
+  });
 }
 
 function wireFullscreen() {
@@ -443,6 +547,7 @@ if (!app.requestSingleInstanceLock()) {
     wireScheduler();
     wireIpc();
     createWindow();
+    createPetWindow();
     createTray();
     wireMedia();
     wireNotifyServer();
@@ -451,7 +556,10 @@ if (!app.requestSingleInstanceLock()) {
     globalShortcut.register(HUB_SHORTCUT, openHub);
 
     for (const event of ['display-metrics-changed', 'display-added', 'display-removed']) {
-      screen.on(event, placeWindow);
+      screen.on(event, () => {
+        placeWindow();
+        placePetWindow();
+      });
     }
   });
 

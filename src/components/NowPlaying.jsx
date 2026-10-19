@@ -1,8 +1,9 @@
+import { useEffect, useState } from 'react';
 import { formatTrackTime } from '../lib/format';
 import { Art, Empty } from './bits';
 import { Icon } from './icons';
 
-export default function NowPlaying({ media, now, platform, onControl }) {
+export default function NowPlaying({ media, platform, onControl, accentColor }) {
   if (!media.active) {
     const onWindows = platform === 'win32';
     return (
@@ -19,10 +20,18 @@ export default function NowPlaying({ media, now, platform, onControl }) {
   }
 
   const playing = media.status === 'playing';
-  const elapsed = playing ? now - media.reportedAt : 0;
+  const [localNow, setLocalNow] = useState(Date.now);
+
+  useEffect(() => {
+    if (!playing) return;
+    const interval = setInterval(() => setLocalNow(Date.now()), 200);
+    return () => clearInterval(interval);
+  }, [playing, media.reportedAt, media.positionMs]);
+
+  const elapsed = playing ? Math.max(0, localNow - media.reportedAt) : 0;
   const hasDuration = media.durationMs > 0;
-  const position = Math.min(hasDuration ? media.durationMs : Infinity, media.positionMs + elapsed);
-  const pct = hasDuration ? (position / media.durationMs) * 100 : 0;
+  const position = Math.min(hasDuration ? media.durationMs : Infinity, Math.max(0, media.positionMs + elapsed));
+  const pct = hasDuration ? Math.min(100, Math.max(0, (position / media.durationMs) * 100)) : 0;
   const seed = `${media.title}${media.artist}`;
 
   return (
@@ -39,7 +48,15 @@ export default function NowPlaying({ media, now, platform, onControl }) {
       <div className="np__progress">
         <span>{formatTrackTime(position)}</span>
         <div className="np__bar" aria-hidden="true">
-          {hasDuration && <div className="np__fill" style={{ width: `${pct}%` }} />}
+          {hasDuration && (
+            <div
+              className="np__fill"
+              style={{
+                width: `${pct}%`,
+                background: accentColor || 'var(--accent)',
+              }}
+            />
+          )}
         </div>
         <span>{hasDuration ? `-${formatTrackTime(media.durationMs - position)}` : 'Live'}</span>
       </div>

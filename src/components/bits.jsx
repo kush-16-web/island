@@ -10,9 +10,9 @@ const KIND_COLOR = {
 
 export const kindColor = (kind) => KIND_COLOR[kind] || KIND_COLOR.info;
 
-export function Equalizer({ color = 'currentColor' }) {
+export function Equalizer({ color = 'currentColor', playing = true }) {
   return (
-    <span className="eq" style={{ color }} aria-hidden="true">
+    <span className={`eq${playing ? ' is-playing' : ' is-paused'}`} style={{ color }} aria-hidden="true">
       <i />
       <i />
       <i />

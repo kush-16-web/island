@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Island from './components/Island';
+import DesktopPetWindow from './pets/DesktopPetWindow';
 import { island, isMock } from './lib/bridge';
 
 // The overlay window is click-through. It only captures the mouse while the pointer is over an
@@ -56,10 +57,18 @@ function DevBar() {
 }
 
 export default function App() {
+  const [isPetWin] = useState(() => window.location.hash === '#pet');
+
   useClickThrough();
+
   useEffect(() => {
-    if (isMock) document.body.classList.add('mock');
-  }, []);
+    if (isMock && !isPetWin) document.body.classList.add('mock');
+  }, [isPetWin]);
+
+  if (isPetWin) {
+    return <DesktopPetWindow />;
+  }
+
   return (
     <>
       <Island />

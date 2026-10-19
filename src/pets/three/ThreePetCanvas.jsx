@@ -21,6 +21,7 @@ export default function ThreePetCanvas({
   const moodRef = useRef(mood);
   const facingRef = useRef(facing);
   const scaleRef = useRef(scale);
+  const musicAccentRef = useRef(musicAccent);
   const cursorRef = useRef({ x: 0, y: 0 });
   const isHiddenRef = useRef(false);
 
@@ -28,6 +29,7 @@ export default function ThreePetCanvas({
   moodRef.current = mood;
   facingRef.current = facing;
   scaleRef.current = scale;
+  musicAccentRef.current = musicAccent;
 
   const [hearts, setHearts] = useState([]);
   const [modelLoaded, setModelLoaded] = useState(false);
@@ -115,6 +117,67 @@ export default function ThreePetCanvas({
 
     const gazeGroup = new THREE.Group();
     breatheGroup.add(gazeGroup);
+
+    // 4b. Sleek Glowing Headset Accessory (Active during music playback)
+    const headsetGroup = new THREE.Group();
+    headsetGroup.name = 'cat-headset';
+    headsetGroup.visible = false;
+    gazeGroup.add(headsetGroup);
+
+    // Headband: Matte titanium curved band bridging ears
+    const bandGeo = new THREE.TorusGeometry(0.38, 0.028, 16, 48, Math.PI * 0.76);
+    const bandMat = new THREE.MeshStandardMaterial({
+      color: 0x1f2127,
+      metalness: 0.85,
+      roughness: 0.28,
+    });
+    const bandMesh = new THREE.Mesh(bandGeo, bandMat);
+    bandMesh.rotation.z = Math.PI * 0.62;
+    bandMesh.position.set(0, 1.05, 0.01);
+    headsetGroup.add(bandMesh);
+
+    // Ear Cups: Metallic cushions with glowing LED rings
+    const cupGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.065, 32);
+    const cupMat = new THREE.MeshStandardMaterial({
+      color: 0x16181e,
+      metalness: 0.8,
+      roughness: 0.3,
+    });
+    const ringGeo = new THREE.TorusGeometry(0.115, 0.016, 16, 32);
+    const headsetGlowMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(musicAccent || '#a855f7'),
+      emissive: new THREE.Color(musicAccent || '#a855f7'),
+      emissiveIntensity: 1.4,
+      roughness: 0.15,
+    });
+
+    // Left Cup
+    const leftCup = new THREE.Group();
+    const leftMesh = new THREE.Mesh(cupGeo, cupMat);
+    leftMesh.rotation.z = Math.PI / 2;
+    const leftRing = new THREE.Mesh(ringGeo, headsetGlowMat);
+    leftRing.rotation.y = Math.PI / 2;
+    leftRing.position.x = -0.038;
+    leftCup.add(leftMesh);
+    leftCup.add(leftRing);
+    leftCup.position.set(-0.36, 1.04, 0.02);
+    leftCup.rotation.y = 0.14;
+    leftCup.rotation.z = -0.12;
+    headsetGroup.add(leftCup);
+
+    // Right Cup
+    const rightCup = new THREE.Group();
+    const rightMesh = new THREE.Mesh(cupGeo, cupMat);
+    rightMesh.rotation.z = Math.PI / 2;
+    const rightRing = new THREE.Mesh(ringGeo, headsetGlowMat);
+    rightRing.rotation.y = Math.PI / 2;
+    rightRing.position.x = 0.038;
+    rightCup.add(rightMesh);
+    rightCup.add(rightRing);
+    rightCup.position.set(0.36, 1.04, 0.02);
+    rightCup.rotation.y = -0.14;
+    rightCup.rotation.z = 0.12;
+    headsetGroup.add(rightCup);
 
     let kittenMesh = null;
     let baseMeshScale = 1;
@@ -217,6 +280,20 @@ export default function ThreePetCanvas({
       gazeGroup.rotation.x = currentPitch;
       gazeGroup.rotation.z = currentRoll;
 
+      // Update Headset state and pulsing glow
+      const isMusic = moodRef.current === 'music' || currentState === 'dance';
+      headsetGroup.visible = isMusic;
+      if (isMusic) {
+        const pulse = 1.0 + Math.sin(t * 8.5) * 0.45;
+        headsetGlowMat.emissiveIntensity = pulse;
+        if (musicAccentRef.current) {
+          try {
+            headsetGlowMat.emissive.set(musicAccentRef.current);
+            headsetGlowMat.color.set(musicAccentRef.current);
+          } catch {}
+        }
+      }
+
       // Behavioral Kinematics
       if (currentState === 'walk') {
         // Coordinated quadruped trot
@@ -283,6 +360,13 @@ export default function ThreePetCanvas({
           }
         });
       }
+
+      bandGeo.dispose();
+      bandMat.dispose();
+      cupGeo.dispose();
+      cupMat.dispose();
+      ringGeo.dispose();
+      headsetGlowMat.dispose();
 
       renderer.dispose();
       renderer.forceContextLoss();
