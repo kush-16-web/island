@@ -388,6 +388,7 @@ function wireIpc() {
   });
 
   listen('media:control', (action) => media && media.control(String(action)));
+  listen('media:seek', (pos) => media && media.seek(Number(pos) || 0));
 
   listen('inbox:clear', () => setInbox([]));
   listen('inbox:remove', (id) => setInbox(inbox.filter((n) => n.id !== id)));

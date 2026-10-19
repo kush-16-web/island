@@ -168,6 +168,15 @@ export function createMockIsland() {
         } else if (action === 'next') setTrack(trackIndex + 1);
         else if (action === 'previous') setTrack(trackIndex - 1);
       },
+      seek(posSec) {
+        if (!media.active) return;
+        media = {
+          ...media,
+          positionMs: Math.max(0, Math.min(media.durationMs || 300000, Number(posSec) * 1000)),
+          reportedAt: Date.now(),
+        };
+        emit('media', media);
+      },
     },
     inbox: {
       clear() {

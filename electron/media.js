@@ -84,7 +84,14 @@ class MediaWatcher extends EventEmitter {
   }
 
   _resolveOnlineArt(key, title, artist) {
-    const query = `${title} ${artist || ''}`.replace(/[()[\]{}\-–—]/g, ' ').replace(/\s+/g, ' ').trim();
+    const cleanTitle = (title || '')
+      .replace(/[\(\[\{].*?(official|video|audio|lyrics|remaster|hd|4k|mv|visualizer).*?[\)\]\}]/gi, ' ')
+      .replace(/\b(feat|ft)\.?\s+[^\-]+/gi, ' ')
+      .replace(/[()[\]{}\-–—]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const query = `${cleanTitle} ${artist || ''}`.replace(/[()[\]{}\-–—]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!query) return;
     if (this.artCache.has(key)) {
       const cached = this.artCache.get(key);
@@ -99,7 +106,7 @@ class MediaWatcher extends EventEmitter {
     if (this.pendingLookups.has(key)) return;
     this.pendingLookups.add(key);
 
-    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`;
+    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&limit=1`;
     const req = https.get(itunesUrl, { headers: { 'User-Agent': 'Island/1.0' }, timeout: 4500 }, (res) => {
       if (res.statusCode !== 200) {
         this.pendingLookups.delete(key);
@@ -168,6 +175,18 @@ class MediaWatcher extends EventEmitter {
     const child = spawn(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', this.scriptFile, '-Mode', 'control', '-Action', action],
+      { windowsHide: true, stdio: 'ignore' },
+    );
+    child.on('error', () => {});
+    child.unref();
+  }
+
+  seek(positionSec) {
+    if (process.platform !== 'win32' || !this.scriptFile) return;
+    const sec = Math.max(0, Number(positionSec) || 0);
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', this.scriptFile, '-Mode', 'control', '-Action', 'seek', '-Position', String(sec)],
       { windowsHide: true, stdio: 'ignore' },
     );
     child.on('error', () => {});

@@ -1,12 +1,13 @@
 param(
     [string]$Mode = 'watch',
-    [string]$Action = ''
+    [string]$Action = '',
+    [double]$Position = 0
 )
 
 # Reads and controls "what's playing" through the Windows System Media Transport Controls (SMTC),
 # the same source the Windows volume flyout uses. Works for Spotify, browsers, Media Player, VLC...
-#   -Mode watch    : prints one JSON line whenever the track or play state changes (and every ~5 s)
-#   -Mode control  : -Action playpause | next | previous
+#   -Mode watch    : prints one JSON line whenever the track or play state changes (and every ~1 s)
+#   -Mode control  : -Action playpause | next | previous | seek -Position <sec>
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
@@ -44,6 +45,10 @@ if ($Mode -eq 'control') {
             'playpause' { [void](Await ($session.TryTogglePlayPauseAsync()) ([bool])) }
             'next'      { [void](Await ($session.TrySkipNextAsync()) ([bool])) }
             'previous'  { [void](Await ($session.TrySkipPreviousAsync()) ([bool])) }
+            'seek'      {
+                $ticks = [Int64]([double]$Position * 10000000.0)
+                [void](Await ($session.TryChangePlaybackPositionAsync($ticks)) ([bool]))
+            }
         }
     }
     exit 0
@@ -109,6 +114,19 @@ while ($true) {
                 $artTries = 0
                 $artFor = ''
                 $lastArt = $null
+                # Immediate micro-retries for SMTC thumbnail stream availability
+                for ($i = 0; $i -lt 4; $i++) {
+                    $art = Get-Art $props
+                    if ($art) {
+                        $lastArt = $art
+                        $artFor = $key
+                        break
+                    }
+                    Start-Sleep -Milliseconds 120
+                    try {
+                        $props = Await ($session.TryGetMediaPropertiesAsync()) $propsType
+                    } catch {}
+                }
             }
 
             $posSec = $timeline.Position.TotalSeconds

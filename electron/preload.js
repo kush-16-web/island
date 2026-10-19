@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('island', {
 
   media: {
     control: (action) => ipcRenderer.send('media:control', action),
+    seek: (posSec) => ipcRenderer.send('media:seek', Number(posSec)),
   },
 
   inbox: {

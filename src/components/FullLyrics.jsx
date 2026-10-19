@@ -3,9 +3,9 @@ import { formatTrackTime } from '../lib/format';
 import { Icon } from './icons';
 
 /**
- * FullLyrics: Immersive YouTube Music style synchronized lyrics view.
+ * FullLyrics: Immersive YouTube Music / Apple Music style synchronized lyrics view.
  * Features smart auto-scrolling, word-level Karaoke mode (when supported),
- * manual scroll pause detection, line seeking, and bottom playback bar.
+ * manual scroll pause detection, line seeking on click, and interactive scrubbing progress bar.
  */
 export default function FullLyrics({
   media,
@@ -15,12 +15,18 @@ export default function FullLyrics({
   onClose,
   onControl,
   accentColor,
+  onSeek,
 }) {
   const [karaokeEnabled, setKaraokeEnabled] = useState(false);
   const containerRef = useRef(null);
   const activeLineRef = useRef(null);
   const userScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef(null);
+
+  // Bottom bar scrubbing state
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubPositionMs, setScrubPositionMs] = useState(null);
+  const barRef = useRef(null);
 
   const lines = lyricsData?.lines || [];
   const hasWordSync = Boolean(lyricsData?.hasWordSync);
@@ -46,21 +52,60 @@ export default function FullLyrics({
     });
   }, [activeLineIndex]);
 
-  // Handle manual scrolling: pause auto-scroll for 3.5s so user can read freely
+  // Detect user manual scroll to prevent fighting the user
   const handleScroll = () => {
     userScrollingRef.current = true;
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    clearTimeout(scrollTimeoutRef.current);
     scrollTimeoutRef.current = setTimeout(() => {
       userScrollingRef.current = false;
-    }, 3500);
+    }, 2800);
   };
 
   const hasDuration = media?.durationMs > 0;
-  const pct = hasDuration ? Math.min(100, Math.max(0, (currentPositionMs / media.durationMs) * 100)) : 0;
+  const effectivePosition = isScrubbing && scrubPositionMs !== null ? scrubPositionMs : currentPositionMs;
+  const pct = hasDuration ? Math.min(100, Math.max(0, (effectivePosition / media.durationMs) * 100)) : 0;
+
+  // Scrubbing handlers for bottom bar
+  const calculatePositionFromPointer = (e) => {
+    if (!hasDuration || !barRef.current) return null;
+    const rect = barRef.current.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const ratio = rect.width > 0 ? clickX / rect.width : 0;
+    return Math.round(ratio * media.durationMs);
+  };
+
+  const handlePointerDown = (e) => {
+    if (!hasDuration || e.button !== 0) return;
+    const targetMs = calculatePositionFromPointer(e);
+    if (targetMs === null) return;
+    setIsScrubbing(true);
+    setScrubPositionMs(targetMs);
+
+    const onPointerMove = (ev) => {
+      const ms = calculatePositionFromPointer(ev);
+      if (ms !== null) setScrubPositionMs(ms);
+    };
+
+    const onPointerUp = (ev) => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      const finalMs = calculatePositionFromPointer(ev);
+      setIsScrubbing(false);
+      setScrubPositionMs(null);
+      if (finalMs !== null && onSeek) {
+        onSeek(finalMs / 1000);
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  };
 
   return (
     <div className="full-lyrics" style={{ '--lyric-accent': accentColor || 'var(--accent)' }}>
-      {/* Top Header */}
+      {/* Top Header Controls */}
       <div className="full-lyrics__header">
         <button
           type="button"
@@ -68,35 +113,34 @@ export default function FullLyrics({
           onClick={onClose}
           aria-label="Back to player"
         >
-          <Icon.Chevron width={16} height={16} style={{ transform: 'rotate(90deg)' }} />
+          <Icon.Chevron width={14} height={14} />
           <span>Player</span>
         </button>
 
         <div className="full-lyrics__track-info">
-          <span className="full-lyrics__title">{media?.title || 'Unknown Title'}</span>
-          <span className="full-lyrics__artist">{media?.artist || 'Unknown Artist'}</span>
+          <span className="full-lyrics__title">{media?.title}</span>
+          <span className="full-lyrics__artist">{media?.artist}</span>
         </div>
 
-        <button
-          type="button"
-          className={`karaoke-toggle${karaokeEnabled ? ' is-active' : ''}${!hasWordSync ? ' is-disabled' : ''}`}
-          onClick={() => {
-            if (hasWordSync) setKaraokeEnabled((prev) => !prev);
-          }}
-          title={
-            hasWordSync
-              ? karaokeEnabled
-                ? 'Karaoke Mode Active (Word-by-word)'
-                : 'Turn on Karaoke Mode'
-              : 'Karaoke unavailable for this track (word timestamps not provided by LRCLIB)'
-          }
-        >
-          <span className="karaoke-toggle__icon">🎤</span>
-          <span className="karaoke-toggle__label">Karaoke</span>
-        </button>
+        {hasWordSync ? (
+          <button
+            type="button"
+            className={`karaoke-toggle${karaokeEnabled ? ' is-active' : ''}`}
+            onClick={() => setKaraokeEnabled((prev) => !prev)}
+            aria-label="Toggle word-by-word karaoke highlighting"
+            title="Syllable-level Karaoke Mode"
+          >
+            <span>Mic</span>
+            <span className="badge">ELRC</span>
+          </button>
+        ) : (
+          <div className="karaoke-toggle is-disabled" title="Line-by-line sync active">
+            <span>Synced</span>
+          </div>
+        )}
       </div>
 
-      {/* Scrollable Synchronized Lyrics Body */}
+      {/* Scrolling Lyrics Reel */}
       <div
         ref={containerRef}
         className="full-lyrics__scroller"
@@ -105,7 +149,7 @@ export default function FullLyrics({
         <div className="full-lyrics__padding-top" />
         {lines.length === 0 ? (
           <div className="full-lyrics__empty">
-            <span>No lyrics available</span>
+            <span>No synchronized lyrics available for this track.</span>
           </div>
         ) : (
           lines.map((line, idx) => {
@@ -126,12 +170,19 @@ export default function FullLyrics({
                 key={line.id}
                 ref={isActive ? activeLineRef : null}
                 className={lineClass}
+                onClick={() => {
+                  if (line.startTimeMs != null && onSeek) {
+                    onSeek(line.startTimeMs / 1000);
+                  }
+                }}
+                style={{ cursor: 'pointer' }}
+                title="Jump to this lyric"
               >
                 {showWordKaraoke ? (
                   <span className="karaoke-words">
                     {line.words.map((w, wIdx) => {
-                      const isWordPast = currentPositionMs >= w.endMs;
-                      const isWordCurrent = currentPositionMs >= w.startMs && currentPositionMs < w.endMs;
+                      const isWordPast = effectivePosition >= w.endMs;
+                      const isWordCurrent = effectivePosition >= w.startMs && effectivePosition < w.endMs;
                       let wordClass = 'k-word';
                       if (isWordPast) wordClass += ' is-sung';
                       else if (isWordCurrent) wordClass += ' is-active-word';
@@ -152,20 +203,29 @@ export default function FullLyrics({
         <div className="full-lyrics__padding-bottom" />
       </div>
 
-      {/* Bottom Mini Playback Controls Bar */}
+      {/* Bottom Mini Playback Controls Bar with Scrubbing */}
       <div className="full-lyrics__bottom-bar">
         <div className="full-lyrics__progress">
-          <span className="time-text">{formatTrackTime(currentPositionMs)}</span>
-          <div className="full-lyrics__bar">
+          <span className="time-text">{formatTrackTime(effectivePosition)}</span>
+          <div
+            ref={barRef}
+            className={`full-lyrics__bar${isScrubbing ? ' is-scrubbing' : ''}`}
+            onPointerDown={handlePointerDown}
+            role="slider"
+            aria-label="Seek track position"
+            style={{ cursor: 'pointer' }}
+          >
             {hasDuration && (
               <div
                 className="full-lyrics__fill"
                 style={{ width: `${pct}%`, background: accentColor || 'var(--accent)' }}
-              />
+              >
+                <div className="full-lyrics__thumb" />
+              </div>
             )}
           </div>
           <span className="time-text">
-            {hasDuration ? `-${formatTrackTime(media.durationMs - currentPositionMs)}` : 'Live'}
+            {hasDuration ? `-${formatTrackTime(media.durationMs - effectivePosition)}` : 'Live'}
           </span>
         </div>
 
@@ -180,7 +240,7 @@ export default function FullLyrics({
           </button>
           <button
             type="button"
-            className="play-btn play-btn--mini"
+            className="play-btn play-btn--sm"
             aria-label={playing ? 'Pause' : 'Play'}
             onClick={() => onControl('playpause')}
           >

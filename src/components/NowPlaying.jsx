@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatTrackTime } from '../lib/format';
 import { useLyrics } from '../hooks/useLyrics';
 import { Art, Empty } from './bits';
 import { Icon } from './icons';
+import { island } from '../lib/bridge';
 import MiniLyrics from './MiniLyrics';
 import FullLyrics from './FullLyrics';
 
@@ -17,6 +18,11 @@ export default function NowPlaying({
   const playing = media.status === 'playing';
   const [localNow, setLocalNow] = useState(Date.now);
 
+  // Scrubbing state
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubPositionMs, setScrubPositionMs] = useState(null);
+  const barRef = useRef(null);
+
   useEffect(() => {
     if (!playing) return;
     const interval = setInterval(() => setLocalNow(Date.now()), 200);
@@ -25,12 +31,15 @@ export default function NowPlaying({
 
   const elapsed = playing ? Math.max(0, localNow - media.reportedAt) : 0;
   const hasDuration = media.durationMs > 0;
-  const position = Math.min(hasDuration ? media.durationMs : Infinity, Math.max(0, media.positionMs + elapsed));
-  const pct = hasDuration ? Math.min(100, Math.max(0, (position / media.durationMs) * 100)) : 0;
+  const rawPosition = Math.min(hasDuration ? media.durationMs : Infinity, Math.max(0, media.positionMs + elapsed));
+  
+  // Use scrubbing position when active so the UI tracks user gesture with 0ms lag
+  const displayPosition = isScrubbing && scrubPositionMs !== null ? scrubPositionMs : rawPosition;
+  const pct = hasDuration ? Math.min(100, Math.max(0, (displayPosition / media.durationMs) * 100)) : 0;
   const seed = `${media.title}${media.artist}`;
 
-  // Fetch and synchronize lyrics
-  const { lyricsData, loading, activeLineIndex } = useLyrics(media, position);
+  // Fetch and synchronize lyrics using current playback position
+  const { lyricsData, loading, activeLineIndex } = useLyrics(media, displayPosition);
 
   // Notify parent of view mode change for dynamic height adjustment
   const handleSetViewMode = (mode) => {
@@ -41,19 +50,54 @@ export default function NowPlaying({
   // Reset to player view if active track changes
   useEffect(() => {
     handleSetViewMode('player');
+    setIsScrubbing(false);
+    setScrubPositionMs(null);
   }, [media.title, media.artist]);
 
+  // Scrubbing handlers
+  const calculatePositionFromPointer = (e) => {
+    if (!hasDuration || !barRef.current) return null;
+    const rect = barRef.current.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const ratio = rect.width > 0 ? clickX / rect.width : 0;
+    return Math.round(ratio * media.durationMs);
+  };
+
+  const handlePointerDown = (e) => {
+    if (!hasDuration || e.button !== 0) return;
+    const targetMs = calculatePositionFromPointer(e);
+    if (targetMs === null) return;
+    setIsScrubbing(true);
+    setScrubPositionMs(targetMs);
+
+    const onPointerMove = (ev) => {
+      const ms = calculatePositionFromPointer(ev);
+      if (ms !== null) setScrubPositionMs(ms);
+    };
+
+    const onPointerUp = (ev) => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      const finalMs = calculatePositionFromPointer(ev);
+      setIsScrubbing(false);
+      setScrubPositionMs(null);
+      if (finalMs !== null) {
+        island?.media?.seek?.(finalMs / 1000);
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  };
+
   if (!media.active) {
-    const onWindows = platform === 'win32';
     return (
       <Empty
-        icon={Icon.Music}
+        icon="♪"
         title="Nothing playing"
-        hint={
-          onWindows
-            ? 'Start a song in Spotify, YouTube Music or any browser tab and it shows up here.'
-            : 'Now playing reads the Windows media session, so it only works on Windows.'
-        }
+        hint="Start audio or video in Spotify, your browser, or any media player and it will show up here."
       />
     );
   }
@@ -63,11 +107,13 @@ export default function NowPlaying({
       <FullLyrics
         media={media}
         lyricsData={lyricsData}
+        loading={loading}
         activeLineIndex={activeLineIndex}
-        currentPositionMs={position}
-        onClose={() => handleSetViewMode('player')}
+        currentPositionMs={displayPosition}
         onControl={onControl}
+        onClose={() => handleSetViewMode('player')}
         accentColor={accentColor}
+        onSeek={(posSec) => island?.media?.seek?.(posSec)}
       />
     );
   }
@@ -91,8 +137,18 @@ export default function NowPlaying({
       </div>
 
       <div className="np__progress">
-        <span>{formatTrackTime(position)}</span>
-        <div className="np__bar" aria-hidden="true">
+        <span className="np__time-text">{formatTrackTime(displayPosition)}</span>
+        <div
+          ref={barRef}
+          className={`np__bar${isScrubbing ? ' is-scrubbing' : ''}`}
+          onPointerDown={handlePointerDown}
+          role="slider"
+          aria-label="Seek track position"
+          aria-valuemin={0}
+          aria-valuemax={media.durationMs || 100}
+          aria-valuenow={displayPosition}
+          tabIndex={0}
+        >
           {hasDuration && (
             <div
               className="np__fill"
@@ -100,10 +156,14 @@ export default function NowPlaying({
                 width: `${pct}%`,
                 background: accentColor || 'var(--accent)',
               }}
-            />
+            >
+              <div className="np__thumb" />
+            </div>
           )}
         </div>
-        <span>{hasDuration ? `-${formatTrackTime(media.durationMs - position)}` : 'Live'}</span>
+        <span className="np__time-text">
+          {hasDuration ? `-${formatTrackTime(media.durationMs - displayPosition)}` : 'Live'}
+        </span>
       </div>
 
       <div className="np__controls">

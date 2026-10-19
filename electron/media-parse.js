@@ -45,7 +45,7 @@ function parseMediaLine(line) {
 }
 
 function validArt(art) {
-  return typeof art === 'string' && /^data:image\/(png|jpeg|jpg|webp|gif|bmp);base64,/i.test(art) && art.length < 900000
+  return typeof art === 'string' && /^data:image\/(png|jpeg|jpg|webp|gif|bmp);base64,/i.test(art) && art.length < 5000000
     ? art
     : null;
 }

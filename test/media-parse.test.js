@@ -45,5 +45,5 @@ test('validArt only accepts reasonably sized image data URLs', () => {
   assert.equal(validArt('data:image/jpeg;base64,AAAA'), 'data:image/jpeg;base64,AAAA');
   assert.equal(validArt('javascript:alert(1)'), null);
   assert.equal(validArt('data:text/html;base64,AAAA'), null);
-  assert.equal(validArt(`data:image/png;base64,${'A'.repeat(900000)}`), null);
+  assert.equal(validArt(`data:image/png;base64,${'A'.repeat(5000000)}`), null);
 });

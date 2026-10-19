@@ -1,9 +1,13 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Icon } from './icons';
 
+const LINE_HEIGHT = 28; // Standard vertical line pitch in pixels
+const VIEWPORT_HEIGHT = 84;
+
 /**
- * MiniLyrics: Compact synchronized lyrics widget placed beside song metadata.
- * Inspired by YouTube Music's mini-player lyrics preview.
+ * MiniLyrics: Borderless Apple Music / YouTube Music live scrolling lyrics reel.
+ * Vertically translates lines with physical spring easing, pure white active typography,
+ * and top/bottom gradient alpha dissolve.
  */
 export default function MiniLyrics({
   lyricsData,
@@ -23,7 +27,7 @@ export default function MiniLyrics({
 
   if (!lyricsData || !lyricsData.found) {
     return (
-      <div className="mini-lyrics is-empty">
+      <div className="mini-lyrics is-empty" onClick={onClick}>
         <span className="mini-lyrics__status">No lyrics found</span>
       </div>
     );
@@ -31,16 +35,20 @@ export default function MiniLyrics({
 
   if (lyricsData.instrumental) {
     return (
-      <div className="mini-lyrics is-instrumental">
+      <div className="mini-lyrics is-instrumental" onClick={onClick}>
         <span className="mini-lyrics__status">♪ Instrumental ♪</span>
       </div>
     );
   }
 
   const lines = lyricsData.lines || [];
-  const currentLine = activeLineIndex >= 0 ? lines[activeLineIndex] : lines[0];
-  const prevLine = activeLineIndex > 0 ? lines[activeLineIndex - 1] : null;
-  const nextLine = activeLineIndex >= 0 && activeLineIndex < lines.length - 1 ? lines[activeLineIndex + 1] : lines[1] || null;
+  const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lines.length;
+  const safeActiveIndex = hasActiveLine ? activeLineIndex : 0;
+
+  // Center active line in the vertical viewport (or preview line 0 during intro)
+  const targetY = hasActiveLine
+    ? -safeActiveIndex * LINE_HEIGHT + (VIEWPORT_HEIGHT / 2 - LINE_HEIGHT / 2)
+    : (VIEWPORT_HEIGHT / 2 - LINE_HEIGHT / 2);
 
   return (
     <div
@@ -50,34 +58,35 @@ export default function MiniLyrics({
       tabIndex={0}
       title="Click to view full lyrics"
     >
-      <div className="mini-lyrics__lines">
-        {prevLine && (
-          <div className="mini-lyrics__line is-prev">
-            {prevLine.text}
-          </div>
-        )}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentLine?.id || 'curr'}
-            className="mini-lyrics__line is-current"
-            style={{ '--lyric-accent': accentColor || 'var(--accent)' }}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.22 }}
-          >
-            {currentLine ? currentLine.text : '...'}
-          </motion.div>
-        </AnimatePresence>
-        {nextLine && (
-          <div className="mini-lyrics__line is-next">
-            {nextLine.text}
-          </div>
-        )}
+      <div className="mini-lyrics__viewport">
+        <motion.div
+          className="mini-lyrics__reel"
+          animate={{ y: targetY }}
+          transition={{ type: 'spring', stiffness: 240, damping: 26 }}
+        >
+          {lines.map((line, idx) => {
+            const isActive = hasActiveLine && idx === activeLineIndex;
+            const distance = hasActiveLine ? Math.abs(idx - activeLineIndex) : idx + 1;
+            let lineClass = 'mini-lyrics__line';
+            if (isActive) lineClass += ' is-active';
+            else if (distance === 1) lineClass += ' is-adjacent';
+            else lineClass += ' is-far';
+
+            return (
+              <div
+                key={line.id || idx}
+                className={lineClass}
+                style={{ height: LINE_HEIGHT }}
+              >
+                {line.text}
+              </div>
+            );
+          })}
+        </motion.div>
       </div>
 
       <div className="mini-lyrics__expand-hint" aria-hidden="true">
-        <Icon.Chevron width={12} height={12} />
+        <Icon.Chevron width={13} height={13} />
       </div>
     </div>
   );
