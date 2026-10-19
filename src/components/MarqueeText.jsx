@@ -8,8 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 export default function MarqueeText({
   text = '',
   className = '',
-  speed = 15,
-  delay = 2.2,
+  speed = 22,
   style = {},
 }) {
   const containerRef = useRef(null);
@@ -33,11 +32,8 @@ export default function MarqueeText({
     return () => ro.disconnect();
   }, [text]);
 
-  // If short delay is requested (e.g. lyrics), duration is agile; otherwise relaxed for titles
-  const isAgile = delay < 1.2;
-  const duration = isAgile
-    ? Math.max(3.0, (offset / (speed || 36)) + 1.6)
-    : Math.max(7.5, (offset / (speed || 15)) + 4.0);
+  // Natural pacing: comfortable start pause, smooth glide, end pause
+  const duration = Math.max(5.2, (offset / speed) + 3.2);
 
   return (
     <div
@@ -54,7 +50,6 @@ export default function MarqueeText({
             ? {
                 '--marquee-offset': `-${offset + 8}px`,
                 '--marquee-duration': `${duration}s`,
-                '--marquee-delay': `${delay}s`,
               }
             : undefined
         }
