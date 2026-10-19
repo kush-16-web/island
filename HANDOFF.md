@@ -111,7 +111,64 @@ This document provides the complete root cause analysis, architecture specificat
 
 ---
 
-## 5. Git Checkpoints
+---
+
+## 5. Pass 1.6: Original Sketchfab Kitten, Media Artwork & Fullscreen Engine
+
+### A. Original Model Integration & Procedural Engine Removal
+- **Source File**: Extracted directly from user's downloaded archive `C:\Users\harsh\Downloads\chibi-kitten-with-bell-tripo-3d-vs-supavoxel.zip`.
+- **Runtime Assets**:
+  - `public/models/chibi_kitten.glb` (59.6 MB, 848,368 vertices)
+  - `public/models/chibi-kitten/source/pool3333.glb`
+  - `public/models/chibi-kitten/textures/`: PBR textures (albedo, normal, roughness-metallic).
+- **Procedural Engine Cleanup**:
+  - Completely deleted all temporary procedural geometry generators (`buildStylizedKitten`, spheres, cones, fake limbs).
+  - Production application now operates on **one authoritative Three.js 3D pipeline** loading the real Sketchfab Chibi Kitten model.
+- **Lighting & Rendering Quality**:
+  - Three-point soft studio lighting: warm key light (`0xfff8ee`, 1.6), ambient light (`0xffffff`, 1.25), cool blue rim light (`0xb4d8ff`, 0.95), and front fill (`0xffeede`, 0.6).
+  - ACESFilmic tone mapping with exposure 1.15 for vibrant fur and metallic golden bell.
+  - Automatic horizontal centering and paw ground contact anchoring at $y = 0$.
+
+### B. Kinematic Animation & Behavior
+- **Hierarchical Articulation**:
+  - `gazeGroup`: Smooth 3D cursor tracking for head and eyes with natural pitch/roll damping.
+  - `pivotGroup`: Coordinated quadruped trot with alternating diagonal roll sway (`0.075`), pitch step tilt (`0.045`), and vertical step bobbing (`0.055`).
+  - `breatheGroup`: Smooth harmonic chest breathing (2.8s period) for idle, deep sleeping pose (4.2s period), and upbeat dance bouncing.
+  - `happy`: Interactive petting squash-and-stretch purring with floating heart particles.
+
+### C. Media Artwork Fix
+- **Root Cause**: In PowerShell 5.1, `[System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($stream)` failed on WinRT `IRandomAccessStreamWithContentType` with a method overload binder exception because the COM object could not be resolved by PowerShell's dynamic binder.
+- **Fix**: Used reflection invocation:
+  ```powershell
+  $asStreamMethod = ([System.IO.WindowsRuntimeStreamExtensions].GetMethods() | Where-Object {
+      $_.Name -eq 'AsStream' -and $_.GetParameters().Count -eq 1
+  })[0]
+  $netStream = $asStreamMethod.Invoke($null, @($stream))
+  ```
+  Added ContentType sniffing for PNG / JPEG magic bytes. Spotify album covers and YouTube video thumbnails now extract and display reliably.
+
+### D. Fullscreen Detection & Resource Management
+- **Win32 Fullscreen Engine**:
+  - `electron/ps/fullscreen.ps1`: Uses `GetForegroundWindow`, `MonitorFromWindow`, `GetMonitorInfo`, and window dimensions to detect genuine fullscreen windows (YouTube fullscreen `f`, Chrome `F11`, games, media players).
+  - Distinguishes maximized windows (which respect `rcWork` taskbar bounds) from genuine fullscreen windows (which cover `rcMonitor`).
+- **Hide & Restore**:
+  - When fullscreen is detected, Island fades out via `win.setOpacity(0)` without stealing focus, and emits `fullscreen:change` to halt Three.js render loops (saving 100% GPU resources).
+  - When exiting fullscreen, Island restores opacity and resumes animation seamlessly.
+  - Independent settings in Settings panel: `Auto-hide Island in Fullscreen` and `Auto-hide Pet in Fullscreen`.
+
+### E. Pet Studio UI Redesign
+- Shortened tab label from cramped "Pet Studio" to sleek "Pet" with `white-space: nowrap` to eliminate wrapping.
+- Replaced generic AI-style blocky forms with:
+  - **Showcase Hero**: Frosted glass hero card with glowing ambient backdrop displaying the authentic 3D kitten, inline editable name input, assistant wake phrase chip (`🎙 "Hey Mochi"`), and live status indicator.
+  - **2x2 Control Grid**: Species selector, custom scale slider with quick `S`, `M`, `L` buttons, desktop roaming switch, and 3D gaze tracking switch.
+  - **Master Toolbar**: Desktop visibility toggle and quick position reset.
+
+---
+
+## 6. Git Checkpoints
 1. `a324b03`: `feat: checkpoint 1 - draggable island, click-outside dismissal, and integrated pet studio`
 2. `8fcd91c`: `feat: checkpoint 2 - 3D Three.js pet engine, procedural locomotion, and model loading foundation`
+3. `61d7489`: `docs: update HANDOFF.md with Pass 1.5 architecture and verification results`
+4. `112bbc1`: `feat: checkpoint 3 - original sketchfab kitten integration, media artwork fix, fullscreen detection, and high-craft pet studio ui`
+
 
