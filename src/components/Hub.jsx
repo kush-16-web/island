@@ -11,6 +11,7 @@ import { Icon } from './icons';
 const TABS = [
   { id: 'playing', label: 'Playing', Glyph: Icon.Music },
   { id: 'clock', label: 'Clock', Glyph: Icon.Timer },
+  { id: 'pet', label: 'Pet', Glyph: Icon.Paw },
   { id: 'inbox', label: 'Inbox', Glyph: Icon.Inbox },
   { id: 'settings', label: 'Settings', Glyph: Icon.Settings },
 ];
@@ -81,6 +82,7 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, 
               />
             )}
             {tab === 'clock' && <ClockPanel schedule={s.schedule} now={now} setTyping={setTyping} />}
+            {tab === 'pet' && <PetStudioPanel setTyping={setTyping} />}
             {tab === 'inbox' && <InboxPanel inbox={s.inbox} now={now} port={s.port} onClear={actions.clearInbox} onRemove={actions.removeNote} />}
             {tab === 'settings' && <SettingsPanel />}
           </motion.div>

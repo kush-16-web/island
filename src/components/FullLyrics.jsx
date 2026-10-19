@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatTrackTime } from '../lib/format';
 import { Icon } from './icons';
+import MarqueeText from './MarqueeText';
 
 /**
  * FullLyrics: Immersive YouTube Music / Apple Music style synchronized lyrics view.
@@ -118,7 +119,7 @@ export default function FullLyrics({
         </button>
 
         <div className="full-lyrics__track-info">
-          <span className="full-lyrics__title">{media?.title}</span>
+          <MarqueeText text={media?.title} className="full-lyrics__title" />
           <span className="full-lyrics__artist">{media?.artist}</span>
         </div>
 

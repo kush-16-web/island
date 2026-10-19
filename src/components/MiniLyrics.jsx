@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Icon } from './icons';
+import MarqueeText from './MarqueeText';
 
 const LINE_HEIGHT = 28; // Standard vertical line pitch in pixels
 const VIEWPORT_HEIGHT = 84;
@@ -71,6 +72,17 @@ export default function MiniLyrics({
             if (isActive) lineClass += ' is-active';
             else if (distance === 1) lineClass += ' is-adjacent';
             else lineClass += ' is-far';
+
+            if (isActive) {
+              return (
+                <MarqueeText
+                  key={line.id || idx}
+                  text={line.text}
+                  className={lineClass}
+                  style={{ height: LINE_HEIGHT }}
+                />
+              );
+            }
 
             return (
               <div

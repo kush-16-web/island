@@ -4,6 +4,7 @@ import { useLyrics } from '../hooks/useLyrics';
 import { Art, Empty } from './bits';
 import { Icon } from './icons';
 import { island } from '../lib/bridge';
+import MarqueeText from './MarqueeText';
 import MiniLyrics from './MiniLyrics';
 import FullLyrics from './FullLyrics';
 
@@ -18,9 +19,10 @@ export default function NowPlaying({
   const playing = media.status === 'playing';
   const [localNow, setLocalNow] = useState(Date.now);
 
-  // Scrubbing state
+  // Scrubbing & optimistic seek state
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubPositionMs, setScrubPositionMs] = useState(null);
+  const [optimisticSeek, setOptimisticSeek] = useState(null); // { posMs, timestamp }
   const barRef = useRef(null);
 
   useEffect(() => {
@@ -29,12 +31,29 @@ export default function NowPlaying({
     return () => clearInterval(interval);
   }, [playing, media.reportedAt, media.positionMs]);
 
+  // Clear optimistic seek once SMTC catches up or after 3s timeout
+  useEffect(() => {
+    if (optimisticSeek) {
+      const diff = Math.abs(media.positionMs - optimisticSeek.posMs);
+      if (diff < 2000 || Date.now() - optimisticSeek.timestamp > 3000) {
+        setOptimisticSeek(null);
+      }
+    }
+  }, [media.positionMs, optimisticSeek]);
+
   const elapsed = playing ? Math.max(0, localNow - media.reportedAt) : 0;
   const hasDuration = media.durationMs > 0;
   const rawPosition = Math.min(hasDuration ? media.durationMs : Infinity, Math.max(0, media.positionMs + elapsed));
   
-  // Use scrubbing position when active so the UI tracks user gesture with 0ms lag
-  const displayPosition = isScrubbing && scrubPositionMs !== null ? scrubPositionMs : rawPosition;
+  // Use scrubbing or optimistic seek position so the UI tracks user gesture with 0ms lag
+  let displayPosition = rawPosition;
+  if (isScrubbing && scrubPositionMs !== null) {
+    displayPosition = scrubPositionMs;
+  } else if (optimisticSeek && Date.now() - optimisticSeek.timestamp < 3000) {
+    const optElapsed = playing ? Date.now() - optimisticSeek.timestamp : 0;
+    displayPosition = Math.min(hasDuration ? media.durationMs : Infinity, Math.max(0, optimisticSeek.posMs + optElapsed));
+  }
+
   const pct = hasDuration ? Math.min(100, Math.max(0, (displayPosition / media.durationMs) * 100)) : 0;
   const seed = `${media.title}${media.artist}`;
 
@@ -83,6 +102,7 @@ export default function NowPlaying({
       setIsScrubbing(false);
       setScrubPositionMs(null);
       if (finalMs !== null) {
+        setOptimisticSeek({ posMs: finalMs, timestamp: Date.now() });
         island?.media?.seek?.(finalMs / 1000);
       }
     };
@@ -113,7 +133,10 @@ export default function NowPlaying({
         onControl={onControl}
         onClose={() => handleSetViewMode('player')}
         accentColor={accentColor}
-        onSeek={(posSec) => island?.media?.seek?.(posSec)}
+        onSeek={(posSec) => {
+          setOptimisticSeek({ posMs: posSec * 1000, timestamp: Date.now() });
+          island?.media?.seek?.(posSec);
+        }}
       />
     );
   }
@@ -123,8 +146,8 @@ export default function NowPlaying({
       <div className="np__top">
         <Art src={media.art} seed={seed} size={88} radius={18} />
         <div className="np__meta">
-          <div className="np__title">{media.title}</div>
-          <div className="np__artist">{media.artist || 'Unknown artist'}</div>
+          <MarqueeText text={media.title} className="np__title" />
+          <MarqueeText text={media.artist || 'Unknown artist'} className="np__artist" />
           {media.app && <span className="chip-app">{media.app}</span>}
         </div>
         <MiniLyrics
