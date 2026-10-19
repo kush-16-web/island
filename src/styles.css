@@ -459,13 +459,13 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   will-change: transform;
 }
 .marquee-content.is-marquee {
-  animation: marqueeScroll var(--marquee-duration, 9s) cubic-bezier(0.37, 0, 0.63, 1) 3s infinite alternate;
+  animation: marqueeScroll var(--marquee-duration, 8s) cubic-bezier(0.37, 0, 0.63, 1) var(--marquee-delay, 2.2s) infinite alternate;
 }
 @keyframes marqueeScroll {
-  0%, 32% {
+  0%, 15% {
     transform: translateX(0);
   }
-  68%, 100% {
+  85%, 100% {
     transform: translateX(var(--marquee-offset, -30px));
   }
 }
@@ -701,8 +701,14 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
+}
+.full-lyrics__center-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
 }
 .full-lyrics__thumb-art {
   width: 30px;
@@ -837,9 +843,9 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px 6px 0;
+  padding: 8px 6px 2px;
   border-top: none;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.70) 0%, transparent 100%);
+  background: transparent;
   position: relative;
   z-index: 2;
 }

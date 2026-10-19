@@ -79,6 +79,8 @@ export default function MiniLyrics({
                   key={line.id || idx}
                   text={line.text}
                   className={lineClass}
+                  speed={38}
+                  delay={0.6}
                   style={{ height: LINE_HEIGHT }}
                 />
               );

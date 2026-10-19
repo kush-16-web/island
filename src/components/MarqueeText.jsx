@@ -5,7 +5,13 @@ import { useEffect, useRef, useState } from 'react';
  * If text fits in container, renders normally with ellipsis safety.
  * If text overflows, smoothly marquees with pause at edges and soft alpha fade mask.
  */
-export default function MarqueeText({ text = '', className = '', speed = 15, style = {} }) {
+export default function MarqueeText({
+  text = '',
+  className = '',
+  speed = 15,
+  delay = 2.2,
+  style = {},
+}) {
   const containerRef = useRef(null);
   const textRef = useRef(null);
   const [overflow, setOverflow] = useState(false);
@@ -27,8 +33,11 @@ export default function MarqueeText({ text = '', className = '', speed = 15, sty
     return () => ro.disconnect();
   }, [text]);
 
-  // Leisurely duration with generous pauses at both ends
-  const duration = Math.max(8.5, (offset / speed) + 5.5);
+  // If short delay is requested (e.g. lyrics), duration is agile; otherwise relaxed for titles
+  const isAgile = delay < 1.2;
+  const duration = isAgile
+    ? Math.max(3.0, (offset / (speed || 36)) + 1.6)
+    : Math.max(7.5, (offset / (speed || 15)) + 4.0);
 
   return (
     <div
@@ -45,6 +54,7 @@ export default function MarqueeText({ text = '', className = '', speed = 15, sty
             ? {
                 '--marquee-offset': `-${offset + 8}px`,
                 '--marquee-duration': `${duration}s`,
+                '--marquee-delay': `${delay}s`,
               }
             : undefined
         }

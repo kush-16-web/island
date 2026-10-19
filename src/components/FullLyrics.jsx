@@ -117,16 +117,7 @@ export default function FullLyrics({
 
       {/* Top Header Controls */}
       <div className="full-lyrics__header">
-        <button
-          type="button"
-          className="full-lyrics__back-btn"
-          onClick={onClose}
-          aria-label="Back to player"
-        >
-          <Icon.Chevron width={14} height={14} />
-          <span>Player</span>
-        </button>
-
+        {/* Left: Album cover thumbnail + Title & Artist */}
         <div className="full-lyrics__track-info">
           {media?.art && (
             <img src={media.art} alt="" className="full-lyrics__thumb-art" />
@@ -137,22 +128,36 @@ export default function FullLyrics({
           </div>
         </div>
 
-        {hasWordSync ? (
-          <button
-            type="button"
-            className={`karaoke-toggle${karaokeEnabled ? ' is-active' : ''}`}
-            onClick={() => setKaraokeEnabled((prev) => !prev)}
-            aria-label="Toggle word-by-word karaoke highlighting"
-            title="Syllable-level Karaoke Mode"
-          >
-            <span>Mic</span>
-            <span className="badge">ELRC</span>
-          </button>
-        ) : (
-          <div className="karaoke-toggle is-disabled" title="Line-by-line sync active">
-            <span>Synced</span>
-          </div>
-        )}
+        {/* Center: Synced / Karaoke status */}
+        <div className="full-lyrics__center-status">
+          {hasWordSync ? (
+            <button
+              type="button"
+              className={`karaoke-toggle${karaokeEnabled ? ' is-active' : ''}`}
+              onClick={() => setKaraokeEnabled((prev) => !prev)}
+              aria-label="Toggle word-by-word karaoke highlighting"
+              title="Syllable-level Karaoke Mode"
+            >
+              <span>Mic</span>
+              <span className="badge">ELRC</span>
+            </button>
+          ) : (
+            <div className="karaoke-toggle is-disabled" title="Line-by-line sync active">
+              <span>Synced</span>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Back to Player button */}
+        <button
+          type="button"
+          className="full-lyrics__back-btn"
+          onClick={onClose}
+          aria-label="Back to player"
+        >
+          <Icon.Chevron width={14} height={14} />
+          <span>Player</span>
+        </button>
       </div>
 
       {/* Scrolling Lyrics Reel */}
