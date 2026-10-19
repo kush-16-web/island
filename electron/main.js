@@ -225,7 +225,7 @@ function createPetWindow() {
   });
 
   petWin.setAlwaysOnTop(true, 'screen-saver');
-  petWin.setIgnoreMouseEvents(false);
+  petWin.setIgnoreMouseEvents(true, { forward: true });
   placePetWindow();
 
   petWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -247,8 +247,8 @@ function toggleVisible() {
     else win.hide();
   }
   if (petWin && !petWin.isDestroyed()) {
-    const petVisible = store ? store.get('island_pet_visible', true) : true;
-    if (visible && petVisible !== false) petWin.showInactive();
+    const petVisible = store ? store.get('island_pet_visible', false) : false;
+    if (visible && petVisible === true) petWin.showInactive();
     else petWin.hide();
   }
   buildTrayMenu();
@@ -367,10 +367,12 @@ function wireIpc() {
   handle('scheduler:remove', (id) => guard(() => ({ removed: scheduler.remove(String(id)) })));
   handle('scheduler:set-enabled', (id, enabled) => guard(() => ({ updated: scheduler.setEnabled(String(id), enabled) })));
 
-  listen('win:ignore-mouse', (ignore) => {
-    if (!win || win.isDestroyed()) return;
-    if (ignore) win.setIgnoreMouseEvents(true, { forward: true });
-    else win.setIgnoreMouseEvents(false);
+  ipcMain.on('win:ignore-mouse', (event, ignore) => {
+    if (!trusted(event)) return;
+    const targetWin = BrowserWindow.fromWebContents(event.sender);
+    if (!targetWin || targetWin.isDestroyed()) return;
+    if (ignore) targetWin.setIgnoreMouseEvents(true, { forward: true });
+    else targetWin.setIgnoreMouseEvents(false);
   });
 
   // The window never takes focus on its own. It becomes focusable only while you type in a field.

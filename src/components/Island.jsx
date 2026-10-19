@@ -252,19 +252,6 @@ export default function Island() {
     return stopChime;
   }, [ringing]);
 
-  // The pet dozes off after 25 quiet seconds.
-  useEffect(() => {
-    setSleepy(false);
-    const id = setTimeout(() => setSleepy(true), 25000);
-    return () => clearTimeout(id);
-  }, [mode, hovered, media.status, media.title, unread]);
-
-  const onPet = useCallback(() => {
-    setPetted(true);
-    clearTimeout(pettedTimer.current);
-    pettedTimer.current = setTimeout(() => setPetted(false), 1800);
-  }, []);
-
   const [dynamicColor, setDynamicColor] = useState(null);
 
   useEffect(() => {
@@ -285,13 +272,6 @@ export default function Island() {
   else if (mode === 'toast') accent = kindColor(toast.kind);
   else if (mode === 'timer') accent = 'var(--c-timer)';
   else if (mode === 'media' || mode === 'both' || (mode === 'hub' && media.active)) accent = musicColor;
-
-  let mood = 'idle';
-  if (ring) mood = 'panic';
-  else if (toast) mood = 'alert';
-  else if (petted) mood = 'happy';
-  else if (playing) mood = 'music';
-  else if (sleepy && mode === 'idle') mood = 'sleep';
 
   const onIslandPointerDown = (e) => {
     if (e.button !== 0) return;

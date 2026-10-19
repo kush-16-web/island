@@ -933,10 +933,10 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 
 /* ------------------------------------------------------------------ Draggable island cursor */
 .is-draggable {
-  cursor: grab !important;
+  cursor: default;
 }
 .is-draggable:active, .is-dragging {
-  cursor: grabbing !important;
+  cursor: grabbing;
   user-select: none;
 }
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SPECIES, ANIMATION_STATES, DIRECTIONS } from './core/PetTypes';
 import { PetStateMachine } from './core/PetStateMachine';
 import PetRenderer from './core/PetRenderer';
+import { useClickThrough } from '../hooks/useClickThrough';
 
 /**
  * DesktopPetWindow: Standalone desktop companion rendered in its own
@@ -10,8 +11,9 @@ import PetRenderer from './core/PetRenderer';
  * roaming, 3D cursor tracking, and music synchronization.
  */
 export default function DesktopPetWindow() {
+  useClickThrough();
   const [species, setSpecies] = useState(() => localStorage.getItem('island_active_pet') || SPECIES.CAT);
-  const [visible, setVisible] = useState(() => localStorage.getItem('island_pet_visible') !== 'false');
+  const [visible, setVisible] = useState(() => localStorage.getItem('island_pet_visible') === 'true');
   const [roaming, setRoaming] = useState(() => localStorage.getItem('island_pet_roaming') !== 'false');
   const [scale, setScale] = useState(() => Number(localStorage.getItem('island_pet_scale')) || 100);
   const [mood, setMood] = useState('normal');
@@ -26,7 +28,7 @@ export default function DesktopPetWindow() {
   useEffect(() => {
     const handleSettingsChange = () => {
       setSpecies(localStorage.getItem('island_active_pet') || SPECIES.CAT);
-      setVisible(localStorage.getItem('island_pet_visible') !== 'false');
+      setVisible(localStorage.getItem('island_pet_visible') === 'true');
       setRoaming(localStorage.getItem('island_pet_roaming') !== 'false');
       setScale(Number(localStorage.getItem('island_pet_scale')) || 100);
     };
@@ -166,8 +168,6 @@ export default function DesktopPetWindow() {
   return (
     <div
       className="desktop-pet-root"
-      data-hit
-      onPointerDown={onPointerDown}
       style={{
         width: '100vw',
         height: '100vh',
@@ -176,11 +176,20 @@ export default function DesktopPetWindow() {
         alignItems: 'center',
         justifyContent: 'center',
         background: 'transparent',
-        cursor: isDragging ? 'grabbing' : 'grab',
+        pointerEvents: 'none',
+        cursor: 'default',
         userSelect: 'none',
       }}
     >
-      <div style={{ pointerEvents: 'auto' }}>
+      <div
+        data-hit
+        onPointerDown={onPointerDown}
+        style={{
+          pointerEvents: 'auto',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          display: 'inline-block',
+        }}
+      >
         <PetRenderer
           species={species === 'both' ? SPECIES.CAT : species}
           state={animState}

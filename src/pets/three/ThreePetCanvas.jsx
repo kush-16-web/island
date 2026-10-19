@@ -205,10 +205,15 @@ export default function ThreePetCanvas({
 
     let kittenMesh = null;
     let baseMeshScale = 1;
+    let mixer = null;
+    let walkAction = null;
+    let bonesMap = {};
+    let initialBoneRotations = {};
 
-    // 5. Load the Authentic Cute Tabby Kitten Model from Downloaded ZIP
+    // 5. Load Rigged Animated Cat Model (featuring authentic skeletal locomotion)
     const loader = new GLTFLoader();
     const modelPaths = [
+      'models/toon_cat_free.glb',
       'models/tabby_kitten.glb',
       'models/tabby_kitten/source/pool2319.glb',
       'models/chibi_kitten.glb',
@@ -231,6 +236,23 @@ export default function ThreePetCanvas({
                 child.material.metalness = Math.max(child.material.metalness ?? 0.05, 0.1);
                 child.material.needsUpdate = true;
               }
+            }
+          });
+
+          // AnimationMixer for models with embedded skeletal animation tracks
+          if (gltf.animations && gltf.animations.length > 0) {
+            mixer = new THREE.AnimationMixer(kittenMesh);
+            walkAction = mixer.clipAction(gltf.animations[0]);
+            walkAction.setLoop(THREE.LoopRepeat);
+          }
+
+          // Cache bone references & default rotations for procedural states
+          bonesMap = {};
+          initialBoneRotations = {};
+          kittenMesh.traverse((child) => {
+            if (child.isBone) {
+              bonesMap[child.name] = child;
+              initialBoneRotations[child.name] = child.rotation.clone();
             }
           });
 
@@ -334,13 +356,46 @@ export default function ThreePetCanvas({
         pivotGroup.position.x = 0;
       }
 
-      // Behavioral Kinematics & Locomotion
+      // Behavioral Kinematics, Skeletal Animation & Locomotion
+      if (mixer) {
+        if (currentState === 'walk') {
+          if (!walkAction.isRunning()) {
+            walkAction.reset().fadeIn(0.2).play();
+          }
+          walkAction.setEffectiveTimeScale(1.1);
+          mixer.update(delta);
+        } else if (currentState === 'run') {
+          if (!walkAction.isRunning()) {
+            walkAction.reset().fadeIn(0.15).play();
+          }
+          walkAction.setEffectiveTimeScale(1.9);
+          mixer.update(delta);
+        } else {
+          if (walkAction && walkAction.isRunning()) {
+            walkAction.fadeOut(0.2);
+          }
+          mixer.update(delta);
+        }
+      }
+
+      // Procedural bone articulation for expressive non-walking states
+      if (currentState !== 'walk' && currentState !== 'run') {
+        for (const [name, bone] of Object.entries(bonesMap)) {
+          const initRot = initialBoneRotations[name];
+          if (initRot) {
+            bone.rotation.x += (initRot.x - bone.rotation.x) * Math.min(1, delta * 6.0);
+            bone.rotation.y += (initRot.y - bone.rotation.y) * Math.min(1, delta * 6.0);
+            bone.rotation.z += (initRot.z - bone.rotation.z) * Math.min(1, delta * 6.0);
+          }
+        }
+      }
+
       if (currentState === 'walk') {
         // Coordinated quadruped trot
         walkPhase += delta * 8.0;
-        const trotRoll = Math.sin(walkPhase) * 0.085;
-        const trotPitch = Math.cos(walkPhase) * 0.05;
-        const trotBob = Math.abs(Math.sin(walkPhase * 2)) * 0.06;
+        const trotRoll = Math.sin(walkPhase) * 0.05;
+        const trotPitch = Math.cos(walkPhase) * 0.04;
+        const trotBob = Math.abs(Math.sin(walkPhase * 2)) * 0.04;
 
         pivotGroup.rotation.z = trotRoll;
         pivotGroup.rotation.x = trotPitch;
@@ -349,23 +404,28 @@ export default function ThreePetCanvas({
       } else if (currentState === 'run') {
         // High-energy gallop stride
         walkPhase += delta * 13.0;
-        const gallopBob = Math.abs(Math.sin(walkPhase)) * 0.13;
-        const gallopPitch = 0.16 + Math.cos(walkPhase) * 0.09;
-        const gallopRoll = Math.sin(walkPhase) * 0.08;
+        const gallopBob = Math.abs(Math.sin(walkPhase)) * 0.09;
+        const gallopPitch = 0.12 + Math.cos(walkPhase) * 0.06;
+        const gallopRoll = Math.sin(walkPhase) * 0.06;
 
         pivotGroup.position.y = gallopBob;
         pivotGroup.rotation.x = gallopPitch;
         pivotGroup.rotation.z = gallopRoll;
         breatheGroup.scale.set(0.96, 1.04, 0.96);
       } else if (currentState === 'jump') {
-        // Spring leap in arc with squash and stretch landing
+        // Real cat jump: crouch anticipation -> spring with extended front paws & arching back -> landing
         const jumpTime = (t * 2.8) % Math.PI;
-        const jumpHeight = Math.sin(jumpTime) * 0.38;
-        const jumpTilt = Math.cos(jumpTime) * -0.22;
+        const jumpHeight = Math.sin(jumpTime) * 0.42;
+        const jumpTilt = Math.cos(jumpTime) * -0.28;
 
         pivotGroup.position.y = jumpHeight;
         pivotGroup.rotation.x = jumpTilt;
         pivotGroup.rotation.z = 0;
+
+        if (bonesMap['head_018']) bonesMap['head_018'].rotation.x = jumpTilt * 0.5;
+        if (bonesMap['tail_07']) bonesMap['tail_07'].rotation.x = -jumpTilt * 0.9;
+        if (bonesMap['foot.F.L_016']) bonesMap['foot.F.L_016'].rotation.x = -0.3 + jumpTilt * 0.5;
+        if (bonesMap['foot.F.R_025']) bonesMap['foot.F.R_025'].rotation.x = -0.3 + jumpTilt * 0.5;
 
         if (jumpTime < 0.35) {
           breatheGroup.scale.set(1.12, 0.82, 1.12);
@@ -383,36 +443,59 @@ export default function ThreePetCanvas({
         ballMesh.rotation.z += delta * 7;
         ballMesh.rotation.y += delta * 3.5;
 
-        // Kitten chases and bats ball
+        // Kitten chases and bats ball with front paw
         pivotGroup.position.x = ballX * 0.42;
         pivotGroup.position.y = Math.abs(Math.sin(t * 7.0)) * 0.07;
         pivotGroup.rotation.z = Math.sin(t * 3.5) * 0.16;
         pivotGroup.rotation.x = 0.12;
+
+        if (bonesMap['foot.F.R_025']) bonesMap['foot.F.R_025'].rotation.x = -0.45 + Math.sin(t * 7.0) * 0.35;
+        if (bonesMap['head_018']) bonesMap['head_018'].rotation.y = ballX * 0.45;
         breatheGroup.scale.set(1.0, 1.0, 1.0);
       } else if (currentState === 'sleep') {
-        // Deep resting pose: curled posture and slow 4.2s breathing
+        // Deep resting pose: curled posture, lowered head and slow 4.2s breathing
         const sleepBreath = Math.sin(t * 1.5) * 0.035;
         pivotGroup.rotation.set(-0.12, 0, 0.05);
         pivotGroup.position.y = -0.06;
+        if (bonesMap['head_018']) bonesMap['head_018'].rotation.set(0.18, 0, -0.12);
+        if (bonesMap['tail_07']) bonesMap['tail_07'].rotation.set(0, 0.65, 0);
         breatheGroup.scale.set(1.04, 0.94 + sleepBreath, 1.04);
       } else if (currentState === 'dance') {
-        // Upbeat rhythm bounce synchronized to music tempo
-        const bounce = Math.abs(Math.sin(t * 6.2)) * 0.12;
-        const tilt = Math.sin(t * 6.2) * 0.14;
+        // Upbeat rhythm dance synchronized to music tempo
+        const beat = t * 7.5;
+        const bounce = Math.abs(Math.sin(beat)) * 0.11;
+        const tilt = Math.sin(beat * 0.5) * 0.16;
         pivotGroup.position.y = bounce;
         pivotGroup.rotation.z = tilt;
+
+        if (bonesMap['head_018']) {
+          bonesMap['head_018'].rotation.x = Math.sin(beat) * 0.22;
+          bonesMap['head_018'].rotation.z = -tilt * 0.6;
+        }
+        if (bonesMap['ear.L_019']) bonesMap['ear.L_019'].rotation.z = Math.sin(beat * 2) * 0.22;
+        if (bonesMap['ear.R_020']) bonesMap['ear.R_020'].rotation.z = -Math.sin(beat * 2) * 0.22;
+        if (bonesMap['tail_07']) bonesMap['tail_07'].rotation.y = Math.sin(beat) * 0.6;
+        if (bonesMap['foot.F.L_016']) bonesMap['foot.F.L_016'].rotation.x = Math.max(0, Math.sin(beat)) * 0.3;
+        if (bonesMap['foot.F.R_025']) bonesMap['foot.F.R_025'].rotation.x = Math.max(0, -Math.sin(beat)) * 0.3;
         breatheGroup.scale.set(1.0, 1.0, 1.0);
       } else if (currentState === 'happy') {
-        // Petting purr: gentle ecstatic vibration and squash
+        // Petting purr: arched back, purr vibration, and proud tail
         const purr = Math.sin(t * 18.0) * 0.015;
         pivotGroup.position.y = Math.abs(Math.sin(t * 4.0)) * 0.05;
         pivotGroup.rotation.z = purr;
+        if (bonesMap['head_018']) bonesMap['head_018'].rotation.x = -0.22;
+        if (bonesMap['tail_07']) {
+          bonesMap['tail_07'].rotation.x = -0.85;
+          bonesMap['tail_07'].rotation.y = Math.sin(t * 5.0) * 0.25;
+        }
         breatheGroup.scale.set(1.02 + purr, 0.98 - purr, 1.02);
       } else {
-        // Idle / Sit: Natural harmonic chest breathing (2.8s cycle)
+        // Idle / Sit: Natural harmonic chest breathing and tail sway
         const breathe = Math.sin(t * 2.2) * 0.022;
         pivotGroup.rotation.set(0, 0, 0);
         pivotGroup.position.y = 0;
+        if (bonesMap['tail.01_08']) bonesMap['tail.01_08'].rotation.y = Math.sin(t * 2.2) * 0.3;
+        if (bonesMap['tail.02_09']) bonesMap['tail.02_09'].rotation.y = Math.sin(t * 2.2 + 0.4) * 0.35;
         breatheGroup.scale.set(1.0 + breathe * 0.5, 1.0 + breathe, 1.0 + breathe * 0.5);
       }
 
@@ -426,6 +509,11 @@ export default function ThreePetCanvas({
       cancelAnimationFrame(animId);
       document.removeEventListener('visibilitychange', handleVisibility);
       if (unsubFullscreen) unsubFullscreen();
+
+      if (mixer) {
+        mixer.stopAllAction();
+        if (kittenMesh) mixer.uncacheRoot(kittenMesh);
+      }
 
       if (kittenMesh) {
         kittenMesh.traverse((child) => {
