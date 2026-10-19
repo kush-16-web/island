@@ -1,0 +1,39 @@
+'use strict';
+// The only bridge between the web UI and the OS side. Nothing here exposes Node or the filesystem.
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+const CHANNELS = new Set(['notification', 'ring', 'media', 'scheduler:state', 'inbox:state', 'hub:toggle']);
+
+contextBridge.exposeInMainWorld('island', {
+  getState: () => ipcRenderer.invoke('state:get'),
+
+  // Window behaviour: the window is click-through except over the island and pet.
+  setIgnoreMouse: (ignore) => ipcRenderer.send('win:ignore-mouse', Boolean(ignore)),
+  setFocusable: (focusable) => ipcRenderer.send('win:focusable', Boolean(focusable)),
+
+  scheduler: {
+    addAlarm: (input) => ipcRenderer.invoke('scheduler:add-alarm', input),
+    addTimer: (input) => ipcRenderer.invoke('scheduler:add-timer', input),
+    snooze: (input) => ipcRenderer.invoke('scheduler:snooze', input),
+    remove: (id) => ipcRenderer.invoke('scheduler:remove', id),
+    setEnabled: (id, enabled) => ipcRenderer.invoke('scheduler:set-enabled', id, enabled),
+  },
+
+  media: {
+    control: (action) => ipcRenderer.send('media:control', action),
+  },
+
+  inbox: {
+    clear: () => ipcRenderer.send('inbox:clear'),
+    remove: (id) => ipcRenderer.send('inbox:remove', id),
+    markRead: () => ipcRenderer.send('inbox:mark-read'),
+  },
+
+  on: (channel, callback) => {
+    if (!CHANNELS.has(channel)) throw new Error(`Unknown channel: ${channel}`);
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+  },
+});

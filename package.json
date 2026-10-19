@@ -1,0 +1,41 @@
+{
+  "name": "island",
+  "productName": "Island",
+  "version": "0.1.0",
+  "description": "A Dynamic Island for Windows: now playing, notifications, timers and alarms. Electron + React.",
+  "main": "electron/main.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -k -n ui,app \"vite\" \"wait-on tcp:127.0.0.1:5173 && cross-env ISLAND_DEV_URL=http://127.0.0.1:5173 electron .\"",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "vite build && electron .",
+    "test": "node --test",
+    "notify": "node scripts/island-notify.js",
+    "icons": "node scripts/make-icons.js",
+    "dist": "vite build && electron-builder"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.2.0",
+    "framer-motion": "^14.4.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "cross-env": "^10.1.0",
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
+    "vite": "^8.3.4",
+    "wait-on": "^9.5.1"
+  },
+  "build": {
+    "appId": "com.island.app",
+    "productName": "Island",
+    "directories": { "output": "release" },
+    "files": ["dist/**", "electron/**", "assets/**", "package.json"],
+    "win": { "target": "nsis", "icon": "assets/icon.png" },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true }
+  }
+}
