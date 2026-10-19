@@ -12,7 +12,6 @@ const TABS = [
   { id: 'playing', label: 'Playing', Glyph: Icon.Music },
   { id: 'clock', label: 'Clock', Glyph: Icon.Timer },
   { id: 'inbox', label: 'Inbox', Glyph: Icon.Inbox },
-  { id: 'pet', label: 'Pet', Glyph: Icon.Paw },
   { id: 'settings', label: 'Settings', Glyph: Icon.Settings },
 ];
 
@@ -24,7 +23,7 @@ const panelVariants = {
   exit: (dir) => ({ opacity: 0, x: -28 * dir, filter: 'blur(4px)' }),
 };
 
-export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, accentColor }) {
+export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, accentColor, onLyricsViewChange }) {
   const previous = useRef(tabIndex(tab));
   const dir = tabIndex(tab) >= previous.current ? 1 : -1;
   useEffect(() => {
@@ -71,10 +70,18 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, 
             exit="exit"
             transition={{ duration: 0.26, ease: EASE_OUT }}
           >
-            {tab === 'playing' && <NowPlaying media={s.media} now={now} platform={s.platform} onControl={actions.mediaControl} accentColor={accentColor} />}
+            {tab === 'playing' && (
+              <NowPlaying
+                media={s.media}
+                now={now}
+                platform={s.platform}
+                onControl={actions.mediaControl}
+                accentColor={accentColor}
+                onLyricsViewChange={onLyricsViewChange}
+              />
+            )}
             {tab === 'clock' && <ClockPanel schedule={s.schedule} now={now} setTyping={setTyping} />}
             {tab === 'inbox' && <InboxPanel inbox={s.inbox} now={now} port={s.port} onClear={actions.clearInbox} onRemove={actions.removeNote} />}
-            {tab === 'pet' && <PetStudioPanel setTyping={setTyping} />}
             {tab === 'settings' && <SettingsPanel />}
           </motion.div>
         </AnimatePresence>

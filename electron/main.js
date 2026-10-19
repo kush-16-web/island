@@ -235,8 +235,8 @@ function createPetWindow() {
   petWin.loadURL(targetUrl);
 
   petWin.once('ready-to-show', () => {
-    const petVisible = store ? store.get('island_pet_visible', true) : true;
-    if (visible && petVisible !== false) petWin.showInactive();
+    const petVisible = store ? store.get('island_pet_visible', false) : false;
+    if (visible && petVisible === true) petWin.showInactive();
   });
 }
 

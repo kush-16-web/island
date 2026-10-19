@@ -35,17 +35,23 @@ function View({ w, h, className = '', children }) {
 function CompactView({ mode, media, nextTimer, now, musicColor, playing, width }) {
   const showMedia = mode === 'media' || mode === 'both';
   const showTimer = mode === 'timer' || mode === 'both';
+  const isBoth = mode === 'both';
   const remaining = nextTimer ? nextTimer.fireAt - now : 0;
   const fraction = nextTimer ? remaining / nextTimer.durationMs : 0;
   const middle = showMedia ? media.title : nextTimer && nextTimer.label;
   return (
-    <View w={width} h={SIZE[mode].h} className="compact">
+    <View w={width} h={SIZE[mode].h} className={`compact ${isBoth ? 'compact--both' : ''}`}>
       {showMedia ? (
         <Art src={media.art} seed={`${media.title}${media.artist}`} size={26} radius={8} />
       ) : (
         <Ring fraction={fraction} size={22} color="var(--c-timer)" />
       )}
       <span className="compact__title">{middle}</span>
+      {isBoth && (
+        <div className="compact__mid-eq">
+          <Equalizer color={musicColor} playing={playing} />
+        </div>
+      )}
       {showTimer ? (
         <span className="compact__time">{formatRemaining(remaining)}</span>
       ) : (
@@ -100,9 +106,7 @@ export default function Island() {
   const [tab, setTab] = useState('playing');
   const [hovered, setHovered] = useState(false);
   const [typing, setTyping] = useState(false);
-  const [sleepy, setSleepy] = useState(false);
-  const [petted, setPetted] = useState(false);
-  const pettedTimer = useRef(0);
+  const [isLyricsFull, setIsLyricsFull] = useState(false);
 
   const { schedule, inbox, media, toast, rings } = s;
   const ring = rings[0] || null;
@@ -124,7 +128,8 @@ export default function Island() {
   const getDynamicHubHeight = () => {
     switch (tab) {
       case 'playing':
-        return media.active ? 262 : 190;
+        if (!media.active) return 190;
+        return isLyricsFull ? 340 : 262;
       case 'clock': {
         const count = schedule.length;
         if (count === 0) return 214;
@@ -359,6 +364,7 @@ export default function Island() {
           now={now}
           setTyping={setTyping}
           accentColor={musicColor}
+          onLyricsViewChange={setIsLyricsFull}
         />
       </View>
     );
@@ -405,14 +411,6 @@ export default function Island() {
           </motion.div>
         </AnimatePresence>
       </motion.div>
-      {(!window.island || isMock || localStorage.getItem('island_pet_roaming') === 'false') && (
-        <PetSystem
-          mood={mood}
-          islandWidth={width}
-          musicAccent={musicColor}
-          onPet={onPet}
-        />
-      )}
     </div>
   );
 }

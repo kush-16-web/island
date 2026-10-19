@@ -165,10 +165,29 @@ This document provides the complete root cause analysis, architecture specificat
 
 ---
 
-## 6. Git Checkpoints
-1. `a324b03`: `feat: checkpoint 1 - draggable island, click-outside dismissal, and integrated pet studio`
-2. `8fcd91c`: `feat: checkpoint 2 - 3D Three.js pet engine, procedural locomotion, and model loading foundation`
-3. `61d7489`: `docs: update HANDOFF.md with Pass 1.5 architecture and verification results`
-4. `112bbc1`: `feat: checkpoint 3 - original sketchfab kitten integration, media artwork fix, fullscreen detection, and high-craft pet studio ui`
+## 7. Pass 2.1: Live Synchronized Lyrics, Frosted Dark Blur & Shadow Softening, Middle Equalizer Layout, and Desktop Pet Removal
+
+### A. Live Synchronized Lyrics Architecture (LRCLIB API)
+- **Engine** (`src/lib/lyrics.js`):
+  - Fetches from LRCLIB API with exact query `/api/get?track_name=...&artist_name=...` and fallback to `/api/search?q=...`.
+  - In-memory cache by `${trackName}|${artistName}` to avoid redundant network requests.
+  - Standard LRC (`[mm:ss.xx]`) and Enhanced LRC word-timestamp parser (`<mm:ss.xx> word`).
+  - High-performance binary search (`findActiveLyricIndex`) for 0-jitter playback synchronization.
+- **Three Lyrics Modes**:
+  1. **Mode 1 — Mini Lyrics (Default)**: Integrated beside song title and artist in the expanded NowPlaying player. Renders 3-line layout (faded previous, illuminated active with glow, faded upcoming) with smooth animations.
+  2. **Mode 2 — Full Lyrics**: Expands the island into a YouTube Music inspired scrolling lyrics pane with top/bottom gradient fade masks, auto-scrolling to keep active line centered, and a 3.5s pause on manual scroll so users can read freely without fighting auto-scroll.
+  3. **Mode 3 — Karaoke**: Dynamic toggle in Full Lyrics mode. When word-level timestamps (`hasWordSync`) are present, words illuminate progressively in real-time. When unavailable, Karaoke mode cleanly disables with a helpful badge without fabricating word timings.
+
+### B. Frosted Dark Blur & Shadow Softening
+- Replaced see-through glassy transparency (`0.82`) with deep frosted dark obsidian glass (`rgba(13, 14, 18, 0.94)`) and heavy `40px` blur with `200%` saturation.
+- Removed harsh wide neon glow shadows (`0 0 26px -2px color-mix...`), replacing them with refined, multi-layer soft drop shadows (`0 8px 24px -4px rgba(0,0,0,0.44), 0 2px 6px rgba(0,0,0,0.22)`).
+
+### C. Middle Equalizer in Timer + Media ("Both") Mode
+- When both media is playing and a timer is active (`mode === 'both'`), the wavy equalizer bars now render in the middle between the track title and the timer countdown: `[Art] [Title] [Equalizer] [0:50]`.
+- Dynamic island width auto-fits with generous padding (`min 220px, max 360px`).
+
+### D. Desktop Pet Removal
+- Removed the standalone desktop pet window and on-screen `<PetSystem />` as requested by user.
+- Removed the redundant Pet tab from the hub navigation bar.
 
 
