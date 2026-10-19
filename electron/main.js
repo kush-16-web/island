@@ -102,10 +102,35 @@ function setInbox(next) {
 
 // ---------------------------------------------------------------- window
 
+function getDisplayBounds() {
+  const display = screen.getPrimaryDisplay();
+  return display ? display.bounds : { x: 0, y: 0, width: 1920, height: 1080 };
+}
+
+function clampWindowX(targetX) {
+  const { x: dispX, width: dispW } = getDisplayBounds();
+  const minX = dispX - Math.round(WIN_W / 2) + 140;
+  const maxX = dispX + dispW - Math.round(WIN_W / 2) - 140;
+  return Math.max(minX, Math.min(maxX, Math.round(targetX)));
+}
+
+function getPresetX(preset) {
+  const { x: dispX, width: dispW } = getDisplayBounds();
+  if (preset === 'left') {
+    return Math.round(dispX + (dispW * 0.16) - (WIN_W / 2));
+  }
+  if (preset === 'right') {
+    return Math.round(dispX + (dispW * 0.84) - (WIN_W / 2));
+  }
+  return Math.round(dispX + (dispW - WIN_W) / 2);
+}
+
 function placeWindow() {
   if (!win || win.isDestroyed()) return;
-  const { x, y, width } = screen.getPrimaryDisplay().bounds;
-  win.setBounds({ x: Math.round(x + (width - WIN_W) / 2), y, width: WIN_W, height: WIN_H });
+  const { y: dispY } = getDisplayBounds();
+  const savedX = store ? store.get('window_x', null) : null;
+  const initialX = savedX !== null ? clampWindowX(savedX) : getPresetX('center');
+  win.setBounds({ x: initialX, y: dispY, width: WIN_W, height: WIN_H });
 }
 
 function createWindow() {
@@ -117,13 +142,13 @@ function createWindow() {
     backgroundColor: '#00000000',
     frame: false,
     resizable: false,
-    movable: false,
+    movable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
     hasShadow: false,
-    focusable: false, // never steal focus from the app you're working in
+    focusable: true,
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -132,17 +157,21 @@ function createWindow() {
       sandbox: true,
       spellcheck: false,
       backgroundThrottling: false,
-      autoplayPolicy: 'no-user-gesture-required', // so the alarm chime can play without a click
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
   win.setAlwaysOnTop(true, 'screen-saver');
-  // Click-through by default. The UI turns it off only while the pointer is over the island or pet.
   win.setIgnoreMouseEvents(true, { forward: true });
   placeWindow();
 
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
+
+  // Click-outside dismissal: when the expanded island window loses OS focus, notify the renderer
+  win.on('blur', () => {
+    send('window:blur');
+  });
 
   if (DEV_URL) win.loadURL(DEV_URL);
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
@@ -297,6 +326,64 @@ function wireIpc() {
   listen('inbox:remove', (id) => setInbox(inbox.filter((n) => n.id !== id)));
   listen('inbox:mark-read', () => {
     if (inbox.some((n) => !n.read)) setInbox(inbox.map((n) => ({ ...n, read: true })));
+  });
+
+  // Dynamic Island dragging & positioning
+  listen('window:move-by', ({ dx, dy }) => {
+    if (!win || win.isDestroyed()) return;
+    const [currX, currY] = win.getPosition();
+    const newX = clampWindowX(currX + (Number(dx) || 0));
+    win.setPosition(newX, currY);
+    if (store) {
+      store.set('window_x', newX);
+      store.set('window_preset', 'custom');
+    }
+    send('window:pos-changed', { x: newX, preset: 'custom' });
+  });
+
+  listen('window:set-preset', (preset) => {
+    if (!win || win.isDestroyed()) return;
+    const { y: dispY } = getDisplayBounds();
+    const newX = clampWindowX(getPresetX(preset));
+    win.setPosition(newX, dispY);
+    if (store) {
+      store.set('window_x', newX);
+      store.set('window_preset', preset);
+    }
+    send('window:pos-changed', { x: newX, preset });
+  });
+
+  listen('window:reset-pos', () => {
+    if (!win || win.isDestroyed()) return;
+    const { y: dispY } = getDisplayBounds();
+    const newX = getPresetX('center');
+    win.setPosition(newX, dispY);
+    if (store) {
+      store.set('window_x', newX);
+      store.set('window_preset', 'center');
+    }
+    send('window:pos-changed', { x: newX, preset: 'center' });
+  });
+
+  handle('window:get-pos', () => {
+    if (!win || win.isDestroyed()) return { x: 0, preset: 'center' };
+    const [x] = win.getPosition();
+    return {
+      x,
+      preset: store ? store.get('window_preset', 'center') : 'center',
+    };
+  });
+
+  // Focus management for manual expansion (enabling click-outside blur dismissal)
+  listen('island:expand', (expanded) => {
+    if (!win || win.isDestroyed()) return;
+    if (expanded) {
+      win.setFocusable(true);
+      win.focus();
+    } else {
+      win.blur();
+      win.setFocusable(false);
+    }
   });
 }
 

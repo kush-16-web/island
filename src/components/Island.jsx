@@ -9,10 +9,9 @@ import { Art, Avatar, Equalizer, Ring, kindColor } from './bits';
 import Hub from './Hub';
 import { Icon } from './icons';
 import PetSystem from '../pets/PetSystem';
-import PetStudioBar from '../pets/PetStudioBar';
 
 const HUB_W = 468;
-const HUB_H = { playing: 262, clock: 384, inbox: 340 };
+const HUB_H = { playing: 262, clock: 384, inbox: 340, pet: 410, settings: 340 };
 const SIZE = {
   idle: { w: 136, h: 36 },
   timer: { w: 184, h: 40 },
@@ -101,9 +100,6 @@ export default function Island() {
   const [typing, setTyping] = useState(false);
   const [sleepy, setSleepy] = useState(false);
   const [petted, setPetted] = useState(false);
-  const [studioSpecies, setStudioSpecies] = useState(null);
-  const [studioState, setStudioState] = useState(null);
-  const everHovered = useRef(false);
   const pettedTimer = useRef(0);
 
   const { schedule, inbox, media, toast, rings } = s;
@@ -126,11 +122,52 @@ export default function Island() {
   const width = mode === 'hub' ? HUB_W : SIZE[mode].w;
   const height = mode === 'hub' ? HUB_H[tab] : SIZE[mode].h;
 
+  const dragRef = useRef({
+    active: false,
+    startX: 0,
+    lastX: 0,
+    hasMoved: false,
+    pointerId: null,
+  });
+
   const openHub = useCallback((nextTab) => {
     if (nextTab) setTab(nextTab);
-    everHovered.current = false;
     setHubOpen(true);
   }, []);
+
+  // Sync expanded state with Electron window focus
+  useEffect(() => {
+    window.island?.setIslandExpanded?.(hubOpen);
+  }, [hubOpen]);
+
+  // Click-outside dismissal: when the OS window blurs (user clicked Chrome, desktop, taskbar)
+  useEffect(() => {
+    if (!window.island?.on) return undefined;
+    return window.island.on('window:blur', () => {
+      setHubOpen(false);
+    });
+  }, []);
+
+  // Click-outside inside the overlay window and Escape key dismissal
+  useEffect(() => {
+    if (!hubOpen) return undefined;
+    const onWindowPointerDown = (e) => {
+      if (!e.target.closest('.island') && !e.target.closest('.pet-container')) {
+        setHubOpen(false);
+      }
+    };
+    const onWindowKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setHubOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onWindowPointerDown);
+    window.addEventListener('keydown', onWindowKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onWindowPointerDown);
+      window.removeEventListener('keydown', onWindowKeyDown);
+    };
+  }, [hubOpen]);
 
   // Hotkey / tray / second launch.
   useEffect(
@@ -140,16 +177,6 @@ export default function Island() {
         : undefined,
     [],
   );
-
-  // Auto-collapse the hub shortly after the pointer leaves (longer if it was opened by hotkey).
-  useEffect(() => {
-    if (hovered) everHovered.current = true;
-  }, [hovered]);
-  useEffect(() => {
-    if (!hubOpen || hovered || typing) return undefined;
-    const id = setTimeout(() => setHubOpen(false), everHovered.current ? 900 : 6000);
-    return () => clearTimeout(id);
-  }, [hubOpen, hovered, typing]);
 
   // Toasts: auto-dismiss (paused while hovered); skip them while the hub is already open.
   useEffect(() => {
@@ -197,8 +224,54 @@ export default function Island() {
   else if (playing) mood = 'music';
   else if (sleepy && mode === 'idle') mood = 'sleep';
 
-  const onClick = () => {
-    if (mode === 'idle') openHub();
+  const onIslandPointerDown = (e) => {
+    if (e.button !== 0) return;
+    if (mode === 'hub') return;
+    if (e.target.closest('button') || e.target.closest('input')) return;
+
+    dragRef.current = {
+      active: true,
+      startX: e.screenX,
+      lastX: e.screenX,
+      hasMoved: false,
+      pointerId: e.pointerId,
+    };
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  const onIslandPointerMove = (e) => {
+    if (!dragRef.current.active) return;
+    const dx = e.screenX - dragRef.current.lastX;
+    const totalDist = Math.abs(e.screenX - dragRef.current.startX);
+
+    if (totalDist > 4) {
+      dragRef.current.hasMoved = true;
+      if (dx !== 0 && window.island?.moveWindowBy) {
+        window.island.moveWindowBy(dx, 0);
+      }
+      dragRef.current.lastX = e.screenX;
+    }
+  };
+
+  const onIslandPointerUp = (e) => {
+    if (!dragRef.current.active) return;
+    const { hasMoved, pointerId } = dragRef.current;
+    dragRef.current.active = false;
+
+    try {
+      if (pointerId !== null) e.currentTarget.releasePointerCapture(pointerId);
+    } catch {}
+
+    if (hasMoved) {
+      e.stopPropagation();
+      return;
+    }
+
+    // Normal click: expand into hub!
+    if (mode === 'idle') openHub('playing');
     else if (mode === 'media') openHub('playing');
     else if (mode === 'timer' || mode === 'both') openHub('clock');
     else if (mode === 'toast') {
@@ -232,7 +305,7 @@ export default function Island() {
   return (
     <div className="stage">
       <motion.div
-        className="island"
+        className={`island ${mode !== 'hub' ? 'is-draggable' : ''}`}
         data-hit
         data-mode={mode}
         style={{ '--accent': accent }}
@@ -242,7 +315,9 @@ export default function Island() {
         whileHover={mode === 'idle' ? { scale: 1.04 } : undefined}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        onClick={onClick}
+        onPointerDown={onIslandPointerDown}
+        onPointerMove={onIslandPointerMove}
+        onPointerUp={onIslandPointerUp}
       >
         <AnimatePresence initial={false}>
           <motion.div
@@ -261,15 +336,7 @@ export default function Island() {
         mood={mood}
         islandWidth={width}
         musicAccent={musicColor}
-        forcedSpecies={studioSpecies}
-        forcedState={studioState}
         onPet={onPet}
-      />
-      <PetStudioBar
-        currentSpecies={studioSpecies || localStorage.getItem('island_active_pet') || 'cat'}
-        onSpeciesChange={setStudioSpecies}
-        currentState={studioState}
-        onStateChange={setStudioState}
       />
     </div>
   );

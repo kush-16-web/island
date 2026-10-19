@@ -3,7 +3,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-const CHANNELS = new Set(['notification', 'ring', 'media', 'scheduler:state', 'inbox:state', 'hub:toggle']);
+const CHANNELS = new Set(['notification', 'ring', 'media', 'scheduler:state', 'inbox:state', 'hub:toggle', 'window:blur', 'window:pos-changed']);
 
 contextBridge.exposeInMainWorld('island', {
   getState: () => ipcRenderer.invoke('state:get'),
@@ -11,6 +11,13 @@ contextBridge.exposeInMainWorld('island', {
   // Window behaviour: the window is click-through except over the island and pet.
   setIgnoreMouse: (ignore) => ipcRenderer.send('win:ignore-mouse', Boolean(ignore)),
   setFocusable: (focusable) => ipcRenderer.send('win:focusable', Boolean(focusable)),
+
+  // Window position & presets
+  moveWindowBy: (dx, dy) => ipcRenderer.send('window:move-by', { dx, dy }),
+  setWindowPreset: (preset) => ipcRenderer.send('window:set-preset', preset),
+  resetWindowPos: () => ipcRenderer.send('window:reset-pos'),
+  getWindowPos: () => ipcRenderer.invoke('window:get-pos'),
+  setIslandExpanded: (expanded) => ipcRenderer.send('island:expand', Boolean(expanded)),
 
   scheduler: {
     addAlarm: (input) => ipcRenderer.invoke('scheduler:add-alarm', input),

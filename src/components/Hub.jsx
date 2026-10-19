@@ -4,12 +4,16 @@ import { EASE_OUT, SPRING } from '../lib/motion';
 import ClockPanel from './ClockPanel';
 import InboxPanel from './InboxPanel';
 import NowPlaying from './NowPlaying';
+import PetStudioPanel from './PetStudioPanel';
+import SettingsPanel from './SettingsPanel';
 import { Icon } from './icons';
 
 const TABS = [
   { id: 'playing', label: 'Playing', Glyph: Icon.Music },
   { id: 'clock', label: 'Clock', Glyph: Icon.Timer },
   { id: 'inbox', label: 'Inbox', Glyph: Icon.Inbox },
+  { id: 'pet', label: 'Pet Studio', Glyph: Icon.Paw },
+  { id: 'settings', label: 'Settings', Glyph: Icon.Settings },
 ];
 
 const tabIndex = (id) => TABS.findIndex((t) => t.id === id);
@@ -70,6 +74,8 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping }
             {tab === 'playing' && <NowPlaying media={s.media} now={now} platform={s.platform} onControl={actions.mediaControl} />}
             {tab === 'clock' && <ClockPanel schedule={s.schedule} now={now} setTyping={setTyping} />}
             {tab === 'inbox' && <InboxPanel inbox={s.inbox} now={now} port={s.port} onClear={actions.clearInbox} onRemove={actions.removeNote} />}
+            {tab === 'pet' && <PetStudioPanel setTyping={setTyping} />}
+            {tab === 'settings' && <SettingsPanel />}
           </motion.div>
         </AnimatePresence>
       </div>

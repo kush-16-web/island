@@ -98,6 +98,11 @@ export function createMockIsland() {
     }),
     setIgnoreMouse() {},
     setFocusable() {},
+    moveWindowBy() {},
+    setWindowPreset() {},
+    resetWindowPos() {},
+    getWindowPos: async () => ({ x: 0, preset: 'center' }),
+    setIslandExpanded() {},
     scheduler: {
       async addAlarm({ time, days = [], label = '' }) {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { ok: false, error: 'Alarm time must look like 07:30' };
