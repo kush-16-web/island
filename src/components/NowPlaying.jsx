@@ -178,27 +178,27 @@ export default function NowPlaying({
       <div className="np__main">
         {/* Left Column: Cover + Title + Artist + App chip */}
         <div className="np__left">
-          <Art src={media.art} seed={seed} size={64} radius={12} />
+          <div className="np__cover-wrap">
+            <Art src={media.art} seed={seed} size={64} radius={12} />
+            <button
+              type="button"
+              className={`heart-btn heart-btn--overlay${isFavorite ? ' is-favorite' : ''}`}
+              onClick={toggleFavorite}
+              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              style={{ '--heart-color': accentColor || 'var(--music-accent, #ff3b69)' }}
+              title={isFavorite ? 'Favorited' : 'Favorite track'}
+            >
+              {isFavorite ? (
+                <Icon.HeartSolid width={13} height={13} />
+              ) : (
+                <Icon.Heart width={13} height={13} />
+              )}
+            </button>
+          </div>
           <div className="np__meta">
             <MarqueeText text={media.title} className="np__title" />
             <MarqueeText text={media.artist || 'Unknown artist'} className="np__artist" />
-            <div className="np__tag-row">
-              {media.app && <span className="chip-app">{media.app}</span>}
-              <button
-                type="button"
-                className={`heart-btn${isFavorite ? ' is-favorite' : ''}`}
-                onClick={toggleFavorite}
-                aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                style={{ '--heart-color': accentColor || 'var(--music-accent, #ff3b69)' }}
-                title={isFavorite ? 'Favorited' : 'Favorite track'}
-              >
-                {isFavorite ? (
-                  <Icon.HeartSolid width={14} height={14} />
-                ) : (
-                  <Icon.Heart width={14} height={14} />
-                )}
-              </button>
-            </div>
+            {media.app && <span className="chip-app">{media.app}</span>}
           </div>
         </div>
 
