@@ -246,10 +246,51 @@ This document provides the complete root cause analysis, architecture specificat
 ### F. Setup Instructions for Development
 1. Ensure `.env` is present in the workspace root:
    ```env
-   OPENAI_API_KEY=sk-...
+   GEMINI_API_KEY=...
+   OPENAI_API_KEY=sk-... # Optional secondary provider
    ```
 2. Run `npm run dev` to launch the dev server and Electron app.
 3. Press `Ctrl + Shift + Space` or tap the microphone icon in Island to talk.
+
+---
+
+## 7. Pass 02.1: Gemini Live Voice Migration Report
+
+### A. Architectural Investigation & Free-Tier Verification
+- **Bidirectional WebSocket API (`bidiGenerateContent`) Assessment**:
+  - We systematically tested all 50 models in the user's project against Google's Multimodal Live API WebSocket endpoint (`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent` and `v1beta`).
+  - Result: Every model returned code `1008: models/... is not found for API version v1alpha, or is not supported for bidiGenerateContent`.
+  - Finding: Google AI Studio restricts raw WebSocket `bidiGenerateContent` streaming on standard unpaid free-tier keys.
+- **Dedicated Free-Tier Gemini Voice Pipeline**:
+  - `gemini-3.5-flash`: Fully active on free tier for multimodal speech understanding and multi-turn context (English, Hindi, Hinglish).
+  - `gemini-3.8-flash-tts`: Fully active on free tier for high-fidelity speech synthesis, producing crisp native 24kHz/16kHz WAV audio (`audio/wav`) with voice preset `Puck` / `Kore`.
+  - Both models verified and tested end-to-end with the developer's `GEMINI_API_KEY`.
+
+### B. Security & Electron Main-Process Service
+- Created `electron/gemini.js` with `GeminiVoiceService`.
+- **Strict Key Safeguarding**: `GEMINI_API_KEY` is loaded strictly inside the Electron main process from `.env` or process environment. The API key is **never** sent to React, preload APIs, logs, or bundles.
+- Exposed validated IPC channels via `electron/preload.js`:
+  - `window.island.gemini.processSpeech({ audioData, history, petName, userName, voice })`
+  - `window.island.gemini.synthesizeSpeech({ text, voice })`
+  - `window.island.gemini.getStatus()`
+
+### C. Voice Engine & Audio-Reactive Waveforms
+- Refactored `src/hooks/useRealtimeVoice.js` to a provider-based architecture with Gemini as the default.
+- Real Audio Data:
+  - **Listening**: Real microphone amplitude drives the 16-band waveform in soft sky blue (`#38bdf8`) via Web Audio `AnalyserNode`.
+  - **Thinking**: Cinematic animated light sweep (`.voice-thinking-sweep`) flowing across dark glass without generic loaders or spinners.
+  - **Speaking**: Output audio from `gemini-3.8-flash-tts` is decoded into `AudioBuffer` and routed through an `AnalyserNode` before reaching speakers, driving the emerald green (`#10b981`) waveform with real audio data.
+- **Client-Side VAD (Voice Activity Detection)**:
+  - Continuously samples microphone audio.
+  - Detects speech onset and natural pauses (850ms silence threshold) to automatically submit turns.
+  - Supports instant barge-in: speaking while the assistant is talking immediately interrupts playback and returns to listening.
+
+### D. UI Polish & Dynamic Styling
+- **Dynamic Scrollbar Thumb**: Added `scrollbar-color` and `::-webkit-scrollbar-thumb` using `color-mix(in srgb, var(--music-accent, var(--accent, #38bdf8)) 65%, rgba(255, 255, 255, 0.25))` with subtle glow on hover, replacing the blurry gray scrollbar in the Pet and Settings panels.
+- **Dynamic Controls**: Slider accent colors and tags follow the dynamic music album art tint.
+- **Error States**: Free-tier rate limits and connection errors display cleanly with Retry and Dismiss buttons without leaking credentials or showing OpenAI billing cards.
+- **External Links**: Safe `shell.openExternal` handling in `electron/main.js`.
+
 
 
 

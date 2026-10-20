@@ -10,6 +10,7 @@ import { Icon } from './icons';
  * Replaces generic form blocks with an interactive 3D hero showcase and compact control deck.
  */
 export default function PetStudioPanel({ setTyping }) {
+  const panelRef = React.useRef(null);
   const [petName, setPetName] = useState(() => localStorage.getItem('island_pet_name') || 'Mochi');
   const [userName, setUserName] = useState(() => localStorage.getItem('island_user_name') || 'Friend');
   const [species, setSpecies] = useState(() => localStorage.getItem('island_active_pet') || SPECIES.CAT);
@@ -17,6 +18,13 @@ export default function PetStudioPanel({ setTyping }) {
   const [roaming, setRoaming] = useState(() => localStorage.getItem('island_pet_roaming') !== 'false');
   const [tracking, setTracking] = useState(() => localStorage.getItem('island_pet_tracking') !== 'false');
   const [scale, setScale] = useState(() => Number(localStorage.getItem('island_pet_scale')) || 100);
+
+  // Keep panel anchored cleanly at top on mount
+  useEffect(() => {
+    if (panelRef.current) {
+      panelRef.current.scrollTop = 0;
+    }
+  }, []);
 
   const handleNameChange = (e) => {
     const val = e.target.value.slice(0, 20);
@@ -69,7 +77,7 @@ export default function PetStudioPanel({ setTyping }) {
   };
 
   return (
-    <div className="pet-studio-panel scroll">
+    <div className="pet-studio-panel scroll" ref={panelRef}>
       {/* Hero Showcase with Authentic 3D Kitten */}
       <div className="pet-hero">
         <div className="pet-hero__stage">
@@ -100,13 +108,23 @@ export default function PetStudioPanel({ setTyping }) {
             <span className="pet-hero__name-hint">Tap to rename</span>
           </div>
 
-          {/* Assistant Voice Command Badge */}
+          {/* Assistant Voice Command Badge with Inline User Name */}
           <div className="pet-hero__badge">
             <span className="pet-hero__badge-icon">
               <Icon.Mic width={11} height={11} />
             </span>
             <span className="pet-hero__badge-label">
-              Voice Assistant: <strong>{petName || 'Mochi'}</strong> calls you <strong>{userName || 'Friend'}</strong>
+              Voice: calls you{' '}
+              <input
+                type="text"
+                className="pet-hero__user-name-inline"
+                value={userName}
+                onChange={handleUserNameChange}
+                placeholder="Friend"
+                title="Click to edit what Island calls you"
+                onFocus={() => setTyping?.(true)}
+                onBlur={() => setTyping?.(false)}
+              />
             </span>
           </div>
 
@@ -119,27 +137,8 @@ export default function PetStudioPanel({ setTyping }) {
         </div>
       </div>
 
-      {/* Modern Control Grid */}
+      {/* Modern Control Grid (2x2 Balanced Cards) */}
       <div className="pet-grid">
-        {/* User Identity / Preferred Name */}
-        <div className="pet-card">
-          <div className="pet-card__header">
-            <span className="pet-card__title">Your Name</span>
-            <span className="pet-card__sub">What {petName || 'Island'} calls you</span>
-          </div>
-          <div className="pet-input-wrap">
-            <input
-              type="text"
-              className="pet-field-input"
-              value={userName}
-              onChange={handleUserNameChange}
-              placeholder="e.g. Kush"
-              onFocus={() => setTyping?.(true)}
-              onBlur={() => setTyping?.(false)}
-            />
-          </div>
-        </div>
-
         {/* Species Selector */}
         <div className="pet-card">
           <div className="pet-card__header">

@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
-const { app, BrowserWindow, Menu, Tray, desktopCapturer, globalShortcut, ipcMain, nativeImage, screen, session } = require('electron');
+const { app, BrowserWindow, Menu, Tray, desktopCapturer, globalShortcut, ipcMain, nativeImage, screen, session, shell } = require('electron');
 
 // High-performance GPU compositing & tile memory management
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -17,6 +17,9 @@ const { createNotifyServer, DEFAULT_PORT } = require('./notify-server');
 const { MediaWatcher } = require('./media');
 const { FullscreenWatcher } = require('./fullscreen');
 const { RealtimeSessionBroker } = require('./realtime');
+const { GeminiVoiceService } = require('./gemini');
+
+let geminiVoiceService = null;
 
 const DEV_URL = process.env.ISLAND_DEV_URL || '';
 const WIN_W = 720;
@@ -449,7 +452,12 @@ function createWindow() {
   win.setIgnoreMouseEvents(true, { forward: true });
   placeWindow();
 
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url && (url.startsWith('https:') || url.startsWith('http:'))) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
   win.webContents.on('will-navigate', (event, targetUrl) => {
     if (targetUrl !== DEV_URL && !targetUrl.startsWith('file://')) {
       event.preventDefault();
@@ -515,7 +523,12 @@ function createPetWindow() {
   petWin.setIgnoreMouseEvents(true, { forward: true });
   placePetWindow();
 
-  petWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  petWin.webContents.setWindowOpenHandler(({ url }) => {
+    if (url && (url.startsWith('https:') || url.startsWith('http:'))) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
   petWin.webContents.on('will-navigate', (event) => event.preventDefault());
 
   const targetUrl = DEV_URL ? `${DEV_URL}#pet` : `file://${path.join(__dirname, '..', 'dist', 'index.html')}#pet`;
@@ -936,6 +949,22 @@ function wireIpc() {
     if (!petWin || petWin.isDestroyed()) return;
     if (vis && visible) petWin.showInactive();
     else petWin.hide();
+  });
+
+  // Gemini Voice Service
+  handle('gemini:process-speech', (params) => {
+    if (!geminiVoiceService) geminiVoiceService = new GeminiVoiceService();
+    return geminiVoiceService.processSpeech(params);
+  });
+
+  handle('gemini:synthesize-speech', (params) => {
+    if (!geminiVoiceService) geminiVoiceService = new GeminiVoiceService();
+    return geminiVoiceService.synthesizeSpeech(params);
+  });
+
+  handle('gemini:get-status', () => {
+    if (!geminiVoiceService) geminiVoiceService = new GeminiVoiceService();
+    return { hasKey: geminiVoiceService.hasKey(), provider: 'gemini' };
   });
 
   // OpenAI Realtime voice broker (development session creation)

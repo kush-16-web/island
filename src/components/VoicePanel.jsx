@@ -98,59 +98,53 @@ export default function VoicePanel({
             <Icon.Alert width={26} height={26} />
           </div>
           <div className="voice-panel__error-title">
-            {errorMessage?.toLowerCase().includes('credit') || errorMessage?.toLowerCase().includes('quota')
-              ? 'OpenAI Credits Exhausted'
-              : 'Voice Connection Issue'}
+            {voice.provider === 'gemini' ? 'Gemini Voice Issue' : 'Voice Connection Issue'}
           </div>
           <div className="voice-panel__error-desc">
-            {errorMessage || 'Unable to establish real-time voice connection with OpenAI.'}
+            {errorMessage || (voice.provider === 'gemini'
+              ? 'Unable to communicate with Google Gemini Voice.'
+              : 'Unable to establish real-time voice connection.')}
           </div>
-          {(errorMessage?.toLowerCase().includes('credit') || errorMessage?.toLowerCase().includes('quota')) && (
-            <a
-              href="https://platform.openai.com/settings/organization/billing"
-              target="_blank"
-              rel="noreferrer"
-              className="voice-panel__billing-link"
-            >
-              Open OpenAI Billing Settings ↗
-            </a>
+          {errorMessage?.includes('.env') && (
+            <div className="voice-panel__env-hint">
+              Make sure <code>GEMINI_API_KEY</code> is set in your <code>.env</code> file.
+            </div>
           )}
         </div>
       ) : (
         <>
           {/* Center Audio-Reactive Waveform Visualizer */}
           <div className="voice-panel__visualizer">
-            <div className={`voice-waveform is-${status}`}>
-              {Array.from({ length: 16 }).map((_, i) => {
-                const rawVal = waveformData ? waveformData[i] || 0.1 : 0.1;
-                let barScale = Math.max(0.12, Math.min(1.0, rawVal * 1.5 + audioLevel * 0.8));
+            {status === 'thinking' ? (
+              <div className="voice-thinking-sweep" aria-label="Gemini thinking">
+                <div className="voice-thinking-sweep__beam" />
+                <div className="voice-thinking-sweep__glow" />
+              </div>
+            ) : (
+              <div className={`voice-waveform is-${status}`}>
+                {Array.from({ length: 16 }).map((_, i) => {
+                  const rawVal = waveformData ? waveformData[i] || 0.1 : 0.1;
+                  const barScale = Math.max(0.12, Math.min(1.0, rawVal * 1.6 + audioLevel * 0.9));
 
-                if (status === 'thinking') {
-                  const pulse = Math.sin((Date.now() / 250) + i * 0.4) * 0.25 + 0.35;
-                  barScale = Math.max(0.18, pulse);
-                } else if (status === 'connecting') {
-                  const pulse = Math.sin((Date.now() / 400) + i * 0.3) * 0.15 + 0.25;
-                  barScale = Math.max(0.15, pulse);
-                }
-
-                return (
-                  <span
-                    key={i}
-                    className="voice-waveform__bar"
-                    style={{
-                      height: `${Math.round(barScale * 44)}px`,
-                      transition: status === 'thinking' ? 'height 0.25s ease' : 'height 0.06s ease',
-                    }}
-                  />
-                );
-              })}
-            </div>
+                  return (
+                    <span
+                      key={i}
+                      className="voice-waveform__bar"
+                      style={{
+                        height: `${Math.round(barScale * 44)}px`,
+                        transition: 'height 0.05s ease-out',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )}
 
             <div className="voice-panel__subtext">
               {status === 'listening' && <span>Speak naturally in English, Hindi, or Hinglish</span>}
               {status === 'speaking' && <span>Tap Interrupt or speak anytime to jump in</span>}
-              {status === 'thinking' && <span>Processing your response...</span>}
-              {status === 'connecting' && <span>Establishing secure WebRTC channel...</span>}
+              {status === 'thinking' && <span>Gemini is thinking...</span>}
+              {status === 'connecting' && <span>Connecting to Gemini Voice...</span>}
             </div>
           </div>
 

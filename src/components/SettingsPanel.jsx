@@ -16,6 +16,13 @@ export default function SettingsPanel({ accentColor }) {
   const [snapThreshold, setSnapThreshold] = useState(85);
   const [autohideIsland, setAutohideIsland] = useState(true);
   const [autohidePet, setAutohidePet] = useState(true);
+  const [userName, setUserName] = useState(() => {
+    try {
+      return localStorage.getItem('island_user_name') || 'Friend';
+    } catch {
+      return 'Friend';
+    }
+  });
   const [lyricsOffset, setLyricsOffset] = useState(() => {
     try {
       const saved = localStorage.getItem('island_lyrics_offset');
@@ -359,6 +366,30 @@ export default function SettingsPanel({ accentColor }) {
                 {item.label}
               </button>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Voice Assistant Identity */}
+      <div className="settings-group">
+        <div className="settings-row">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Your Name</span>
+            <span className="settings-row__sub">What Island & your companion pet calls you in voice conversations</span>
+          </div>
+          <div className="settings-input-box">
+            <input
+              type="text"
+              className="settings-text-input"
+              value={userName}
+              onChange={(e) => {
+                const val = e.target.value.slice(0, 20);
+                setUserName(val);
+                localStorage.setItem('island_user_name', val);
+                window.dispatchEvent(new CustomEvent('island:pet-settings-changed'));
+              }}
+              placeholder="Friend"
+            />
           </div>
         </div>
       </div>

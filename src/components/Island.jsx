@@ -205,6 +205,8 @@ export default function Island() {
         return 410;
       case 'settings':
         return 355;
+      case 'voice':
+        return 350;
       default:
         return 280;
     }

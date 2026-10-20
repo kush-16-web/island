@@ -56,6 +56,13 @@ contextBridge.exposeInMainWorld('island', {
   getSnapThreshold: () => ipcRenderer.invoke('settings:get-snap-threshold'),
   setSnapThreshold: (dist) => ipcRenderer.invoke('settings:set-snap-threshold', dist),
 
+  // Gemini Voice Service
+  gemini: {
+    processSpeech: (params) => ipcRenderer.invoke('gemini:process-speech', params),
+    synthesizeSpeech: (params) => ipcRenderer.invoke('gemini:synthesize-speech', params),
+    getStatus: () => ipcRenderer.invoke('gemini:get-status'),
+  },
+
   // OpenAI Realtime voice broker (ephemeral token)
   realtime: {
     createSession: (options) => ipcRenderer.invoke('realtime:create-session', options),
