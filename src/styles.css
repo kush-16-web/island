@@ -371,12 +371,12 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 .panel { position: absolute; inset: 0; }
 
 .seg { position: relative; display: inline-flex; padding: 3px; gap: 2px; background: var(--fill-1); border-radius: 17px; box-shadow: inset 0 0 0 1px var(--hair); }
-.seg__btn { position: relative; height: 28px; padding: 0 13px; border-radius: 14px; font-size: 12.5px; font-weight: 580; color: var(--text-3); transition: color 0.2s; white-space: nowrap; flex: none; }
+.seg__btn { position: relative; height: 28px; padding: 0 11px; border-radius: 14px; font-size: 12px; font-weight: 580; color: var(--text-3); transition: color 0.2s; white-space: nowrap; flex: none; }
 .seg__btn:hover { color: var(--text-2); }
 .seg__btn.is-active { color: var(--text); }
 .seg__btn.is-active .lucide-icon { color: inherit; }
 .seg__pill { position: absolute; inset: 0; border-radius: 14px; background: var(--fill-2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
-.seg__label { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.seg__label { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--c-info); color: #0b0d22; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
 
 .icon-btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--text-2); transition: background 0.2s, color 0.2s, transform 0.15s; }
@@ -2714,17 +2714,23 @@ button:hover .lucide-icon--bell {
 
 /* Hub Header Voice Button */
 .hub-voice-btn {
-  position: relative;
+  position: absolute;
+  right: 2px;
+  top: 1px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 32px;
+  min-width: 32px;
   height: 32px;
   border-radius: 50%;
   background: var(--fill-2);
   border: 1px solid var(--hair);
   color: var(--text-2);
-  margin-left: auto;
+  flex: none;
+  flex-shrink: 0;
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .hub-voice-btn:hover {
@@ -2744,8 +2750,8 @@ button:hover .lucide-icon--bell {
 }
 .hub-voice-pulse {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 1px;
+  right: 1px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -3052,6 +3058,84 @@ button:hover .lucide-icon--bell {
   background: rgba(56, 189, 248, 0.2);
   border-color: rgba(56, 189, 248, 0.4);
   color: #38bdf8;
+}
+.voice-btn--dismiss {
+  background: var(--fill-2);
+  border-color: var(--hair);
+  color: var(--text-2);
+}
+.voice-btn--dismiss:hover {
+  background: var(--fill-3);
+  color: var(--text);
+}
+
+/* Dedicated Error State Card */
+.voice-panel__error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 20px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 16px;
+  gap: 10px;
+  margin: auto 0;
+}
+.voice-panel__error-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.16);
+  color: #ef4444;
+}
+.voice-panel__error-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #fca5a5;
+  letter-spacing: -0.2px;
+}
+.voice-panel__error-desc {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+  max-width: 360px;
+}
+.voice-panel__billing-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: #38bdf8;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  text-decoration: none;
+  transition: all 0.15s ease;
+  margin-top: 2px;
+}
+.voice-panel__billing-link:hover {
+  background: rgba(56, 189, 248, 0.24);
+  color: #7dd3fc;
+  transform: translateY(-1px);
+}
+
+/* Slim scrollbar for transcript */
+.voice-panel__transcript-box {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+.voice-panel__transcript-box::-webkit-scrollbar {
+  width: 4px;
+}
+.voice-panel__transcript-box::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
 }
 
 /* User Identity Field in Pet Studio */

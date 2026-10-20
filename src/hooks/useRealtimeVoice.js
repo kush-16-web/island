@@ -288,42 +288,44 @@ export function useRealtimeVoice() {
         } catch {}
       };
 
-      // 6. Create SDP Offer & connect to OpenAI WebRTC Endpoint
+      // 6. Create SDP Offer & connect to OpenAI WebRTC Endpoint (/v1/realtime/calls)
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-
-      const endpoints = [
-        'https://api.openai.com/v1/realtime/calls',
-        `https://api.openai.com/v1/realtime?model=${model}`,
-      ];
 
       let sdpAnswer = null;
       let lastErr = null;
 
-      for (const endpoint of endpoints) {
-        try {
-          const sdpRes = await fetch(endpoint, {
-            method: 'POST',
-            body: offer.sdp,
-            headers: {
-              Authorization: `Bearer ${clientSecret}`,
-              'Content-Type': 'application/sdp',
-            },
-          });
+      try {
+        const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls', {
+          method: 'POST',
+          body: offer.sdp,
+          headers: {
+            Authorization: `Bearer ${clientSecret}`,
+            'Content-Type': 'application/sdp',
+          },
+        });
 
-          if (sdpRes.ok) {
-            sdpAnswer = await sdpRes.text();
-            break;
-          } else {
-            lastErr = await sdpRes.text();
-          }
-        } catch (e) {
-          lastErr = e.message;
+        if (sdpRes.ok) {
+          sdpAnswer = await sdpRes.text();
+        } else {
+          const errText = await sdpRes.text();
+          let parsedMsg = errText;
+          try {
+            const errJson = JSON.parse(errText);
+            if (errJson?.error?.code === 'credit_balance_exhausted' || errJson?.error?.type === 'insufficient_quota') {
+              parsedMsg = 'OpenAI account credit balance exhausted. Please add credits at platform.openai.com/settings/organization/billing to chat with voice.';
+            } else if (errJson?.error?.message) {
+              parsedMsg = errJson.error.message;
+            }
+          } catch {}
+          lastErr = parsedMsg;
         }
+      } catch (e) {
+        lastErr = e.message;
       }
 
       if (!sdpAnswer) {
-        throw new Error(`Failed to establish WebRTC connection: ${lastErr || 'Server rejected offer'}`);
+        throw new Error(lastErr || 'Failed to establish WebRTC connection with OpenAI.');
       }
 
       await pc.setRemoteDescription({ type: 'answer', sdp: sdpAnswer });

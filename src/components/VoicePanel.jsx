@@ -91,81 +91,106 @@ export default function VoicePanel({
         </button>
       </div>
 
-      {/* Center Audio-Reactive Waveform Visualizer */}
-      <div className="voice-panel__visualizer">
-        <div className={`voice-waveform is-${status}`}>
-          {Array.from({ length: 16 }).map((_, i) => {
-            // Calculate dynamic height based on audio levels and waveformData
-            const rawVal = waveformData ? waveformData[i] || 0.1 : 0.1;
-            let barScale = Math.max(0.12, Math.min(1.0, rawVal * 1.5 + audioLevel * 0.8));
-
-            // Gentle animated idle sine wave in thinking state
-            if (status === 'thinking') {
-              const pulse = Math.sin((Date.now() / 250) + i * 0.4) * 0.25 + 0.35;
-              barScale = Math.max(0.18, pulse);
-            } else if (status === 'connecting') {
-              const pulse = Math.sin((Date.now() / 400) + i * 0.3) * 0.15 + 0.25;
-              barScale = Math.max(0.15, pulse);
-            }
-
-            return (
-              <span
-                key={i}
-                className="voice-waveform__bar"
-                style={{
-                  height: `${Math.round(barScale * 44)}px`,
-                  transition: status === 'thinking' ? 'height 0.25s ease' : 'height 0.06s ease',
-                }}
-              />
-            );
-          })}
-        </div>
-
-        {/* Status prompt */}
-        <div className="voice-panel__subtext">
-          {status === 'listening' && <span>Speak naturally in English, Hindi, or Hinglish</span>}
-          {status === 'speaking' && <span>Tap Interrupt or speak anytime to jump in</span>}
-          {status === 'thinking' && <span>Processing your response...</span>}
-          {status === 'connecting' && <span>Establishing secure WebRTC channel...</span>}
-          {status === 'error' && (
-            <span className="voice-panel__error-text">{errorMessage || 'Voice connection failed.'}</span>
+      {/* Error State Card or Active Visualizer */}
+      {status === 'error' ? (
+        <div className="voice-panel__error-card">
+          <div className="voice-panel__error-icon">
+            <Icon.Alert width={26} height={26} />
+          </div>
+          <div className="voice-panel__error-title">
+            {errorMessage?.toLowerCase().includes('credit') || errorMessage?.toLowerCase().includes('quota')
+              ? 'OpenAI Credits Exhausted'
+              : 'Voice Connection Issue'}
+          </div>
+          <div className="voice-panel__error-desc">
+            {errorMessage || 'Unable to establish real-time voice connection with OpenAI.'}
+          </div>
+          {(errorMessage?.toLowerCase().includes('credit') || errorMessage?.toLowerCase().includes('quota')) && (
+            <a
+              href="https://platform.openai.com/settings/organization/billing"
+              target="_blank"
+              rel="noreferrer"
+              className="voice-panel__billing-link"
+            >
+              Open OpenAI Billing Settings ↗
+            </a>
           )}
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Center Audio-Reactive Waveform Visualizer */}
+          <div className="voice-panel__visualizer">
+            <div className={`voice-waveform is-${status}`}>
+              {Array.from({ length: 16 }).map((_, i) => {
+                const rawVal = waveformData ? waveformData[i] || 0.1 : 0.1;
+                let barScale = Math.max(0.12, Math.min(1.0, rawVal * 1.5 + audioLevel * 0.8));
 
-      {/* Live Transcription Box */}
-      <div className="voice-panel__transcript-box" ref={scrollRef}>
-        {transcript.length === 0 ? (
-          <div className="voice-panel__transcript-empty">
-            <span>Ask anything: "What's the weather today?", "Play some Lo-Fi", "Tell me a joke in Hindi"...</span>
-          </div>
-        ) : (
-          transcript.map((item, index) => (
-            <div
-              key={index}
-              className={`voice-bubble voice-bubble--${item.role}${item.isLive ? ' is-live' : ''}`}
-            >
-              <div className="voice-bubble__sender">
-                {item.role === 'user' ? userName : petName}
-              </div>
-              <div className="voice-bubble__text">{item.text}</div>
+                if (status === 'thinking') {
+                  const pulse = Math.sin((Date.now() / 250) + i * 0.4) * 0.25 + 0.35;
+                  barScale = Math.max(0.18, pulse);
+                } else if (status === 'connecting') {
+                  const pulse = Math.sin((Date.now() / 400) + i * 0.3) * 0.15 + 0.25;
+                  barScale = Math.max(0.15, pulse);
+                }
+
+                return (
+                  <span
+                    key={i}
+                    className="voice-waveform__bar"
+                    style={{
+                      height: `${Math.round(barScale * 44)}px`,
+                      transition: status === 'thinking' ? 'height 0.25s ease' : 'height 0.06s ease',
+                    }}
+                  />
+                );
+              })}
             </div>
-          ))
-        )}
-      </div>
+
+            <div className="voice-panel__subtext">
+              {status === 'listening' && <span>Speak naturally in English, Hindi, or Hinglish</span>}
+              {status === 'speaking' && <span>Tap Interrupt or speak anytime to jump in</span>}
+              {status === 'thinking' && <span>Processing your response...</span>}
+              {status === 'connecting' && <span>Establishing secure WebRTC channel...</span>}
+            </div>
+          </div>
+
+          {/* Live Transcription Box */}
+          <div className="voice-panel__transcript-box" ref={scrollRef}>
+            {transcript.length === 0 ? (
+              <div className="voice-panel__transcript-empty">
+                <span>Ask anything: "What's the weather today?", "Play some Lo-Fi", "Tell me a joke in Hindi"...</span>
+              </div>
+            ) : (
+              transcript.map((item, index) => (
+                <div
+                  key={index}
+                  className={`voice-bubble voice-bubble--${item.role}${item.isLive ? ' is-live' : ''}`}
+                >
+                  <div className="voice-bubble__sender">
+                    {item.role === 'user' ? userName : petName}
+                  </div>
+                  <div className="voice-bubble__text">{item.text}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
 
       {/* Bottom Controls */}
       <div className="voice-panel__controls">
-        <button
-          type="button"
-          className={`voice-btn voice-btn--mute${isMuted ? ' is-muted' : ''}`}
-          onClick={toggleMute}
-          title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-          aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-        >
-          {isMuted ? <Icon.MicOff width={16} height={16} /> : <Icon.Mic width={16} height={16} />}
-          <span>{isMuted ? 'Unmute' : 'Mute'}</span>
-        </button>
+        {status !== 'error' && (
+          <button
+            type="button"
+            className={`voice-btn voice-btn--mute${isMuted ? ' is-muted' : ''}`}
+            onClick={toggleMute}
+            title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+            aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+          >
+            {isMuted ? <Icon.MicOff width={16} height={16} /> : <Icon.Mic width={16} height={16} />}
+            <span>{isMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+        )}
 
         {status === 'speaking' && (
           <button
@@ -181,15 +206,29 @@ export default function VoicePanel({
         )}
 
         {status === 'error' ? (
-          <button
-            type="button"
-            className="voice-btn voice-btn--retry"
-            onClick={startSession}
-            title="Retry voice session"
-            aria-label="Retry voice session"
-          >
-            <span>Retry</span>
-          </button>
+          <>
+            <button
+              type="button"
+              className="voice-btn voice-btn--retry"
+              onClick={startSession}
+              title="Retry voice session"
+              aria-label="Retry voice session"
+            >
+              <span>Retry</span>
+            </button>
+            <button
+              type="button"
+              className="voice-btn voice-btn--dismiss"
+              onClick={() => {
+                stopSession();
+                onClose?.();
+              }}
+              title="Close panel"
+              aria-label="Close"
+            >
+              <span>Dismiss</span>
+            </button>
+          </>
         ) : (
           <button
             type="button"

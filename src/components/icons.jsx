@@ -13,6 +13,13 @@ const base = {
 const solid = { ...base, fill: 'currentColor', stroke: 'none' };
 
 export const Icon = {
+  Alert: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon ${className}`} {...p}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  ),
   Bell: ({ className = '', ...p }) => (
     <svg {...base} className={`lucide-icon lucide-icon--bell ${className}`} {...p}>
       <path d="M6 9a6 6 0 1 1 12 0c0 5 2 6.5 2 6.5H4S6 14 6 9Z" />
