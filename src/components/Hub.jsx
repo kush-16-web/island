@@ -6,6 +6,7 @@ import InboxPanel from './InboxPanel';
 import NowPlaying from './NowPlaying';
 import PetStudioPanel from './PetStudioPanel';
 import SettingsPanel from './SettingsPanel';
+import VoicePanel from './VoicePanel';
 import { Icon } from './icons';
 
 const TABS = [
@@ -16,7 +17,10 @@ const TABS = [
   { id: 'settings', label: 'Settings', Glyph: Icon.Settings },
 ];
 
-const tabIndex = (id) => TABS.findIndex((t) => t.id === id);
+const tabIndex = (id) => {
+  const idx = TABS.findIndex((t) => t.id === id);
+  return idx >= 0 ? idx : (id === 'voice' ? 5 : 0);
+};
 
 const panelVariants = {
   enter: (dir) => ({ opacity: 0, x: 28 * dir, filter: 'blur(4px)' }),
@@ -24,7 +28,21 @@ const panelVariants = {
   exit: (dir) => ({ opacity: 0, x: -28 * dir, filter: 'blur(4px)' }),
 };
 
-export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, accentColor, onLyricsViewChange }) {
+export default function Hub({
+  tab,
+  setTab,
+  onClose,
+  s,
+  actions,
+  now,
+  setTyping,
+  accentColor,
+  onLyricsViewChange,
+  videoStream,
+  videoStreamActive,
+  youtubeId,
+  voice,
+}) {
   const previous = useRef(tabIndex(tab));
   const dir = tabIndex(tab) >= previous.current ? 1 : -1;
   useEffect(() => {
@@ -40,7 +58,7 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, 
   }, [tab, unread, actions]);
 
   return (
-    <div className="hub">
+    <div className="hub" style={{ '--accent': accentColor || 'var(--c-info)' }}>
       <div className="hub__head">
         <div className="seg" role="tablist" aria-label="Island sections">
           {TABS.map(({ id, label, Glyph }) => (
@@ -65,6 +83,30 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, 
             </button>
           ))}
         </div>
+
+        {voice && (
+          <button
+            type="button"
+            className={`hub-voice-btn${voice.status !== 'idle' ? ' is-active' : ''}${tab === 'voice' ? ' is-selected' : ''}`}
+            onClick={() => {
+              if (voice.status === 'idle' || voice.status === 'error') {
+                voice.startSession();
+                setTab('voice');
+              } else if (tab === 'voice') {
+                setTab('playing');
+              } else {
+                setTab('voice');
+              }
+            }}
+            title={voice.status !== 'idle' ? 'Voice companion active (Click to view)' : 'Talk to Island (Ctrl+Shift+Space)'}
+            aria-label="Voice Companion"
+          >
+            <Icon.Mic width={14} height={14} />
+            {voice.status !== 'idle' && (
+              <span className={`hub-voice-pulse is-${voice.status}`} />
+            )}
+          </button>
+        )}
       </div>
 
       <div className="hub__body">
@@ -87,12 +129,22 @@ export default function Hub({ tab, setTab, onClose, s, actions, now, setTyping, 
                 onControl={actions.mediaControl}
                 accentColor={accentColor}
                 onLyricsViewChange={onLyricsViewChange}
+                videoStream={videoStream}
+                videoStreamActive={videoStreamActive}
+                youtubeId={youtubeId}
               />
             )}
             {tab === 'clock' && <ClockPanel schedule={s.schedule} now={now} setTyping={setTyping} />}
             {tab === 'pet' && <PetStudioPanel setTyping={setTyping} />}
             {tab === 'inbox' && <InboxPanel inbox={s.inbox} now={now} port={s.port} onClear={actions.clearInbox} onRemove={actions.removeNote} />}
-            {tab === 'settings' && <SettingsPanel />}
+            {tab === 'settings' && <SettingsPanel accentColor={accentColor} />}
+            {tab === 'voice' && voice && (
+              <VoicePanel
+                voice={voice}
+                onClose={() => setTab('playing')}
+                accentColor={accentColor}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>

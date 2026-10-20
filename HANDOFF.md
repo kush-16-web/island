@@ -186,8 +186,70 @@ This document provides the complete root cause analysis, architecture specificat
 - When both media is playing and a timer is active (`mode === 'both'`), the wavy equalizer bars now render in the middle between the track title and the timer countdown: `[Art] [Title] [Equalizer] [0:50]`.
 - Dynamic island width auto-fits with generous padding (`min 220px, max 360px`).
 
-### D. Desktop Pet Removal
-- Removed the standalone desktop pet window and on-screen `<PetSystem />` as requested by user.
-- Removed the redundant Pet tab from the hub navigation bar.
+### D. Desktop Pet System & Integration
+- Desktop pet window and canvas support autonomous roaming, 3D cursor gaze tracking, and dynamic reactions.
+- Pet Studio inside the Hub manages companion species, scale, roaming, visibility, and name preferences.
+
+---
+
+## 8. Pass 02: The Voice Awakening (OpenAI Realtime Voice Companion)
+
+### A. Architectural Overview
+- **Protocol**: OpenAI Realtime API via WebRTC (`RTCPeerConnection` + WebRTC Data Channel `oai-events`).
+- **Model**: `gpt-realtime-mini` (fastest latency, zero lag, modern GA Realtime model).
+- **Ephemeral Session Broker (`electron/realtime.js`)**:
+  - Securely brokers short-lived client secrets via `POST https://api.openai.com/v1/realtime/client_secrets`.
+  - Reads `OPENAI_API_KEY` from `.env` strictly within the Electron main process in development.
+  - **Security Boundary**: The developer API key is **never** sent to React, preload IPC, logs, or bundle files. The renderer receives only the short-lived `clientSecret` (`ek_...`) and model name. In packaged production builds, cloud voice requires an authenticated backend URL (`ISLAND_PRODUCTION_REALTIME_URL`), completely preventing key leakage.
+
+### B. Voice Activation & Global Hotkey
+- **Global Hotkey**: `Ctrl + Shift + Space` (`CommandOrControl+Shift+Space`).
+  - **1st press**: Opens the Voice Assistant interface and begins listening.
+  - **2nd press**: Cleanly closes the active voice session and releases audio/network resources.
+  - **Non-Focus-Stealing**: Window opens via `win.showInactive()` without taking focus away from user's current game, browser, or code editor.
+- **In-App Controls**:
+  - Interactive microphone button inside the Island idle pill.
+  - Header microphone button with real-time status glow inside the Hub.
+  - Tray menu item `Talk to Island (Ctrl+Shift+Space)`.
+
+### C. Natural Real-Time Conversation & Interruption
+- **Full-Duplex Speech**: Natural, instantaneous conversational speech with server-side voice activity detection (`server_vad`).
+- **Instant Interruption**: Speaking while the assistant is talking automatically cancels assistant playback and transitions the assistant immediately to attentive listening.
+- **Language Fluency**: Configured to naturally understand and converse in English, Hindi, and Hinglish.
+- **Controls**: One-tap Microphone Mute (`Icon.Mic` / `Icon.MicOff`), Interrupt Assistant button, and End Session button.
+- **Clean Teardown**: Releasing all media tracks, closing the data channel, peer connection, and `AudioContext` on disconnect to prevent memory leaks or background mic capture.
+
+### D. Audio-Reactive Waveforms & Visual States
+- **Visualizer Engine (`src/components/VoicePanel.jsx`)**:
+  - 16-band audio-reactive visualizer powered by `AudioContext` and `AnalyserNode`.
+  - **Listening**: Soft sky blue (`#38bdf8`) waveform reacting directly to user microphone input volume.
+  - **Thinking**: Pulsing amber (`#f59e0b`) sine wave during API response generation.
+  - **Speaking**: Emerald green (`#10b981`) waveform reacting to incoming assistant audio playback.
+  - **Error**: Soft red pill with descriptive error messaging and retry button.
+- **Live Speech Transcription**:
+  - Streams user input transcript (`conversation.item.input_audio_transcription.completed`).
+  - Streams assistant output speech delta (`response.audio_transcript.delta`).
+- **Compact Island Mode**:
+  - Collapsed Island pill displays a mini 6-bar audio-reactive waveform with state dot and assistant name.
+
+### E. Assistant Identity & Pet Companion Integration
+- **Identity Settings**:
+  - Assistant display name synced with Pet's name (`island_pet_name`, e.g. "Batman" or "Mochi").
+  - User identity preference ("What should Island call you?", `island_user_name`, e.g. "Kush").
+  - Injected directly into the assistant's system instructions: *"You are {petName}... You are conversing directly with {userName}..."*.
+- **Pet State Machine Sync**:
+  - Broadcasts `voice:state` via Electron IPC.
+  - **Listening**: Pet pauses roaming, turns attentive, and enters focused sit (`ANIMATION_STATES.SIT`, mood `alert`).
+  - **Speaking**: Pet reacts happily (`ANIMATION_STATES.HAPPY`).
+  - **Idle**: Returns to autonomous desktop behavior.
+
+### F. Setup Instructions for Development
+1. Ensure `.env` is present in the workspace root:
+   ```env
+   OPENAI_API_KEY=sk-...
+   ```
+2. Run `npm run dev` to launch the dev server and Electron app.
+3. Press `Ctrl + Shift + Space` or tap the microphone icon in Island to talk.
+
 
 

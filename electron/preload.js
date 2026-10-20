@@ -3,7 +3,22 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-const CHANNELS = new Set(['notification', 'ring', 'media', 'scheduler:state', 'inbox:state', 'hub:toggle', 'window:blur', 'window:pos-changed', 'pet:pos-changed', 'fullscreen:change']);
+const CHANNELS = new Set([
+  'notification',
+  'ring',
+  'media',
+  'scheduler:state',
+  'inbox:state',
+  'hub:toggle',
+  'window:blur',
+  'window:pos-changed',
+  'window:dock-changed',
+  'pet:pos-changed',
+  'fullscreen:change',
+  'video:ambient-update',
+  'voice:toggle',
+  'voice:state',
+]);
 
 contextBridge.exposeInMainWorld('island', {
   getState: () => ipcRenderer.invoke('state:get'),
@@ -12,11 +27,15 @@ contextBridge.exposeInMainWorld('island', {
   setIgnoreMouse: (ignore) => ipcRenderer.send('win:ignore-mouse', Boolean(ignore)),
   setFocusable: (focusable) => ipcRenderer.send('win:focusable', Boolean(focusable)),
 
-  // Window position & presets
+  // Window position & 4-edge docking
+  startWindowDrag: () => ipcRenderer.send('window:drag-start'),
+  moveWindowDrag: () => ipcRenderer.send('window:drag-move'),
   moveWindowBy: (dx, dy) => ipcRenderer.send('window:move-by', { dx, dy }),
-  setWindowPreset: (preset) => ipcRenderer.send('window:set-preset', preset),
+  endWindowDrag: () => ipcRenderer.send('window:drag-end'),
+  setWindowPreset: (preset, edge) => ipcRenderer.send('window:set-preset', { preset, edge }),
   resetWindowPos: () => ipcRenderer.send('window:reset-pos'),
   getWindowPos: () => ipcRenderer.invoke('window:get-pos'),
+  getWindowDock: () => ipcRenderer.invoke('window:get-dock'),
   setIslandExpanded: (expanded) => ipcRenderer.send('island:expand', Boolean(expanded)),
 
   // Standalone Desktop Pet Window
@@ -25,12 +44,22 @@ contextBridge.exposeInMainWorld('island', {
   getPetPos: () => ipcRenderer.invoke('pet:get-pos'),
   resetPetPos: () => ipcRenderer.send('pet:reset-pos'),
   setPetVisible: (vis) => ipcRenderer.send('pet:set-visible', Boolean(vis)),
+  setVoiceMood: (voiceState) => ipcRenderer.send('pet:set-voice-mood', voiceState),
 
-  // Fullscreen autohide settings
+  // Fullscreen autohide & dock mode settings
   getAutohide: () => ipcRenderer.invoke('settings:get-autohide'),
   setAutohide: (enabled) => ipcRenderer.invoke('settings:set-autohide', enabled),
   getAutohidePet: () => ipcRenderer.invoke('settings:get-autohide-pet'),
   setAutohidePet: (enabled) => ipcRenderer.invoke('settings:set-autohide-pet', enabled),
+  getDockMode: () => ipcRenderer.invoke('settings:get-dock-mode'),
+  setDockMode: (mode) => ipcRenderer.invoke('settings:set-dock-mode', mode),
+  getSnapThreshold: () => ipcRenderer.invoke('settings:get-snap-threshold'),
+  setSnapThreshold: (dist) => ipcRenderer.invoke('settings:set-snap-threshold', dist),
+
+  // OpenAI Realtime voice broker (ephemeral token)
+  realtime: {
+    createSession: (options) => ipcRenderer.invoke('realtime:create-session', options),
+  },
 
   scheduler: {
     addAlarm: (input) => ipcRenderer.invoke('scheduler:add-alarm', input),
@@ -43,6 +72,9 @@ contextBridge.exposeInMainWorld('island', {
   media: {
     control: (action) => ipcRenderer.send('media:control', action),
     seek: (posSec) => ipcRenderer.send('media:seek', Number(posSec)),
+    getVideoSourceId: () => ipcRenderer.invoke('video:get-source-id'),
+    resolveYouTubeId: (query) => ipcRenderer.invoke('video:resolve-youtube-id', query),
+    sampleStageColor: () => ipcRenderer.invoke('video:sample-stage-color'),
   },
 
   inbox: {

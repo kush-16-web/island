@@ -98,10 +98,14 @@ export function createMockIsland() {
     }),
     setIgnoreMouse() {},
     setFocusable() {},
+    startWindowDrag() {},
+    moveWindowDrag() {},
     moveWindowBy() {},
+    endWindowDrag() {},
     setWindowPreset() {},
     resetWindowPos() {},
     getWindowPos: async () => ({ x: 0, preset: 'center' }),
+    getWindowDock: async () => ({ edge: 'top', preset: 'center', align: 'center' }),
     setIslandExpanded() {},
     movePetBy() {},
     setPetPos() {},
@@ -112,6 +116,10 @@ export function createMockIsland() {
     setAutohide: async () => true,
     getAutohidePet: async () => true,
     setAutohidePet: async () => true,
+    getDockMode: async () => 'smart',
+    setDockMode: async () => true,
+    getSnapThreshold: async () => 85,
+    setSnapThreshold: async () => true,
     scheduler: {
       async addAlarm({ time, days = [], label = '' }) {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { ok: false, error: 'Alarm time must look like 07:30' };
@@ -190,6 +198,14 @@ export function createMockIsland() {
       markRead() {
         inbox = inbox.map((n) => ({ ...n, read: true }));
         pushInbox();
+      },
+    },
+    setVoiceMood(voiceState) {
+      emit('voice:state', voiceState);
+    },
+    realtime: {
+      async createSession() {
+        return { ok: false, error: 'Realtime voice requires the desktop Electron app with .env OPENAI_API_KEY.' };
       },
     },
     on(channel, callback) {

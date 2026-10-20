@@ -11,6 +11,7 @@ import { Icon } from './icons';
  */
 export default function PetStudioPanel({ setTyping }) {
   const [petName, setPetName] = useState(() => localStorage.getItem('island_pet_name') || 'Mochi');
+  const [userName, setUserName] = useState(() => localStorage.getItem('island_user_name') || 'Friend');
   const [species, setSpecies] = useState(() => localStorage.getItem('island_active_pet') || SPECIES.CAT);
   const [visible, setVisible] = useState(() => localStorage.getItem('island_pet_visible') !== 'false');
   const [roaming, setRoaming] = useState(() => localStorage.getItem('island_pet_roaming') !== 'false');
@@ -21,6 +22,13 @@ export default function PetStudioPanel({ setTyping }) {
     const val = e.target.value.slice(0, 20);
     setPetName(val);
     localStorage.setItem('island_pet_name', val);
+    window.dispatchEvent(new CustomEvent('island:pet-settings-changed'));
+  };
+
+  const handleUserNameChange = (e) => {
+    const val = e.target.value.slice(0, 20);
+    setUserName(val);
+    localStorage.setItem('island_user_name', val);
     window.dispatchEvent(new CustomEvent('island:pet-settings-changed'));
   };
 
@@ -97,7 +105,9 @@ export default function PetStudioPanel({ setTyping }) {
             <span className="pet-hero__badge-icon">
               <Icon.Mic width={11} height={11} />
             </span>
-            <span className="pet-hero__badge-label">Wake: <strong>"Hey {petName || 'Companion'}"</strong></span>
+            <span className="pet-hero__badge-label">
+              Voice Assistant: <strong>{petName || 'Mochi'}</strong> calls you <strong>{userName || 'Friend'}</strong>
+            </span>
           </div>
 
           {/* Clean Status Indicator without glowing dots */}
@@ -111,6 +121,25 @@ export default function PetStudioPanel({ setTyping }) {
 
       {/* Modern Control Grid */}
       <div className="pet-grid">
+        {/* User Identity / Preferred Name */}
+        <div className="pet-card">
+          <div className="pet-card__header">
+            <span className="pet-card__title">Your Name</span>
+            <span className="pet-card__sub">What {petName || 'Island'} calls you</span>
+          </div>
+          <div className="pet-input-wrap">
+            <input
+              type="text"
+              className="pet-field-input"
+              value={userName}
+              onChange={handleUserNameChange}
+              placeholder="e.g. Kush"
+              onFocus={() => setTyping?.(true)}
+              onBlur={() => setTyping?.(false)}
+            />
+          </div>
+        </div>
+
         {/* Species Selector */}
         <div className="pet-card">
           <div className="pet-card__header">

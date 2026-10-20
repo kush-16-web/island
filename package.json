@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "concurrently -k -n ui,app \"vite\" \"wait-on tcp:127.0.0.1:5173 && cross-env ISLAND_DEV_URL=http://127.0.0.1:5173 electron .\"",
-    "dev:web": "vite",
+    "dev:web": "vite --host",
     "build": "vite build",
     "start": "vite build && electron .",
     "test": "node --test",

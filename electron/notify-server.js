@@ -33,8 +33,18 @@ function parseNotification(body) {
   };
 }
 
-function createNotifyServer({ port = DEFAULT_PORT, onNotify, maxBodyBytes = 16 * 1024 } = {}) {
+function createNotifyServer({ port = DEFAULT_PORT, onNotify, onVideoState, maxBodyBytes = 16 * 1024 } = {}) {
   const server = http.createServer((req, res) => {
+    // CORS preflight support for companion browser extension
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '86400',
+      });
+      return res.end();
+    }
     const send = (status, payload, extraHeaders = {}) => {
       const text = JSON.stringify(payload);
       res.writeHead(status, {
@@ -50,8 +60,10 @@ function createNotifyServer({ port = DEFAULT_PORT, onNotify, maxBodyBytes = 16 *
     if (hostname !== '127.0.0.1' && hostname !== 'localhost') return send(403, { ok: false, error: 'Forbidden host' });
 
     const pathname = String(req.url || '').split('?')[0];
-    if (pathname === '/health' && req.method === 'GET') return send(200, { ok: true, app: 'island' });
-    if (pathname !== '/notify') return send(404, { ok: false, error: 'Not found' });
+    if (pathname === '/health' && req.method === 'GET') {
+      return send(200, { ok: true, app: 'island' }, { 'Access-Control-Allow-Origin': '*' });
+    }
+    if (pathname !== '/notify' && pathname !== '/video-state') return send(404, { ok: false, error: 'Not found' });
     if (req.method !== 'POST') return send(405, { ok: false, error: 'Use POST' });
 
     const type = String(req.headers['content-type'] || '').toLowerCase();
@@ -83,11 +95,20 @@ function createNotifyServer({ port = DEFAULT_PORT, onNotify, maxBodyBytes = 16 *
       } catch {
         return send(400, { ok: false, error: 'Invalid JSON' });
       }
+      if (pathname === '/video-state') {
+        try {
+          if (onVideoState) onVideoState(parsed);
+          return send(200, { ok: true }, { 'Access-Control-Allow-Origin': '*' });
+        } catch {
+          return send(500, { ok: false, error: 'Could not process video state' });
+        }
+      }
+
       const result = parseNotification(parsed);
       if (result.error) return send(400, { ok: false, error: result.error });
       try {
         const id = onNotify(result.value);
-        return send(202, { ok: true, id });
+        return send(202, { ok: true, id }, { 'Access-Control-Allow-Origin': '*' });
       } catch (err) {
         return send(500, { ok: false, error: 'Could not show notification' });
       }

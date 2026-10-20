@@ -21,6 +21,7 @@ export default function FullLyrics({
   toggleFavorite,
 }) {
   const [karaokeEnabled, setKaraokeEnabled] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
   const containerRef = useRef(null);
   const activeLineRef = useRef(null);
   const userScrollingRef = useRef(false);
@@ -33,6 +34,7 @@ export default function FullLyrics({
   const barRef = useRef(null);
 
   const lines = lyricsData?.lines || [];
+  const isSynced = Boolean(lyricsData?.isSynced);
   const hasWordSync = Boolean(lyricsData?.hasWordSync);
   const playing = media?.status === 'playing';
 
@@ -40,6 +42,7 @@ export default function FullLyrics({
 
   // Silky cubic-bezier auto-scroll (Apple Music fluid motion)
   useEffect(() => {
+    if (!autoScroll || !isSynced) return;
     userScrollingRef.current = false;
     if (!containerRef.current || !activeLineRef.current) return;
 
@@ -59,8 +62,8 @@ export default function FullLyrics({
     if (Math.abs(change) < 1) return;
 
     const startTime = performance.now();
-    const duration = 520;
-    // Silky Apple Music ease-out cubic
+    // Snappy responsive easing (fast response for lengthy or fast lyrics)
+    const duration = Math.min(260, Math.max(160, Math.abs(change) * 0.7));
     const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
     const step = (now) => {
@@ -170,7 +173,7 @@ export default function FullLyrics({
           </div>
         </div>
 
-        {/* Center: Synced / Karaoke status */}
+        {/* Center: Synced / Karaoke status & Auto-scroll toggle */}
         <div className="full-lyrics__center-status">
           {hasWordSync ? (
             <button
@@ -183,9 +186,18 @@ export default function FullLyrics({
               <span>Mic</span>
               <span className="badge">ELRC</span>
             </button>
+          ) : isSynced ? (
+            <button
+              type="button"
+              className={`karaoke-toggle${autoScroll ? ' is-active' : ''}`}
+              onClick={() => setAutoScroll((prev) => !prev)}
+              title={autoScroll ? 'Auto-scroll is ON (click to pause)' : 'Auto-scroll is paused (click to resume)'}
+            >
+              <span>{autoScroll ? 'Synced' : 'Scroll Free'}</span>
+            </button>
           ) : (
-            <div className="karaoke-toggle is-disabled" title="Line-by-line sync active">
-              <span>Synced</span>
+            <div className="karaoke-toggle is-disabled" title="Showing plain unsynchronized lyrics">
+              <span>Plain Lyrics</span>
             </div>
           )}
         </div>
@@ -209,23 +221,32 @@ export default function FullLyrics({
         onScroll={handleScroll}
       >
         <div className="full-lyrics__padding-top" />
+
+        {!isSynced && lines.length > 0 && (
+          <div className="full-lyrics__unsynced-notice">
+            <Icon.Music width={13} height={13} />
+            <span>No synchronized lyrics available for this track</span>
+          </div>
+        )}
+
         {lines.length === 0 ? (
           <div className="full-lyrics__empty">
-            <span>No synchronized lyrics available for this track.</span>
+            <span>No lyrics available for this track.</span>
           </div>
         ) : (
           lines.map((line, idx) => {
-            const isActive = idx === activeLineIndex;
-            const isPast = idx < activeLineIndex;
-            const isFuture = idx > activeLineIndex;
+            const isActive = isSynced && idx === activeLineIndex;
+            const isPast = isSynced && idx < activeLineIndex;
+            const isFuture = isSynced && idx > activeLineIndex;
 
             let lineClass = 'full-lyrics__line';
-            if (isActive) lineClass += ' is-active';
+            if (!isSynced) lineClass += ' is-plain';
+            else if (isActive) lineClass += ' is-active';
             else if (isPast) lineClass += ' is-past';
             else if (isFuture) lineClass += ' is-future';
 
             // Karaoke Mode word-by-word rendering
-            const showWordKaraoke = karaokeEnabled && hasWordSync && isActive && line.words && line.words.length > 0;
+            const showWordKaraoke = isSynced && karaokeEnabled && hasWordSync && isActive && line.words && line.words.length > 0;
 
             return (
               <div
@@ -233,12 +254,12 @@ export default function FullLyrics({
                 ref={isActive ? activeLineRef : null}
                 className={lineClass}
                 onClick={() => {
-                  if (line.startTimeMs != null && onSeek) {
+                  if (isSynced && line.startTimeMs != null && onSeek) {
                     onSeek(line.startTimeMs / 1000);
                   }
                 }}
-                style={{ cursor: 'pointer' }}
-                title="Jump to this lyric"
+                style={{ cursor: isSynced ? 'pointer' : 'default' }}
+                title={isSynced ? 'Jump to this lyric' : undefined}
               >
                 {showWordKaraoke ? (
                   <span className="karaoke-words">

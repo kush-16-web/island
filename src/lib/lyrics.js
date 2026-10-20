@@ -137,20 +137,33 @@ export async function fetchLyrics({ title, artist, album, durationSec }) {
     if (response.ok) {
       data = await response.json();
     } else {
-      // 2. Fallback: Search with GET /api/search
-      const searchUrl = new URL(`${API_BASE}/search`);
-      const query = cleanArtist ? `${cleanTitle || title} ${cleanArtist}` : cleanTitle || title;
-      searchUrl.searchParams.set('q', query);
+      // 2. Multi-tier search fallback:
+      // First try: full title + artist
+      // Second try: title + primary artist
+      // Third try: title only
+      const primaryArtist = cleanArtist ? cleanArtist.split(/[&,]/)[0].trim() : '';
+      const candidateQueries = [
+        cleanArtist ? `${cleanTitle || title} ${cleanArtist}` : cleanTitle || title,
+        primaryArtist && primaryArtist !== cleanArtist ? `${cleanTitle || title} ${primaryArtist}` : '',
+        cleanTitle || title,
+      ].filter(Boolean);
 
-      const searchRes = await fetch(searchUrl.toString(), {
-        headers: { 'User-Agent': USER_AGENT },
-      });
-
-      if (searchRes.ok) {
-        const searchResults = await searchRes.json();
-        if (Array.isArray(searchResults) && searchResults.length > 0) {
-          data = searchResults[0];
-        }
+      for (const query of candidateQueries) {
+        try {
+          const searchUrl = new URL(`${API_BASE}/search`);
+          searchUrl.searchParams.set('q', query);
+          const searchRes = await fetch(searchUrl.toString(), {
+            headers: { 'User-Agent': USER_AGENT },
+          });
+          if (searchRes.ok) {
+            const searchResults = await searchRes.json();
+            if (Array.isArray(searchResults) && searchResults.length > 0) {
+              // Prefer result with synced lyrics over plain lyrics
+              data = searchResults.find((r) => r.syncedLyrics && r.syncedLyrics.trim().length > 0) || searchResults[0];
+              if (data) break;
+            }
+          }
+        } catch {}
       }
     }
 

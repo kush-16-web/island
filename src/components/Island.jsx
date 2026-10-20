@@ -11,18 +11,21 @@ import Hub from './Hub';
 import { Icon } from './icons';
 import PetSystem from '../pets/PetSystem';
 import { isMock } from '../lib/bridge';
+import { useVideoAmbient, isVideoMedia } from '../hooks/useVideoAmbient';
+import { useRealtimeVoice } from '../hooks/useRealtimeVoice';
 
 const HUB_W = 468;
-const HUB_H = { playing: 282, clock: 384, inbox: 340, pet: 410, settings: 340 };
+const HUB_H = { playing: 282, clock: 384, inbox: 340, pet: 410, settings: 340, voice: 340 };
 const SIZE = {
-  idle: { w: 136, h: 36 },
+  idle: { w: 142, h: 36 },
+  voice: { w: 220, h: 40 },
   timer: { w: 184, h: 40 },
   media: { w: 252, h: 40 },
   both: { w: 300, h: 40 },
   toast: { w: 392, h: 68 },
   ring: { w: 412, h: 96 },
 };
-const RADIUS = { idle: 18, timer: 20, media: 20, both: 20, toast: 34, ring: 40, hub: 34 };
+const RADIUS = { idle: 18, voice: 20, timer: 20, media: 20, both: 20, toast: 34, ring: 40, hub: 34 };
 
 function View({ w, h, className = '', children }) {
   return (
@@ -57,6 +60,33 @@ function CompactView({ mode, media, nextTimer, now, musicColor, playing, width }
       ) : (
         <Equalizer color={musicColor} playing={playing} />
       )}
+    </View>
+  );
+}
+
+function CompactVoiceView({ voice, width }) {
+  const petName = localStorage.getItem('island_pet_name') || 'Mochi';
+  let dotClass = 'is-listening';
+  if (voice.status === 'thinking') dotClass = 'is-thinking';
+  else if (voice.status === 'speaking') dotClass = 'is-speaking';
+  else if (voice.status === 'error') dotClass = 'is-error';
+  else if (voice.status === 'connecting') dotClass = 'is-connecting';
+
+  return (
+    <View w={width} h={SIZE.voice.h} className="compact compact--voice">
+      <span className={`compact-voice-dot ${dotClass}`} />
+      <div className="compact-voice-bars">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <span
+            key={i}
+            className={`compact-voice-bar ${dotClass}`}
+            style={{
+              height: `${Math.max(4, Math.round((voice.waveformData?.[i * 2] || 0.1) * 22))}px`,
+            }}
+          />
+        ))}
+      </div>
+      <span className="compact__title">{petName}: {voice.status}</span>
     </View>
   );
 }
@@ -111,12 +141,28 @@ const measureTextWidth = (text, font = '500 12.5px Geist, -apple-system, sans-se
 
 export default function Island() {
   const { state: s, actions } = useIsland();
+  const voice = useRealtimeVoice();
   const now = useNow(1000);
   const [hubOpen, setHubOpen] = useState(false);
   const [tab, setTab] = useState('playing');
   const [hovered, setHovered] = useState(false);
   const [typing, setTyping] = useState(false);
   const [isLyricsFull, setIsLyricsFull] = useState(false);
+  const [dock, setDock] = useState({ edge: 'top', preset: 'center' });
+
+  // Sync dock position and edge state from Electron
+  useEffect(() => {
+    if (window.island?.getWindowDock) {
+      window.island.getWindowDock().then((d) => {
+        if (d && d.edge) setDock(d);
+      });
+    }
+    if (window.island?.on) {
+      return window.island.on('window:dock-changed', (d) => {
+        if (d && d.edge) setDock(d);
+      });
+    }
+  }, []);
 
   const { schedule, inbox, media, toast, rings } = s;
   const ring = rings[0] || null;
@@ -130,6 +176,7 @@ export default function Island() {
   let mode = 'idle';
   if (ring) mode = 'ring';
   else if (hubOpen) mode = 'hub';
+  else if (voice.status !== 'idle') mode = 'voice';
   else if (toast) mode = 'toast';
   else if (nextTimer && playing) mode = 'both';
   else if (nextTimer) mode = 'timer';
@@ -137,9 +184,13 @@ export default function Island() {
 
   const getDynamicHubHeight = () => {
     switch (tab) {
+      case 'voice':
+        return 340;
       case 'playing':
         if (!media.active) return 190;
-        return isLyricsFull ? 340 : 262;
+        if (isLyricsFull === 'cinema') return 315;
+        if (isLyricsFull === 'lyrics' || isLyricsFull === true) return 340;
+        return 276;
       case 'clock': {
         const count = schedule.length;
         if (count === 0) return 214;
@@ -153,7 +204,7 @@ export default function Island() {
       case 'pet':
         return 410;
       case 'settings':
-        return 315;
+        return 355;
       default:
         return 280;
     }
@@ -161,6 +212,7 @@ export default function Island() {
 
   const getDynamicWidth = () => {
     if (mode === 'hub') return HUB_W;
+    if (mode === 'voice') return SIZE.voice.w;
     if (mode === 'media') {
       const textWidth = Math.ceil(measureTextWidth(media?.title || ''));
       // Art(26) + padding(22) + gap(9) + textWidth + clean gap(10) + eq(18) = textWidth + 85
@@ -237,6 +289,18 @@ export default function Island() {
     [],
   );
 
+  // Global voice shortcut listener (Ctrl+Shift+Space)
+  useEffect(() => {
+    if (!window.island?.on) return undefined;
+    return window.island.on('voice:toggle', () => {
+      if (voice.status === 'idle' || voice.status === 'error') {
+        openHub('voice');
+      } else {
+        setHubOpen(false);
+      }
+    });
+  }, [voice.status, openHub]);
+
   // Toasts: auto-dismiss (paused while hovered); skip them while the hub is already open.
   useEffect(() => {
     if (!toast) return undefined;
@@ -268,8 +332,11 @@ export default function Island() {
     }
   }, [media.active, media.art]);
 
+  const isVideo = isVideoMedia(media);
+  const { ambientColor: videoAmbientColor, stream: videoStream, streamActive: videoStreamActive, youtubeId } = useVideoAmbient(media, playing);
+
   const fallbackMusicColor = `hsl(${media.active ? hueFrom(`${media.title}${media.artist}`) : 265} 80% 70%)`;
-  const musicColor = dynamicColor || fallbackMusicColor;
+  const musicColor = (isVideo && videoAmbientColor) ? videoAmbientColor : (dynamicColor || fallbackMusicColor);
 
   let accent = 'var(--c-info)';
   if (ring) accent = ring.kind === 'alarm' ? 'var(--c-alarm)' : 'var(--c-timer)';
@@ -285,52 +352,61 @@ export default function Island() {
     dragRef.current = {
       active: true,
       startX: e.screenX,
-      lastX: e.screenX,
+      startY: e.screenY,
       hasMoved: false,
-      pointerId: e.pointerId,
     };
 
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
-  };
+    if (window.island?.startWindowDrag) {
+      window.island.startWindowDrag();
+    }
 
-  const onIslandPointerMove = (e) => {
-    if (!dragRef.current.active) return;
-    const dx = e.screenX - dragRef.current.lastX;
-    const totalDist = Math.abs(e.screenX - dragRef.current.startX);
+    const onPointerMove = (ev) => {
+      if (!dragRef.current.active) return;
+      const dist = Math.hypot(ev.screenX - dragRef.current.startX, ev.screenY - dragRef.current.startY);
 
-    if (totalDist > 4) {
-      dragRef.current.hasMoved = true;
-      if (dx !== 0 && window.island?.moveWindowBy) {
-        window.island.moveWindowBy(dx, 0);
+      if (dist > 4) {
+        dragRef.current.hasMoved = true;
+        if (window.island?.moveWindowDrag) {
+          window.island.moveWindowDrag();
+        } else if (window.island?.moveWindowBy) {
+          const dx = ev.screenX - dragRef.current.startX;
+          const dy = ev.screenY - dragRef.current.startY;
+          window.island.moveWindowBy(dx, dy);
+        }
       }
-      dragRef.current.lastX = e.screenX;
-    }
-  };
+    };
 
-  const onIslandPointerUp = (e) => {
-    if (!dragRef.current.active) return;
-    const { hasMoved, pointerId } = dragRef.current;
-    dragRef.current.active = false;
+    const onPointerUp = (ev) => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
 
-    try {
-      if (pointerId !== null) e.currentTarget.releasePointerCapture(pointerId);
-    } catch {}
+      if (!dragRef.current.active) return;
+      const { hasMoved } = dragRef.current;
+      dragRef.current.active = false;
 
-    if (hasMoved) {
-      e.stopPropagation();
-      return;
-    }
+      if (hasMoved) {
+        ev?.stopPropagation?.();
+        if (window.island?.endWindowDrag) {
+          window.island.endWindowDrag();
+        }
+        return;
+      }
 
-    // Normal click: expand into hub!
-    if (mode === 'idle') openHub('playing');
-    else if (mode === 'media') openHub('playing');
-    else if (mode === 'timer' || mode === 'both') openHub('clock');
-    else if (mode === 'toast') {
-      openHub('inbox');
-      actions.clearToast(toast.id);
-    }
+      // Normal click: expand into hub!
+      if (mode === 'idle') openHub('playing');
+      else if (mode === 'voice') openHub('voice');
+      else if (mode === 'media') openHub('playing');
+      else if (mode === 'timer' || mode === 'both') openHub('clock');
+      else if (mode === 'toast') {
+        openHub('inbox');
+        actions.clearToast(toast.id);
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
   };
 
   let view;
@@ -349,13 +425,32 @@ export default function Island() {
           setTyping={setTyping}
           accentColor={musicColor}
           onLyricsViewChange={setIsLyricsFull}
+          videoStream={videoStream}
+          videoStreamActive={videoStreamActive}
+          youtubeId={youtubeId}
+          voice={voice}
         />
       </View>
     );
+  } else if (mode === 'voice') {
+    view = <CompactVoiceView voice={voice} width={width} />;
   } else if (mode === 'idle') {
     view = (
       <View w={SIZE.idle.w} h={SIZE.idle.h} className="idle">
         <span className="idle__time">{formatClock(now)}</span>
+        <button
+          type="button"
+          className="idle__mic-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            voice.startSession();
+            openHub('voice');
+          }}
+          title="Talk to Island (Ctrl+Shift+Space)"
+          aria-label="Talk to Island"
+        >
+          <Icon.Mic width={12} height={12} />
+        </button>
         {unread > 0 && <span className="idle__dot" />}
       </View>
     );
@@ -366,11 +461,14 @@ export default function Island() {
   const contentKey = mode === 'toast' ? `toast-${toast.id}` : mode === 'ring' ? `ring-${ring.key}` : mode;
 
   return (
-    <div className="stage">
+    <div className="stage" data-dock={dock.edge || 'top'} data-align={dock.align || 'center'} data-valign={dock.vAlign || 'center'}>
       <motion.div
         className={`island ${mode !== 'hub' ? 'is-draggable' : ''}`}
         data-hit
         data-mode={mode}
+        data-dock={dock.edge || 'top'}
+        data-align={dock.align || 'center'}
+        data-valign={dock.vAlign || 'center'}
         style={{ '--accent': accent, '--music-accent': musicColor }}
         initial={false}
         animate={{ width, height, borderRadius: RADIUS[mode] }}
@@ -379,16 +477,23 @@ export default function Island() {
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
         onPointerDown={onIslandPointerDown}
-        onPointerMove={onIslandPointerMove}
-        onPointerUp={onIslandPointerUp}
       >
-        {/* Apple Music & YouTube Music Full-Island Ambient Blurred Art Background */}
-        {media.active && media.art && (
+        {/* YouTube Ambient Mode Frame Glow & Full-Island Album Art Background */}
+        {media.active && isVideo && videoAmbientColor ? (
+          <div className="island__ambient-art" aria-hidden="true">
+            <div
+              className="island__video-ambient-glow"
+              style={{
+                background: `radial-gradient(circle at 50% 25%, color-mix(in srgb, ${videoAmbientColor} 55%, transparent) 0%, color-mix(in srgb, ${videoAmbientColor} 18%, rgba(10, 11, 16, 0.95)) 60%, rgba(10, 11, 16, 0.98) 100%)`,
+              }}
+            />
+          </div>
+        ) : media.active && media.art ? (
           <div className="island__ambient-art" aria-hidden="true">
             <img src={media.art} alt="" className="island__ambient-art-img" />
             <div className="island__ambient-art-overlay" />
           </div>
-        )}
+        ) : null}
 
         <AnimatePresence initial={false}>
           <motion.div

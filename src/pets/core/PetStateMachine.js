@@ -18,7 +18,13 @@ export class PetStateMachine {
 
   setState(nextState, { isManual = false, duration = 0 } = {}) {
     if (this.manualOverride && !isManual) return;
-    if (this.currentState === nextState) return;
+
+    if (this.currentState === nextState) {
+      clearTimeout(this.timer);
+      const refreshDur = duration > 0 ? duration : 5000;
+      this.timer = setTimeout(() => this.transitionToAutonomous(), refreshDur);
+      return;
+    }
 
     this.currentState = nextState;
     if (isManual) this.manualOverride = true;
@@ -49,42 +55,36 @@ export class PetStateMachine {
     if (this.manualOverride) return;
 
     if (currentMood === 'music') {
-      const choices = [ANIMATION_STATES.DANCE, ANIMATION_STATES.WALK, ANIMATION_STATES.IDLE];
-      const next = Math.random() < 0.65 ? ANIMATION_STATES.DANCE : choices[Math.floor(Math.random() * choices.length)];
-      this.setState(next, { duration: 8000 + Math.random() * 6000 });
+      const musicChoices = [ANIMATION_STATES.DANCE, ANIMATION_STATES.WALK, ANIMATION_STATES.HAPPY];
+      const pool = musicChoices.filter((s) => s !== this.currentState);
+      const next = Math.random() < 0.65 ? ANIMATION_STATES.DANCE : (pool[Math.floor(Math.random() * pool.length)] || ANIMATION_STATES.DANCE);
+      this.setState(next, { duration: 7000 + Math.random() * 5000 });
       return;
     }
 
     if (currentMood === 'sleepy') {
-      this.setState(ANIMATION_STATES.SLEEP);
+      this.setState(ANIMATION_STATES.SLEEP, { duration: 15000 });
       return;
     }
 
-    // Natural playful behavior distribution:
-    // 25% Sit peacefully, 20% 4-legged walk, 15% Playful run, 15% Jump/Pounce, 15% Play with toy ball, 10% Happy purr/stretch
-    const roll = Math.random();
-    let next = ANIMATION_STATES.SIT;
-    let dur = 7000;
+    // Natural varied feline behaviors: filter out current state to prevent repetitive moves
+    const pool = [
+      ANIMATION_STATES.SIT,
+      ANIMATION_STATES.WALK,
+      ANIMATION_STATES.RUN,
+      ANIMATION_STATES.JUMP,
+      ANIMATION_STATES.PLAY,
+      ANIMATION_STATES.HAPPY,
+    ].filter((s) => s !== this.currentState);
 
-    if (roll < 0.25) {
-      next = ANIMATION_STATES.SIT;
-      dur = 7000 + Math.random() * 6000;
-    } else if (roll < 0.45) {
-      next = ANIMATION_STATES.WALK;
-      dur = 3500 + Math.random() * 2500;
-    } else if (roll < 0.60) {
-      next = ANIMATION_STATES.RUN;
-      dur = 2800 + Math.random() * 2000;
-    } else if (roll < 0.75) {
-      next = ANIMATION_STATES.JUMP;
-      dur = 2400;
-    } else if (roll < 0.90) {
-      next = ANIMATION_STATES.PLAY;
-      dur = 4500 + Math.random() * 3000;
-    } else {
-      next = ANIMATION_STATES.HAPPY;
-      dur = 3200;
-    }
+    const next = pool[Math.floor(Math.random() * pool.length)] || ANIMATION_STATES.SIT;
+    let dur = 5000;
+    if (next === ANIMATION_STATES.SIT) dur = 6000 + Math.random() * 4000;
+    else if (next === ANIMATION_STATES.WALK) dur = 3500 + Math.random() * 2500;
+    else if (next === ANIMATION_STATES.RUN) dur = 2800 + Math.random() * 1800;
+    else if (next === ANIMATION_STATES.JUMP) dur = 2500;
+    else if (next === ANIMATION_STATES.PLAY) dur = 4500 + Math.random() * 2500;
+    else if (next === ANIMATION_STATES.HAPPY) dur = 3200;
 
     this.setState(next, { duration: dur });
   }

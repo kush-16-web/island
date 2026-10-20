@@ -1,18 +1,40 @@
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { SPRING } from '../lib/motion';
 import { Switch } from './bits';
+import { Icon } from './icons';
 
 /**
- * SettingsPanel: Manages Island positioning presets, dragging behavior,
- * fullscreen autohide, and application preferences inside the expanded Dynamic Island.
+ * SettingsPanel: Apple-inspired desktop preferences for Dynamic Island.
+ * Features Framer Motion gliding pill, Lucide animated icons, dynamic album-tinted accents,
+ * and clean typography without cluttered AI badge boxes.
  */
-export default function SettingsPanel() {
+export default function SettingsPanel({ accentColor }) {
   const [currentPreset, setCurrentPreset] = useState('center');
+  const [currentEdge, setCurrentEdge] = useState('top');
+  const [dockMode, setDockMode] = useState('smart');
+  const [snapThreshold, setSnapThreshold] = useState(85);
   const [autohideIsland, setAutohideIsland] = useState(true);
   const [autohidePet, setAutohidePet] = useState(true);
+  const [lyricsOffset, setLyricsOffset] = useState(() => {
+    try {
+      const saved = localStorage.getItem('island_lyrics_offset');
+      return saved !== null ? Number(saved) : 0;
+    } catch {
+      return 0;
+    }
+  });
 
   useEffect(() => {
-    window.island?.getWindowPos?.().then((res) => {
+    window.island?.getWindowDock?.().then((res) => {
       if (res?.preset) setCurrentPreset(res.preset);
+      if (res?.edge) setCurrentEdge(res.edge);
+    });
+    window.island?.getDockMode?.().then((res) => {
+      if (res) setDockMode(res);
+    });
+    window.island?.getSnapThreshold?.().then((res) => {
+      if (typeof res === 'number') setSnapThreshold(res);
     });
     window.island?.getAutohide?.().then((res) => {
       if (typeof res === 'boolean') setAutohideIsland(res);
@@ -22,15 +44,39 @@ export default function SettingsPanel() {
     });
 
     if (window.island?.on) {
-      return window.island.on('window:pos-changed', ({ preset }) => {
-        if (preset) setCurrentPreset(preset);
+      return window.island.on('window:dock-changed', (snapped) => {
+        if (snapped?.preset) setCurrentPreset(snapped.preset);
+        if (snapped?.edge) setCurrentEdge(snapped.edge);
       });
     }
   }, []);
 
+  const handleSetDockMode = (mode) => {
+    setDockMode(mode);
+    window.island?.setDockMode?.(mode);
+  };
+
+  const handleSetSnapThreshold = (val) => {
+    setSnapThreshold(val);
+    window.island?.setSnapThreshold?.(val);
+  };
+
+  const handleSetLyricsOffset = (offset) => {
+    setLyricsOffset(offset);
+    localStorage.setItem('island_lyrics_offset', String(offset));
+    window.dispatchEvent(new CustomEvent('island:lyrics-offset-changed'));
+  };
+
+  const handleSetEdge = (edge) => {
+    setCurrentEdge(edge);
+    const defaultPreset = edge === 'top' || edge === 'bottom' ? 'center' : 'middle';
+    setCurrentPreset(defaultPreset);
+    window.island?.setWindowPreset?.({ preset: defaultPreset, edge });
+  };
+
   const handleSetPreset = (preset) => {
     setCurrentPreset(preset);
-    window.island?.setWindowPreset?.(preset);
+    window.island?.setWindowPreset?.({ preset, edge: currentEdge });
   };
 
   const handleToggleAutohideIsland = (next) => {
@@ -44,83 +90,291 @@ export default function SettingsPanel() {
   };
 
   const handleResetPos = () => {
+    setCurrentEdge('top');
     setCurrentPreset('center');
     window.island?.resetWindowPos?.();
   };
 
+  const isHorizontalEdge = currentEdge === 'top' || currentEdge === 'bottom';
+
+  const MODES = [
+    { id: 'smart', label: 'Smart Snapping', Glyph: Icon.Magnet, title: 'Edge magnetic snapping with free-space middle zone' },
+    { id: 'free', label: 'Free Floating', Glyph: Icon.Move, title: 'Drop the Island anywhere with 100% full-screen freedom' },
+    { id: 'always', label: 'Always Docked', Glyph: Icon.Layers, title: 'Lock Island firmly to a designated screen bezel' },
+  ];
+
   return (
-    <div className="settings-panel scroll">
-      {/* Position Presets */}
-      <div className="setting-row">
-        <div className="setting-label">
-          <span>Island Screen Position</span>
-          <span className="setting-sub">Snap the Dynamic Island to monitor presets</span>
-        </div>
-        <div className="chips">
+    <div className="settings-panel scroll" style={{ '--panel-accent': accentColor || 'var(--c-info)' }}>
+      {/* Mode Segmented Controller with Framer Motion Gliding Pill */}
+      <div className="settings-segmented">
+        {MODES.map(({ id, label, Glyph, title }) => (
           <button
+            key={id}
             type="button"
-            className={`chip ${currentPreset === 'left' ? 'is-active' : ''}`}
-            onClick={() => handleSetPreset('left')}
+            className={`settings-segmented__item ${dockMode === id ? 'is-active' : ''}`}
+            onClick={() => handleSetDockMode(id)}
+            title={title}
           >
-            Left
+            {dockMode === id && (
+              <motion.span
+                layoutId="settings-dock-pill"
+                className="settings-segmented__pill"
+                transition={SPRING}
+              />
+            )}
+            <span className="settings-segmented__label">
+              <Glyph width={14} height={14} />
+              <span>{label}</span>
+            </span>
           </button>
-          <button
-            type="button"
-            className={`chip ${currentPreset === 'center' ? 'is-active' : ''}`}
-            onClick={() => handleSetPreset('center')}
-          >
-            Center
+        ))}
+      </div>
+
+      {/* Mode 1: Smart Snapping (Magnetic snap sensitivity & current dynamic anchor) */}
+      {dockMode === 'smart' && (
+        <div className="settings-group">
+          <div className="settings-row">
+            <div className="settings-row__text">
+              <span className="settings-row__title">Magnetic Snap Range</span>
+              <span className="settings-row__sub">Pulls to screen edges when close; floats freely in center area</span>
+            </div>
+            <div className="settings-chips">
+              {[
+                { label: 'Gentle (50px)', val: 50 },
+                { label: 'Standard (85px)', val: 85 },
+                { label: 'Strong (130px)', val: 130 },
+              ].map((item) => (
+                <button
+                  key={item.val}
+                  type="button"
+                  className={`settings-chip ${snapThreshold === item.val ? 'is-active' : ''}`}
+                  onClick={() => handleSetSnapThreshold(item.val)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings-divider" />
+
+          <div className="settings-row">
+            <div className="settings-row__text">
+              <span className="settings-row__title">Current Dock Status</span>
+              <span className="settings-row__sub">
+                {currentEdge === 'free'
+                  ? 'Floating in center open area'
+                  : `Magnetically docked to ${currentEdge.toUpperCase()} (${currentPreset.toUpperCase()})`}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="settings-btn-inline"
+              onClick={() => {
+                handleSetEdge('top');
+                handleSetPreset('center');
+              }}
+              title="Snap to Top Center"
+            >
+              <Icon.RotateCcw width={12} height={12} />
+              <span>Snap to Top</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Mode 2: Free Floating (100% unrestricted canvas) */}
+      {dockMode === 'free' && (
+        <div className="settings-group">
+          <div className="settings-radar-card">
+            <div className="settings-radar-preview" aria-hidden="true">
+              <div className="settings-radar-screen">
+                <div className="settings-radar-island" />
+              </div>
+            </div>
+            <div className="settings-radar-info">
+              <div className="settings-radar-header">
+                <span className="settings-radar-title">Full-Screen Free Floating</span>
+                <span className="settings-badge-live">Active</span>
+              </div>
+              <p className="settings-radar-desc">
+                Drag and drop the Island anywhere from the top bezel to the taskbar. Zero edge locks or boundary blocks.
+              </p>
+              <div className="settings-radar-actions">
+                <button
+                  type="button"
+                  className="settings-btn-action"
+                  onClick={handleResetPos}
+                  title="Snap back to Top Center"
+                >
+                  <Icon.RotateCcw width={12} height={12} />
+                  <span>Center Display</span>
+                </button>
+                <button
+                  type="button"
+                  className="settings-btn-action settings-btn-action--secondary"
+                  onClick={() => {
+                    handleSetDockMode('always');
+                    handleSetEdge('top');
+                    handleSetPreset('center');
+                  }}
+                  title="Switch to Fixed Top Dock"
+                >
+                  <Icon.Monitor width={12} height={12} />
+                  <span>Dock Top</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mode 3: Always Docked (Manual fixed edge & alignment lock) */}
+      {dockMode === 'always' && (
+        <div className="settings-group">
+          {/* Edge Selection */}
+          <div className="settings-row">
+            <div className="settings-row__text">
+              <span className="settings-row__title">Dock Screen Edge</span>
+              <span className="settings-row__sub">Lock Island firmly to a designated screen bezel</span>
+            </div>
+            <div className="settings-chips">
+              {['top', 'bottom', 'left', 'right'].map((edge) => (
+                <button
+                  key={edge}
+                  type="button"
+                  className={`settings-chip ${currentEdge === edge ? 'is-active' : ''}`}
+                  onClick={() => handleSetEdge(edge)}
+                >
+                  {edge.charAt(0).toUpperCase() + edge.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings-divider" />
+
+          {/* Alignment Selection */}
+          <div className="settings-row">
+            <div className="settings-row__text">
+              <span className="settings-row__title">Edge Alignment</span>
+              <span className="settings-row__sub">Position along selected edge</span>
+            </div>
+            <div className="settings-chips">
+              {isHorizontalEdge ? (
+                <>
+                  <button
+                    type="button"
+                    className={`settings-chip ${currentPreset === 'left' ? 'is-active' : ''}`}
+                    onClick={() => handleSetPreset('left')}
+                  >
+                    Left
+                  </button>
+                  <button
+                    type="button"
+                    className={`settings-chip ${currentPreset === 'center' ? 'is-active' : ''}`}
+                    onClick={() => handleSetPreset('center')}
+                  >
+                    Center
+                  </button>
+                  <button
+                    type="button"
+                    className={`settings-chip ${currentPreset === 'right' ? 'is-active' : ''}`}
+                    onClick={() => handleSetPreset('right')}
+                  >
+                    Right
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={`settings-chip ${currentPreset === 'top' ? 'is-active' : ''}`}
+                    onClick={() => handleSetPreset('top')}
+                  >
+                    Top
+                  </button>
+                  <button
+                    type="button"
+                    className={`settings-chip ${currentPreset === 'middle' ? 'is-active' : ''}`}
+                    onClick={() => handleSetPreset('middle')}
+                  >
+                    Middle
+                  </button>
+                  <button
+                    type="button"
+                    className={`settings-chip ${currentPreset === 'bottom' ? 'is-active' : ''}`}
+                    onClick={() => handleSetPreset('bottom')}
+                  >
+                    Bottom
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Display & Behavior Group */}
+      <div className="settings-group">
+        <div className="settings-row settings-row--switch">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Hide Island in Fullscreen</span>
+            <span className="settings-row__sub">YouTube, games, and full-screen windows</span>
+          </div>
+          <Switch checked={autohideIsland} onChange={handleToggleAutohideIsland} label="Toggle island fullscreen autohide" />
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="settings-row settings-row--switch">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Hide Pet in Fullscreen</span>
+            <span className="settings-row__sub">Companion pet autohides during games and videos</span>
+          </div>
+          <Switch checked={autohidePet} onChange={handleToggleAutohidePet} label="Toggle pet fullscreen autohide" />
+        </div>
+      </div>
+
+      {/* Lyrics Synchronization Group */}
+      <div className="settings-group">
+        <div className="settings-row settings-row--wrap">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Lyrics Synchronization</span>
+            <span className="settings-row__sub">Scroll lead-time to match singer vocal delivery</span>
+          </div>
+          <div className="settings-chips">
+            {[
+              { label: 'Faster (-400ms)', val: 150 },
+              { label: 'Natural (-250ms)', val: 0 },
+              { label: 'Exact (0ms)', val: -250 },
+              { label: 'Late (+150ms)', val: -400 },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className={`settings-chip ${lyricsOffset === item.val ? 'is-active' : ''}`}
+                onClick={() => handleSetLyricsOffset(item.val)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Shortcuts & Footer */}
+      <div className="settings-footer">
+        <div className="settings-footer__hint">
+          <Icon.Sparkles width={13} height={13} />
+          <span>Press <code>Esc</code> or click outside anytime to collapse.</span>
+        </div>
+        {dockMode !== 'free' && (
+          <button type="button" className="settings-footer__reset" onClick={handleResetPos}>
+            <Icon.RotateCcw width={12} height={12} />
+            <span>Reset Dock</span>
           </button>
-          <button
-            type="button"
-            className={`chip ${currentPreset === 'right' ? 'is-active' : ''}`}
-            onClick={() => handleSetPreset('right')}
-          >
-            Right
-          </button>
-        </div>
-      </div>
-
-      {/* Fullscreen Autohide Options */}
-      <div className="setting-row setting-row--switch">
-        <div className="setting-label">
-          <span>Auto-hide Island in Fullscreen</span>
-          <span className="setting-sub">Hides Dynamic Island during YouTube, games, and F11 windows</span>
-        </div>
-        <Switch checked={autohideIsland} onChange={handleToggleAutohideIsland} label="Toggle island fullscreen autohide" />
-      </div>
-
-      <div className="setting-row setting-row--switch">
-        <div className="setting-label">
-          <span>Auto-hide Pet in Fullscreen</span>
-          <span className="setting-sub">Hides desktop companion during full-screen media and gaming</span>
-        </div>
-        <Switch checked={autohidePet} onChange={handleToggleAutohidePet} label="Toggle pet fullscreen autohide" />
-      </div>
-
-      {/* Manual Dragging Guide */}
-      <div className="setting-card">
-        <div className="setting-card__title">✨ Dragging Your Island</div>
-        <div className="setting-card__desc">
-          Click and drag the collapsed Dynamic Island horizontally to place it anywhere along the top of your screen.
-          Your custom position is saved automatically and remembered across restarts.
-        </div>
-      </div>
-
-      {/* Click Outside Dismissal Guide */}
-      <div className="setting-card">
-        <div className="setting-card__title">🎯 Click-Outside Dismissal</div>
-        <div className="setting-card__desc">
-          When expanded, this island stays open while you use it. Clicking outside anywhere on your desktop, browser,
-          taskbar, or pressing <code>Esc</code> collapses it immediately without blocking your click.
-        </div>
-      </div>
-
-      {/* Reset Position */}
-      <div className="setting-actions">
-        <button type="button" className="btn btn--soft" onClick={handleResetPos}>
-          Reset to Center
-        </button>
+        )}
       </div>
     </div>
   );

@@ -50,6 +50,25 @@ export default function DesktopPetWindow() {
     });
   }, []);
 
+  // Listen to voice assistant state from Electron bridge
+  useEffect(() => {
+    if (!window.island?.on) return undefined;
+    return window.island.on('voice:state', (voiceState) => {
+      if (voiceState === 'listening') {
+        clearInterval(walkIntervalRef.current);
+        setMood('alert');
+        stateMachineRef.current?.setState(ANIMATION_STATES.SIT, { duration: 30000 });
+      } else if (voiceState === 'speaking') {
+        clearInterval(walkIntervalRef.current);
+        setMood('normal');
+        stateMachineRef.current?.setState(ANIMATION_STATES.HAPPY, { duration: 12000 });
+      } else {
+        setMood('normal');
+        stateMachineRef.current?.transitionToAutonomous('normal');
+      }
+    });
+  }, []);
+
   // Initialize state machine
   useEffect(() => {
     const sm = new PetStateMachine({
@@ -63,15 +82,32 @@ export default function DesktopPetWindow() {
     };
   }, []);
 
-  // Autonomous desktop roaming (strolling by moving window position)
-  const executeDesktopWalk = useCallback((isRun = false) => {
+  // Autonomous desktop roaming (strolling by moving window position with screen edge detection)
+  const executeDesktopWalk = useCallback(async (isRun = false) => {
     if (!roaming || !window.island?.movePetBy) return;
-    const dir = Math.random() > 0.5 ? DIRECTIONS.RIGHT : DIRECTIONS.LEFT;
+
+    let currX = 500;
+    try {
+      const pos = await window.island?.getPetPos?.();
+      if (pos && typeof pos.x === 'number') currX = pos.x;
+    } catch {}
+
+    const screenW = window.screen.availWidth || 1920;
+    let dir;
+    if (currX < 140) {
+      // Near left boundary, turn right!
+      dir = DIRECTIONS.RIGHT;
+    } else if (currX > screenW - 300) {
+      // Near right boundary, turn left!
+      dir = DIRECTIONS.LEFT;
+    } else {
+      dir = Math.random() > 0.5 ? DIRECTIONS.RIGHT : DIRECTIONS.LEFT;
+    }
     setFacing(dir);
 
-    const steps = isRun ? 24 : 35 + Math.floor(Math.random() * 20);
+    const steps = isRun ? 26 : 38 + Math.floor(Math.random() * 20);
     let stepCount = 0;
-    const stepDist = dir * (isRun ? 4.5 : 2.2);
+    const stepDist = dir * (isRun ? 4.5 : 2.4);
 
     clearInterval(walkIntervalRef.current);
     walkIntervalRef.current = setInterval(() => {

@@ -124,26 +124,26 @@ export default function ThreePetCanvas({
     headsetGroup.visible = false;
     gazeGroup.add(headsetGroup);
 
-    // Headband: Matte titanium curved band bridging ears
-    const bandGeo = new THREE.TorusGeometry(0.38, 0.028, 16, 48, Math.PI * 0.76);
+    // Headband: Matte titanium curved band bridging ears over top of head
+    const bandGeo = new THREE.TorusGeometry(0.51, 0.034, 16, 48, Math.PI);
     const bandMat = new THREE.MeshStandardMaterial({
       color: 0x1f2127,
       metalness: 0.85,
       roughness: 0.28,
     });
     const bandMesh = new THREE.Mesh(bandGeo, bandMat);
-    bandMesh.rotation.z = Math.PI * 0.62;
-    bandMesh.position.set(0, 1.05, 0.01);
+    bandMesh.position.set(0, 1.05, -0.115);
+    bandMesh.rotation.z = 0;
     headsetGroup.add(bandMesh);
 
-    // Ear Cups: Metallic cushions with glowing LED rings
-    const cupGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.065, 32);
+    // Ear Cups: Metallic cushions with glowing LED rings matching ear.L and ear.R
+    const cupGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.07, 32);
     const cupMat = new THREE.MeshStandardMaterial({
       color: 0x16181e,
       metalness: 0.8,
       roughness: 0.3,
     });
-    const ringGeo = new THREE.TorusGeometry(0.115, 0.016, 16, 32);
+    const ringGeo = new THREE.TorusGeometry(0.125, 0.018, 16, 32);
     const headsetGlowMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(musicAccent || '#a855f7'),
       emissive: new THREE.Color(musicAccent || '#a855f7'),
@@ -151,32 +151,30 @@ export default function ThreePetCanvas({
       roughness: 0.15,
     });
 
-    // Left Cup
+    // Left Cup (ear.L side at x = +0.507)
     const leftCup = new THREE.Group();
     const leftMesh = new THREE.Mesh(cupGeo, cupMat);
     leftMesh.rotation.z = Math.PI / 2;
     const leftRing = new THREE.Mesh(ringGeo, headsetGlowMat);
     leftRing.rotation.y = Math.PI / 2;
-    leftRing.position.x = -0.038;
+    leftRing.position.x = 0.038;
     leftCup.add(leftMesh);
     leftCup.add(leftRing);
-    leftCup.position.set(-0.36, 1.04, 0.02);
-    leftCup.rotation.y = 0.14;
-    leftCup.rotation.z = -0.12;
+    leftCup.position.set(0.51, 1.05, -0.115);
+    leftCup.rotation.y = -0.12;
     headsetGroup.add(leftCup);
 
-    // Right Cup
+    // Right Cup (ear.R side at x = -0.505)
     const rightCup = new THREE.Group();
     const rightMesh = new THREE.Mesh(cupGeo, cupMat);
     rightMesh.rotation.z = Math.PI / 2;
     const rightRing = new THREE.Mesh(ringGeo, headsetGlowMat);
     rightRing.rotation.y = Math.PI / 2;
-    rightRing.position.x = 0.038;
+    rightRing.position.x = -0.038;
     rightCup.add(rightMesh);
     rightCup.add(rightRing);
-    rightCup.position.set(0.36, 1.04, 0.02);
-    rightCup.rotation.y = -0.14;
-    rightCup.rotation.z = 0.12;
+    rightCup.position.set(-0.51, 1.05, -0.115);
+    rightCup.rotation.y = 0.12;
     headsetGroup.add(rightCup);
 
     // 4c. Interactive Toy Yarn Ball (for play, batting, chasing)
@@ -272,10 +270,20 @@ export default function ThreePetCanvas({
           const targetHeight = isStudio ? 1.35 : 1.20;
           baseMeshScale = targetHeight / (size.y || 1);
           meshWrapper.scale.setScalar(baseMeshScale);
-          // Model naturally faces forward (+Z) towards the user
           meshWrapper.rotation.y = 0;
 
           gazeGroup.add(meshWrapper);
+
+          // Firmly attach headset to cat's head bone so it stays locked with head movement
+          const headBone = bonesMap['head_018'] || bonesMap['head'];
+          if (headBone) {
+            if (headsetGroup.parent) headsetGroup.parent.remove(headsetGroup);
+            headBone.add(headsetGroup);
+            headsetGroup.position.set(0, 0, 0);
+            headsetGroup.rotation.set(0, 0, 0);
+            headsetGroup.scale.set(1, 1, 1);
+          }
+
           setModelLoaded(true);
         },
         undefined,
@@ -308,6 +316,9 @@ export default function ThreePetCanvas({
       unsubFullscreen = window.island.on('fullscreen:change', (isFs) => {
         isHiddenRef.current = isFs;
         isPaused = isFs || document.hidden;
+        if (mountRef.current) {
+          mountRef.current.style.display = isFs ? 'none' : 'block';
+        }
       });
     }
 
@@ -378,79 +389,185 @@ export default function ThreePetCanvas({
         }
       }
 
-      // Procedural bone articulation for expressive non-walking states
-      if (currentState !== 'walk' && currentState !== 'run') {
-        for (const [name, bone] of Object.entries(bonesMap)) {
-          const initRot = initialBoneRotations[name];
-          if (initRot) {
-            bone.rotation.x += (initRot.x - bone.rotation.x) * Math.min(1, delta * 6.0);
-            bone.rotation.y += (initRot.y - bone.rotation.y) * Math.min(1, delta * 6.0);
-            bone.rotation.z += (initRot.z - bone.rotation.z) * Math.min(1, delta * 6.0);
-          }
-        }
-      }
-
+      // Natural quadruped leg locomotion and procedural feline articulation
       if (currentState === 'walk') {
-        // Coordinated quadruped trot
-        walkPhase += delta * 8.0;
-        const trotRoll = Math.sin(walkPhase) * 0.05;
-        const trotPitch = Math.cos(walkPhase) * 0.04;
-        const trotBob = Math.abs(Math.sin(walkPhase * 2)) * 0.04;
+        // Natural diagonal quadruped walk cycle
+        walkPhase += delta * 7.5;
+        const fl_angle = Math.sin(walkPhase) * 0.45;
+        const fr_angle = Math.sin(walkPhase + Math.PI) * 0.45;
+        const bl_angle = fr_angle; // Diagonal pairing: FL with BR, FR with BL
+        const br_angle = fl_angle;
+
+        // Front Left Leg
+        if (bonesMap['leg.upper.F.L_014']) {
+          const base = initialBoneRotations['leg.upper.F.L_014'] || { x: 0 };
+          bonesMap['leg.upper.F.L_014'].rotation.x = base.x + fl_angle;
+        }
+        if (bonesMap['leg.lower.FL_015']) {
+          const base = initialBoneRotations['leg.lower.FL_015'] || { x: 0 };
+          bonesMap['leg.lower.FL_015'].rotation.x = base.x + Math.max(0, -fl_angle * 0.7);
+        }
+
+        // Front Right Leg
+        if (bonesMap['leg.upper.F.R_024']) {
+          const base = initialBoneRotations['leg.upper.F.R_024'] || { x: 0 };
+          bonesMap['leg.upper.F.R_024'].rotation.x = base.x + fr_angle;
+        }
+        if (bonesMap['leg.lower.F.R_00']) {
+          const base = initialBoneRotations['leg.lower.F.R_00'] || { x: 0 };
+          bonesMap['leg.lower.F.R_00'].rotation.x = base.x + Math.max(0, -fr_angle * 0.7);
+        }
+
+        // Back Left Leg
+        if (bonesMap['thigh.B.L_03']) {
+          const base = initialBoneRotations['thigh.B.L_03'] || { x: 0 };
+          bonesMap['thigh.B.L_03'].rotation.x = base.x + bl_angle;
+        }
+        if (bonesMap['leg.lower.B.L_05']) {
+          const base = initialBoneRotations['leg.lower.B.L_05'] || { x: 0 };
+          bonesMap['leg.lower.B.L_05'].rotation.x = base.x + Math.max(0, bl_angle * 0.6);
+        }
+
+        // Back Right Leg
+        if (bonesMap['thigh.B.R_026']) {
+          const base = initialBoneRotations['thigh.B.R_026'] || { x: 0 };
+          bonesMap['thigh.B.R_026'].rotation.x = base.x + br_angle;
+        }
+        if (bonesMap['leg.lower.B.R_028']) {
+          const base = initialBoneRotations['leg.lower.B.R_028'] || { x: 0 };
+          bonesMap['leg.lower.B.R_028'].rotation.x = base.x + Math.max(0, br_angle * 0.6);
+        }
+
+        // Tail side swish & rhythmic body trot
+        if (bonesMap['tail_07']) {
+          const base = initialBoneRotations['tail_07'] || { y: 0 };
+          bonesMap['tail_07'].rotation.y = base.y + Math.sin(walkPhase * 0.5) * 0.35;
+        }
+        if (bonesMap['spine.01_012']) {
+          const base = initialBoneRotations['spine.01_012'] || { y: 0 };
+          bonesMap['spine.01_012'].rotation.y = base.y + Math.sin(walkPhase) * 0.08;
+        }
+
+        const trotRoll = Math.sin(walkPhase) * 0.04;
+        const trotPitch = Math.cos(walkPhase) * 0.035;
+        const trotBob = Math.abs(Math.sin(walkPhase * 2)) * 0.035;
 
         pivotGroup.rotation.z = trotRoll;
         pivotGroup.rotation.x = trotPitch;
         pivotGroup.position.y = trotBob;
         breatheGroup.scale.set(1.0, 1.0, 1.0);
       } else if (currentState === 'run') {
-        // High-energy gallop stride
-        walkPhase += delta * 13.0;
-        const gallopBob = Math.abs(Math.sin(walkPhase)) * 0.09;
-        const gallopPitch = 0.12 + Math.cos(walkPhase) * 0.06;
-        const gallopRoll = Math.sin(walkPhase) * 0.06;
+        // High-energy quadruped gallop
+        walkPhase += delta * 12.0;
+        const gallopLead = Math.sin(walkPhase) * 0.65;
+        const gallopFollow = Math.sin(walkPhase - 0.75) * 0.65;
+
+        if (bonesMap['leg.upper.F.L_014']) {
+          const base = initialBoneRotations['leg.upper.F.L_014'] || { x: 0 };
+          bonesMap['leg.upper.F.L_014'].rotation.x = base.x + gallopLead;
+        }
+        if (bonesMap['leg.lower.FL_015']) {
+          const base = initialBoneRotations['leg.lower.FL_015'] || { x: 0 };
+          bonesMap['leg.lower.FL_015'].rotation.x = base.x + Math.max(0, -gallopLead * 0.85);
+        }
+        if (bonesMap['leg.upper.F.R_024']) {
+          const base = initialBoneRotations['leg.upper.F.R_024'] || { x: 0 };
+          bonesMap['leg.upper.F.R_024'].rotation.x = base.x + gallopFollow;
+        }
+        if (bonesMap['leg.lower.F.R_00']) {
+          const base = initialBoneRotations['leg.lower.F.R_00'] || { x: 0 };
+          bonesMap['leg.lower.F.R_00'].rotation.x = base.x + Math.max(0, -gallopFollow * 0.85);
+        }
+
+        if (bonesMap['thigh.B.L_03']) {
+          const base = initialBoneRotations['thigh.B.L_03'] || { x: 0 };
+          bonesMap['thigh.B.L_03'].rotation.x = base.x - gallopLead * 0.8;
+        }
+        if (bonesMap['thigh.B.R_026']) {
+          const base = initialBoneRotations['thigh.B.R_026'] || { x: 0 };
+          bonesMap['thigh.B.R_026'].rotation.x = base.x - gallopFollow * 0.8;
+        }
+
+        if (bonesMap['tail_07']) {
+          const base = initialBoneRotations['tail_07'] || { x: 0 };
+          bonesMap['tail_07'].rotation.x = base.x - 0.4 + Math.sin(walkPhase) * 0.25;
+        }
+
+        const gallopBob = Math.abs(Math.sin(walkPhase)) * 0.08;
+        const gallopPitch = 0.10 + Math.cos(walkPhase) * 0.06;
+        const gallopRoll = Math.sin(walkPhase) * 0.05;
 
         pivotGroup.position.y = gallopBob;
         pivotGroup.rotation.x = gallopPitch;
         pivotGroup.rotation.z = gallopRoll;
         breatheGroup.scale.set(0.96, 1.04, 0.96);
-      } else if (currentState === 'jump') {
-        // Real cat jump: crouch anticipation -> spring with extended front paws & arching back -> landing
-        const jumpTime = (t * 2.8) % Math.PI;
-        const jumpHeight = Math.sin(jumpTime) * 0.42;
+      } else {
+        // Smoothly relax leg bones to idle resting posture when not running/walking
+        for (const [name, bone] of Object.entries(bonesMap)) {
+          if (name.includes('leg') || name.includes('thigh') || name.includes('foot')) {
+            const initRot = initialBoneRotations[name];
+            if (initRot) {
+              bone.rotation.x += (initRot.x - bone.rotation.x) * Math.min(1, delta * 7.0);
+              bone.rotation.y += (initRot.y - bone.rotation.y) * Math.min(1, delta * 7.0);
+              bone.rotation.z += (initRot.z - bone.rotation.z) * Math.min(1, delta * 7.0);
+            }
+          }
+        }
+      }
+
+      if (currentState === 'jump') {
+        // Authentic 3-stage feline leap: crouch -> spring reach -> soft landing absorption
+        const jumpTime = (t * 2.6) % Math.PI;
+        const jumpHeight = Math.sin(jumpTime) * 0.44;
         const jumpTilt = Math.cos(jumpTime) * -0.28;
 
         pivotGroup.position.y = jumpHeight;
         pivotGroup.rotation.x = jumpTilt;
         pivotGroup.rotation.z = 0;
 
-        if (bonesMap['head_018']) bonesMap['head_018'].rotation.x = jumpTilt * 0.5;
-        if (bonesMap['tail_07']) bonesMap['tail_07'].rotation.x = -jumpTilt * 0.9;
-        if (bonesMap['foot.F.L_016']) bonesMap['foot.F.L_016'].rotation.x = -0.3 + jumpTilt * 0.5;
-        if (bonesMap['foot.F.R_025']) bonesMap['foot.F.R_025'].rotation.x = -0.3 + jumpTilt * 0.5;
-
-        if (jumpTime < 0.35) {
-          breatheGroup.scale.set(1.12, 0.82, 1.12);
+        if (jumpTime < 0.38) {
+          // Stage 1: Crouch anticipation
+          breatheGroup.scale.set(1.14, 0.78, 1.14);
+          if (bonesMap['head_018']) bonesMap['head_018'].rotation.x = 0.2;
+          if (bonesMap['thigh.B.L_03']) bonesMap['thigh.B.L_03'].rotation.x = -0.3;
+          if (bonesMap['thigh.B.R_026']) bonesMap['thigh.B.R_026'].rotation.x = -0.3;
         } else if (jumpTime > Math.PI - 0.45) {
-          breatheGroup.scale.set(1.15, 0.85, 1.15);
+          // Stage 3: Soft paw landing
+          breatheGroup.scale.set(1.12, 0.84, 1.12);
+          if (bonesMap['head_018']) bonesMap['head_018'].rotation.x = 0.1;
+          if (bonesMap['foot.F.L_016']) bonesMap['foot.F.L_016'].rotation.x = 0.25;
+          if (bonesMap['foot.F.R_025']) bonesMap['foot.F.R_025'].rotation.x = 0.25;
         } else {
-          breatheGroup.scale.set(0.92, 1.12, 0.92);
+          // Stage 2: Mid-air spring reach
+          breatheGroup.scale.set(0.92, 1.14, 0.92);
+          if (bonesMap['head_018']) bonesMap['head_018'].rotation.x = -0.25;
+          if (bonesMap['leg.upper.F.L_014']) bonesMap['leg.upper.F.L_014'].rotation.x = 0.45;
+          if (bonesMap['leg.upper.F.R_024']) bonesMap['leg.upper.F.R_024'].rotation.x = 0.45;
+          if (bonesMap['thigh.B.L_03']) bonesMap['thigh.B.L_03'].rotation.x = -0.55;
+          if (bonesMap['thigh.B.R_026']) bonesMap['thigh.B.R_026'].rotation.x = -0.55;
+          if (bonesMap['tail_07']) bonesMap['tail_07'].rotation.x = -0.5;
         }
       } else if (currentState === 'play') {
         // Interactive batting & chasing the yarn toy ball
         ballGroup.visible = true;
-        const ballX = Math.sin(t * 3.5) * 0.52;
-        const ballY = Math.abs(Math.sin(t * 7.0)) * 0.16 + 0.13;
+        const ballX = Math.sin(t * 3.2) * 0.54;
+        const ballY = Math.abs(Math.sin(t * 6.4)) * 0.18 + 0.12;
         ballGroup.position.set(ballX, ballY, 0.12);
-        ballMesh.rotation.z += delta * 7;
+        ballMesh.rotation.z += delta * 6;
         ballMesh.rotation.y += delta * 3.5;
 
-        // Kitten chases and bats ball with front paw
+        // Kitten tracks ball and bats playfully with front paw
         pivotGroup.position.x = ballX * 0.42;
-        pivotGroup.position.y = Math.abs(Math.sin(t * 7.0)) * 0.07;
-        pivotGroup.rotation.z = Math.sin(t * 3.5) * 0.16;
+        pivotGroup.position.y = Math.abs(Math.sin(t * 6.4)) * 0.06;
+        pivotGroup.rotation.z = Math.sin(t * 3.2) * 0.14;
+        pivotGroup.rotation.y = ballX * 0.35;
         pivotGroup.rotation.x = 0.12;
 
-        if (bonesMap['foot.F.R_025']) bonesMap['foot.F.R_025'].rotation.x = -0.45 + Math.sin(t * 7.0) * 0.35;
-        if (bonesMap['head_018']) bonesMap['head_018'].rotation.y = ballX * 0.45;
+        const batSwipe = Math.sin(t * 6.4);
+        if (bonesMap['leg.upper.F.R_024']) bonesMap['leg.upper.F.R_024'].rotation.x = -0.3 + batSwipe * 0.45;
+        if (bonesMap['foot.F.R_025']) bonesMap['foot.F.R_025'].rotation.x = -0.4 + batSwipe * 0.35;
+        if (bonesMap['head_018']) bonesMap['head_018'].rotation.y = ballX * 0.5;
+        if (bonesMap['tail_07']) bonesMap['tail_07'].rotation.y = -ballX * 0.6;
         breatheGroup.scale.set(1.0, 1.0, 1.0);
       } else if (currentState === 'sleep') {
         // Deep resting pose: curled posture, lowered head and slow 4.2s breathing

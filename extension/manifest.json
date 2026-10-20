@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Dynamic Island Companion",
+  "version": "1.0.0",
+  "description": "Seamlessly sends real-time video playback and YouTube ambient lighting to Dynamic Island.",
+  "permissions": [],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://m.youtube.com/*",
+    "http://127.0.0.1:47823/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "128": "icon.png"
+  }
+}

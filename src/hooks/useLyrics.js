@@ -1,12 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchLyrics, findActiveLyricIndex } from '../lib/lyrics';
 
+const DEFAULT_VOCAL_LEAD_MS = 250;
+
 /**
  * useLyrics: Custom hook to fetch and synchronize lyrics for the active media track.
+ * Applies a 250ms vocal lead offset to compensate for human transcription latency,
+ * and supports custom user latency calibration.
  */
-export function useLyrics(media, currentPositionMs) {
+export function useLyrics(media, currentPositionMs, userOffsetMs) {
   const [lyricsData, setLyricsData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [offsetMs, setOffsetMs] = useState(() => {
+    if (typeof userOffsetMs === 'number') return userOffsetMs;
+    try {
+      const saved = localStorage.getItem('island_lyrics_offset');
+      return saved !== null ? Number(saved) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  useEffect(() => {
+    if (typeof userOffsetMs === 'number') {
+      setOffsetMs(userOffsetMs);
+    }
+    const onOffsetChanged = () => {
+      try {
+        const saved = localStorage.getItem('island_lyrics_offset');
+        setOffsetMs(saved !== null ? Number(saved) : 0);
+      } catch {}
+    };
+    window.addEventListener('island:lyrics-offset-changed', onOffsetChanged);
+    return () => window.removeEventListener('island:lyrics-offset-changed', onOffsetChanged);
+  }, [userOffsetMs]);
+
   const trackKey = useMemo(() => {
     if (!media || !media.active || !media.title) return '';
     return `${media.title}|${media.artist || ''}`;
@@ -46,8 +74,9 @@ export function useLyrics(media, currentPositionMs) {
 
   const activeLineIndex = useMemo(() => {
     if (!lyricsData || !lyricsData.lines || lyricsData.lines.length === 0) return -1;
-    return findActiveLyricIndex(lyricsData.lines, currentPositionMs);
-  }, [lyricsData, currentPositionMs]);
+    const effectivePos = Math.max(0, currentPositionMs + DEFAULT_VOCAL_LEAD_MS + offsetMs);
+    return findActiveLyricIndex(lyricsData.lines, effectivePos);
+  }, [lyricsData, currentPositionMs, offsetMs]);
 
   return {
     lyricsData,
