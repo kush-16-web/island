@@ -1,11 +1,66 @@
 'use strict';
 /**
  * src/lib/song-art.js
- * Living Canvas — Editorial Song Interpretation & Continuous-Line Art Engine.
+ * Living Canvas — Editorial Song Interpretation & Procedural Continuous-Line Art Engine.
  *
- * Interprets a song's emotional core, lyric narrative, and musical atmosphere
- * into a structured visual concept with expressive continuous-line vector artwork.
+ * Interprets any song's emotional core, lyric narrative, and musical atmosphere
+ * into a structured visual concept with procedurally generated continuous-line vector artwork.
  */
+
+/**
+ * Procedural Curve Generator:
+ * Creates unique, deterministic Bézier spline curves and focal nodes for ANY song title & artist.
+ * Ensures every single track generates a distinct, unique artwork rather than a static duplicate.
+ *
+ * @param {string} title
+ * @param {string} artist
+ * @returns {{ pathD: string, nodes: Array<{ x: number, y: number, r: number }> }}
+ */
+export function generateProceduralCurve(title = '', artist = '') {
+  let hash = 0;
+  const str = `${(title || 'untitled').trim()}__${(artist || 'unknown').trim()}`.toLowerCase();
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+
+  const rng = (offset = 0) => {
+    const x = Math.sin(hash + offset * 1.618) * 10000;
+    return x - Math.floor(x);
+  };
+
+  const startY = 160 + Math.round(rng(1) * 120);
+  let pathD = `M 60,${startY}`;
+  const nodes = [];
+
+  const segments = 4;
+  const segWidth = (840 - 60) / segments;
+
+  for (let i = 1; i <= segments; i++) {
+    const endX = Math.round(60 + i * segWidth);
+    // Vertical harmonic inflection based on seed
+    const endY = Math.round(100 + rng(i * 5 + 2) * 220);
+
+    const cp1X = Math.round(endX - segWidth * (0.65 - rng(i * 7 + 1) * 0.2));
+    const cp1Y = Math.round(60 + rng(i * 11 + 3) * 300);
+
+    const cp2X = Math.round(endX - segWidth * (0.25 - rng(i * 13 + 4) * 0.15));
+    const cp2Y = Math.round(60 + rng(i * 17 + 5) * 300);
+
+    pathD += ` C ${cp1X},${cp1Y} ${cp2X},${cp2Y} ${endX},${endY}`;
+
+    // Anchor focal nodes at dynamic crests
+    if (i < segments) {
+      nodes.push({
+        x: endX,
+        y: endY,
+        r: 4 + Math.round(rng(i * 19) * 3),
+      });
+    }
+  }
+
+  return { pathD, nodes };
+}
 
 /**
  * Interprets a song and returns a rich concept object.
@@ -49,7 +104,39 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
     };
   }
 
-  // 2. Melancholy / Rain / Midnight / Solitude
+  // 2. Pop / Funk / Rhythmic / Groove (e.g. How Long, Attention, Blinding Lights, Uptown Funk)
+  if (
+    norm.includes('how long') ||
+    norm.includes('attention') ||
+    norm.includes('groove') ||
+    norm.includes('funk') ||
+    norm.includes('pop') ||
+    norm.includes('beat') ||
+    norm.includes('rhythm') ||
+    norm.includes('charlie') ||
+    norm.includes('dua') ||
+    norm.includes('the weeknd') ||
+    norm.includes('bruno') ||
+    norm.includes('dance') ||
+    norm.includes('disco')
+  ) {
+    return {
+      emotional_theme: `Sensory tension, pulsed basslines, and syncopated kinetic momentum in "${title}"`,
+      central_metaphor: 'A spiraling neon acoustic vector cutting through shadows with razor-sharp syncopated cadence',
+      main_visual_subject: 'A kinetic continuous stroke oscillating in tight energetic harmonic waves before looping into an accented focal pulse',
+      supporting_symbols: ['syncopated pulse bar', 'orbital wave resonance', 'focal cadence node'],
+      color_palette: {
+        background: '#120b18',
+        line_color: '#f472b6',
+        accent_color: '#a855f7',
+        secondary_accent: '#38bdf8',
+        mood_description: 'Electric violet neon with magenta cadence and deep nocturnal bass',
+      },
+      line_type: 'rhythmic',
+    };
+  }
+
+  // 3. Melancholy / Rain / Midnight / Solitude
   if (
     norm.includes('rain') ||
     norm.includes('midnight') ||
@@ -76,7 +163,7 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
     };
   }
 
-  // 3. Euphoria / Solar / Ascension / Electronic / Light
+  // 4. Euphoria / Solar / Ascension / Electronic / Light
   if (
     norm.includes('sun') ||
     norm.includes('light') ||
@@ -85,7 +172,6 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
     norm.includes('sky') ||
     norm.includes('gold') ||
     norm.includes('star') ||
-    norm.includes('dance') ||
     norm.includes('energy')
   ) {
     return {
@@ -104,7 +190,7 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
     };
   }
 
-  // 4. Acoustic / Folk / Nature / Earth / Roots
+  // 5. Acoustic / Folk / Nature / Earth / Roots
   if (
     norm.includes('wood') ||
     norm.includes('echo') ||
@@ -131,8 +217,8 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
     };
   }
 
-  // Dynamic Algorithmic Theme for any other track
-  const seed = (title + artist).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  // Dynamic Algorithmic Theme for any other track (uniquely computed from title & artist)
+  const seed = (title + artist).split('').reduce((acc, c, i) => acc + c.charCodeAt(0) * (i + 1), 0);
   const palettes = [
     {
       background: '#0c131f',
@@ -140,6 +226,7 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
       accent_color: '#38bdf8',
       secondary_accent: '#818cf8',
       mood: 'Nocturnal deep sea with ethereal luminescent blue stroke',
+      metaphor: 'An unfolding architectural ribbon bridging reverberating past memory and present sensation',
     },
     {
       background: '#18121f',
@@ -147,6 +234,7 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
       accent_color: '#c084fc',
       secondary_accent: '#ec4899',
       mood: 'Twilight amethyst with radiant violet and rose ink lines',
+      metaphor: 'Prismatic frequency waves condensing into a suspended kinetic crystalline pendulum',
     },
     {
       background: '#0d1814',
@@ -154,14 +242,23 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
       accent_color: '#34d399',
       secondary_accent: '#2dd4bf',
       mood: 'Boreal jade forest with tranquil emerald aurora accents',
+      metaphor: 'A continuous evergreen harmonic contour winding through quiet mist and resonant stones',
+    },
+    {
+      background: '#1f130d',
+      line_color: '#fed7aa',
+      accent_color: '#f97316',
+      secondary_accent: '#fbbf24',
+      mood: 'Amber embers with incandescent brass harmonics',
+      metaphor: 'Ascending thermal acoustic spirals tracing the warm afterglow of an analog vinyl groove',
     },
   ];
   const chosen = palettes[seed % palettes.length];
 
   return {
     emotional_theme: `Reflective contemplative harmony exploring acoustic depth and resonance in "${title || 'Untitled'}"`,
-    central_metaphor: 'Sound waves taking physical form as an unfolding calligraphic ribbon bridging memory and present emotion',
-    main_visual_subject: 'An unbroken fluid continuous contour charting an undulating melody line coiling into harmonic resonance',
+    central_metaphor: chosen.metaphor,
+    main_visual_subject: `An unbroken continuous line charting an undulating harmonic contour unique to "${title}"`,
     supporting_symbols: ['whispering wave curve', 'suspended harmonic pendulum', 'orbital alignment sphere'],
     color_palette: {
       background: chosen.background,
@@ -170,6 +267,6 @@ export function interpretSongForArt(title = '', artist = '', lyrics = '') {
       secondary_accent: chosen.secondary_accent,
       mood_description: chosen.mood,
     },
-    line_type: 'abstract',
+    line_type: 'dynamic',
   };
 }

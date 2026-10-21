@@ -40,6 +40,27 @@ export default function NowPlaying({
 
   const [viewMode, setViewMode] = useState(() => (isVideoSource ? 'cinema' : 'player'));
   const [showSongArt, setShowSongArt] = useState(false);
+  const [hudVisible, setHudVisible] = useState(true);
+  const hudTimerRef = useRef(null);
+
+  const handleUserActivity = () => {
+    setHudVisible(true);
+    if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
+    hudTimerRef.current = setTimeout(() => {
+      setHudVisible(false);
+    }, 2800);
+  };
+
+  const handleMouseLeave = () => {
+    if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
+    setHudVisible(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
+    };
+  }, []);
 
   // Automatically reset to cinema view for video/trailers, or standard player for music
   useEffect(() => {
@@ -278,7 +299,12 @@ export default function NowPlaying({
   // Widescreen Cinema PiP Player (YouTube Fullscreen HUD: Full video with overlay title & controls)
   if (viewMode === 'cinema') {
     return (
-      <div className="cinema-pip cinema-pip--yt-hud">
+      <div
+        className={`cinema-pip cinema-pip--yt-hud${hudVisible ? ' is-hud-visible' : ''}`}
+        onMouseMove={handleUserActivity}
+        onMouseEnter={handleUserActivity}
+        onMouseLeave={handleMouseLeave}
+      >
         <div className="cinema-pip__stage">
           <VideoPiP
             media={media}

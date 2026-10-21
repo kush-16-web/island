@@ -747,10 +747,19 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   gap: 12px;
   padding: 12px 14px 28px 14px;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.45) 55%, transparent 100%);
+  opacity: 0;
   pointer-events: none;
+  transform: translateY(-8px);
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .cinema-hud__top > * {
   pointer-events: auto;
+}
+.cinema-pip.is-hud-visible .cinema-hud__top,
+.cinema-pip:hover .cinema-hud__top {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .cinema-hud__meta {
@@ -864,10 +873,19 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   gap: 5px;
   padding: 24px 14px 10px 14px;
   background: linear-gradient(0deg, rgba(0, 0, 0, 0.90) 0%, rgba(0, 0, 0, 0.5) 60%, transparent 100%);
+  opacity: 0;
   pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .cinema-hud__bottom > * {
   pointer-events: auto;
+}
+.cinema-pip.is-hud-visible .cinema-hud__bottom,
+.cinema-pip:hover .cinema-hud__bottom {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .np__progress--hud {
@@ -1060,6 +1078,16 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   overflow: hidden;
   box-sizing: border-box;
   z-index: 3;
+}
+.song-art__bg-cover {
+  position: absolute;
+  inset: -36px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(54px) brightness(0.24) saturate(1.8);
+  opacity: 0.88;
+  pointer-events: none;
+  transform: scale(1.15);
 }
 .song-art__aura {
   position: absolute;

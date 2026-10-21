@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { interpretSongForArt } from '../lib/song-art';
+import { generateProceduralCurve, interpretSongForArt } from '../lib/song-art';
 
 /**
  * SongArtPoster: Living Canvas Editorial Fine-Art Continuous-Line Poster.
- * Visualizes the song's interpreted emotional core, visual metaphor, and single-stroke ink path.
+ * Visualizes the song's interpreted emotional core, visual metaphor, and procedurally generated single-stroke ink path.
+ * Dynamically samples the current track's album cover art and accent color.
  */
 export default function SongArtPoster({ media, accentColor }) {
   const title = media?.title || 'Unknown Track';
@@ -13,74 +14,12 @@ export default function SongArtPoster({ media, accentColor }) {
     return interpretSongForArt(title, artist);
   }, [title, artist]);
 
-  const cp = concept.color_palette;
-  const lineType = concept.line_type || 'abstract';
+  const proceduralCurve = useMemo(() => {
+    return generateProceduralCurve(title, artist);
+  }, [title, artist]);
 
-  // Dynamic continuous-line path variations based on musical archetype
-  const getContinuousLinePath = () => {
-    switch (lineType) {
-      case 'romantic':
-        return (
-          <path
-            d="M 60,340 C 140,260 180,180 260,190 C 340,200 360,310 440,270 C 520,230 500,120 590,130 C 670,140 700,240 760,200"
-            fill="none"
-            stroke={cp.line_color}
-            strokeWidth="2.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="song-art__line"
-          />
-        );
-      case 'melancholic':
-        return (
-          <path
-            d="M 80,120 C 120,220 160,340 240,320 C 320,300 350,180 430,220 C 510,260 550,380 630,340 C 700,310 730,240 780,260"
-            fill="none"
-            stroke={cp.line_color}
-            strokeWidth="2.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="song-art__line"
-          />
-        );
-      case 'solar':
-        return (
-          <path
-            d="M 70,360 C 160,340 210,260 300,280 C 390,300 420,160 510,140 C 600,120 660,220 720,160 C 760,120 780,90 820,70"
-            fill="none"
-            stroke={cp.line_color}
-            strokeWidth="3.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="song-art__line"
-          />
-        );
-      case 'acoustic':
-        return (
-          <path
-            d="M 80,260 C 160,200 220,130 300,160 C 380,190 410,310 500,290 C 590,270 640,170 710,190 C 760,210 790,270 820,250"
-            fill="none"
-            stroke={cp.line_color}
-            strokeWidth="2.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="song-art__line"
-          />
-        );
-      default:
-        return (
-          <path
-            d="M 60,220 C 140,140 220,320 320,250 C 420,180 480,310 580,220 C 680,130 730,290 820,210"
-            fill="none"
-            stroke={cp.line_color}
-            strokeWidth="2.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="song-art__line"
-          />
-        );
-    }
-  };
+  const cp = concept.color_palette;
+  const effectiveAccent = accentColor || cp.accent_color;
 
   return (
     <div
@@ -88,14 +27,22 @@ export default function SongArtPoster({ media, accentColor }) {
       style={{
         '--art-bg': cp.background,
         '--art-line': cp.line_color,
-        '--art-accent': cp.accent_color,
-        '--art-secondary': cp.secondary_accent || cp.accent_color,
+        '--art-accent': effectiveAccent,
+        '--art-secondary': cp.secondary_accent || effectiveAccent,
       }}
     >
-      {/* Background Ambient Aura */}
+      {/* 1. Dynamic Album Cover Ambient Aura Layer */}
+      {media?.art ? (
+        <div
+          className="song-art__bg-cover"
+          style={{ backgroundImage: `url("${media.art}")` }}
+        />
+      ) : null}
+
+      {/* 2. Procedural Radial Aura Overlay */}
       <div className="song-art__aura" />
 
-      {/* Editorial Watermark / Header */}
+      {/* 3. Editorial Watermark / Header */}
       <div className="song-art__header">
         <div className="song-art__badge">
           <span className="song-art__sparkle">✦</span>
@@ -103,14 +50,14 @@ export default function SongArtPoster({ media, accentColor }) {
         </div>
         <div className="song-art__palette">
           <span className="song-art__dot" style={{ background: cp.line_color }} title="Line" />
-          <span className="song-art__dot" style={{ background: cp.accent_color }} title="Accent" />
+          <span className="song-art__dot" style={{ background: effectiveAccent }} title="Accent" />
           {cp.secondary_accent && (
             <span className="song-art__dot" style={{ background: cp.secondary_accent }} title="Secondary" />
           )}
         </div>
       </div>
 
-      {/* Centerpiece: Animated Continuous Line SVG Illustration */}
+      {/* 4. Centerpiece: Procedurally Generated Unique Continuous Line SVG Illustration */}
       <div className="song-art__canvas-wrapper">
         <svg
           viewBox="0 0 900 440"
@@ -125,43 +72,67 @@ export default function SongArtPoster({ media, accentColor }) {
             </filter>
           </defs>
 
-          {/* Ambient Resonance Circles */}
+          {/* Ambient Harmonic Resonance Rings */}
           <circle
-            cx="440"
-            cy="230"
-            r="110"
+            cx="450"
+            cy="220"
+            r="120"
             fill="none"
-            stroke={cp.accent_color}
+            stroke={effectiveAccent}
             strokeWidth="1"
-            opacity="0.18"
+            opacity="0.22"
             strokeDasharray="4 6"
           />
           <circle
-            cx="440"
-            cy="230"
-            r="170"
+            cx="450"
+            cy="220"
+            r="180"
             fill="none"
             stroke={cp.line_color}
             strokeWidth="0.8"
-            opacity="0.12"
+            opacity="0.14"
           />
 
           {/* Glowing Shadow Line */}
-          <g filter="url(#song-art-glow)" opacity="0.45">
-            {getContinuousLinePath()}
-          </g>
+          <path
+            d={proceduralCurve.pathD}
+            fill="none"
+            stroke={effectiveAccent}
+            strokeWidth="5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            filter="url(#song-art-glow)"
+            opacity="0.5"
+            className="song-art__line"
+          />
 
           {/* Main Continuous Single-Stroke Ink Line */}
-          {getContinuousLinePath()}
+          <path
+            d={proceduralCurve.pathD}
+            fill="none"
+            stroke={cp.line_color}
+            strokeWidth="2.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="song-art__line"
+          />
 
-          {/* Focal Nodes */}
-          <circle cx="260" cy="190" r="5" fill={cp.accent_color} className="song-art__node" />
-          <circle cx="440" cy="270" r="6" fill={cp.line_color} className="song-art__node" />
-          <circle cx="590" cy="130" r="4" fill={cp.accent_color} className="song-art__node" />
+          {/* Procedural Focal Crest Nodes */}
+          {proceduralCurve.nodes.map((node, idx) => (
+            <circle
+              key={idx}
+              cx={node.x}
+              cy={node.y}
+              r={node.r || 5}
+              fill={idx % 2 === 0 ? effectiveAccent : cp.line_color}
+              className="song-art__node"
+              style={{ animationDelay: `${idx * 0.4}s` }}
+            />
+          ))}
         </svg>
       </div>
 
-      {/* Editorial Metaphor & Info Overlay */}
+      {/* 5. Editorial Metaphor & Musical Identity */}
       <div className="song-art__footer">
         <div className="song-art__metaphor">
           &ldquo;{concept.central_metaphor}&rdquo;
