@@ -322,7 +322,7 @@ export function useRealtimeVoice(options = {}) {
       const ttsEngine = localStorage.getItem('island_voice_engine') || 'gemini';
       const kokoroVoice = localStorage.getItem('island_kokoro_voice') || 'af_heart';
       const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
-      const groqChatModel = localStorage.getItem('island_groq_chat_model') || 'llama-3.3-70b-versatile';
+      const groqChatModel = localStorage.getItem('island_groq_chat_model') || 'llama-3.1-8b-instant';
       const groqWhisperModel = localStorage.getItem('island_groq_whisper_model') || 'whisper-large-v3-turbo';
 
       // Validate provider readiness before proceeding to avoid mysterious failures

@@ -200,3 +200,68 @@ test('GroqService: error handling distinguishes 429 burst rate limit from daily 
     https.request = origRequest;
   }
 });
+
+test('GroqService: 404 model_not_found seamlessly falls back to active production model', async () => {
+  const store = new MockStore();
+  const service = new GroqService({ store });
+  service.apiKey = 'gsk_mock_valid_key_12345';
+
+  const origRequest = https.request;
+  let callCount = 0;
+  const requestedModels = [];
+
+  try {
+    https.request = (opts, callback) => {
+      callCount++;
+      const reqEmitter = new EventEmitter();
+      let writtenData = '';
+      reqEmitter.write = (chunk) => { writtenData += chunk; };
+      reqEmitter.end = () => {
+        const payload = JSON.parse(writtenData || '{}');
+        requestedModels.push(payload.model);
+
+        const resEmitter = new EventEmitter();
+        if (payload.model === 'llama-3.3-70b-versatile') {
+          // First attempt: simulate 404 model_not_found
+          resEmitter.statusCode = 404;
+          resEmitter.headers = {};
+          callback(resEmitter);
+          resEmitter.emit('data', JSON.stringify({
+            error: {
+              message: "The model `llama-3.3-70b-versatile` does not exist or you do not have access to it.",
+              type: "invalid_request_error",
+              code: "model_not_found"
+            }
+          }));
+          resEmitter.emit('end');
+        } else {
+          // Second attempt: succeeds with llama-3.1-8b-instant
+          resEmitter.statusCode = 200;
+          resEmitter.headers = {};
+          callback(resEmitter);
+          resEmitter.emit('data', JSON.stringify({
+            choices: [{
+              message: { role: 'assistant', content: 'Fallback response from active 8B model!' }
+            }],
+            usage: { total_tokens: 20 }
+          }));
+          resEmitter.emit('end');
+        }
+      };
+      return reqEmitter;
+    };
+
+    const res = await service.chat({
+      text: 'Hello assistant',
+      model: 'llama-3.3-70b-versatile'
+    });
+
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.text, 'Fallback response from active 8B model!');
+    assert.strictEqual(res.model, 'llama-3.1-8b-instant');
+    assert.strictEqual(callCount, 2);
+    assert.deepStrictEqual(requestedModels, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+  } finally {
+    https.request = origRequest;
+  }
+});

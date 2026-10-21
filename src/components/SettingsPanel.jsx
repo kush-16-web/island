@@ -65,7 +65,7 @@ export default function SettingsPanel({ accentColor }) {
     return localStorage.getItem('island_chat_provider') || 'gemini';
   });
   const [groqChatModel, setGroqChatModel] = useState(() => {
-    return localStorage.getItem('island_groq_chat_model') || 'llama-3.3-70b-versatile';
+    return localStorage.getItem('island_groq_chat_model') || 'llama-3.1-8b-instant';
   });
   const [sttProvider, setSttProvider] = useState(() => {
     return localStorage.getItem('island_stt_provider') || 'gemini';
@@ -722,8 +722,8 @@ export default function SettingsPanel({ accentColor }) {
             </div>
             <div className="settings-chips">
               {[
-                { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Recommended)' },
-                { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Ultra-fast)' },
+                { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Recommended • Active)' },
+                { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Tiered Access)' },
               ].map((m) => (
                 <button
                   key={m.id}

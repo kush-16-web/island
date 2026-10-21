@@ -3664,6 +3664,16 @@ button:hover .lucide-icon--bell {
   border: 1px solid rgba(239, 68, 68, 0.28);
   color: #f87171;
 }
+.voice-panel__banner.is-expanded {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.voice-panel__banner.is-expanded .voice-panel__banner-text {
+  align-items: flex-start;
+}
 .voice-panel__banner-text {
   display: flex;
   align-items: center;
@@ -3676,11 +3686,21 @@ button:hover .lucide-icon--bell {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.voice-panel__banner-text span.is-expanded-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: visible;
+  line-height: 1.35;
+  user-select: text;
+}
 .voice-panel__banner-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: none;
+}
+.voice-panel__banner.is-expanded .voice-panel__banner-actions {
+  align-self: flex-end;
 }
 .voice-panel__dismiss-btn {
   padding: 2px 8px;

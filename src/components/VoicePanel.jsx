@@ -2,6 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from './icons';
 import { getAssistantName } from '../lib/assistant';
 
+function sanitizeError(msg) {
+  if (!msg || typeof msg !== 'string') return '';
+  return msg
+    .replace(/gsk_[A-Za-z0-9_-]{8,}/g, 'gsk_••••••••')
+    .replace(/AIza[0-9A-Za-z-_]{20,}/g, 'AIza••••••••');
+}
+
 /**
  * LivingWaveform: Lightweight Canvas-based continuous audio visualizer.
  * Renders layered, organic sine waves with tapered bell envelopes.
@@ -198,9 +205,21 @@ export default function VoicePanel({
   } = voice;
 
   const [assistantName, setAssistantNameState] = useState(() => getAssistantName());
+  const [isErrorExpanded, setIsErrorExpanded] = useState(false);
+  const [copiedError, setCopiedError] = useState(false);
   const userName = localStorage.getItem('island_user_name') || 'Friend';
   const scrollRef = useRef(null);
   const userScrolledUpRef = useRef(false);
+
+  const handleCopyError = (e) => {
+    e?.stopPropagation?.();
+    const clean = sanitizeError(errorMessage);
+    if (clean && navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(clean);
+      setCopiedError(true);
+      setTimeout(() => setCopiedError(false), 2000);
+    }
+  };
 
   useEffect(() => {
     const handleNameChange = () => setAssistantNameState(getAssistantName());
@@ -309,12 +328,35 @@ export default function VoicePanel({
 
       {/* 3. Non-blocking Error Banner */}
       {status === 'error' && errorMessage && (
-        <div className="voice-panel__banner voice-panel__error-banner">
-          <div className="voice-panel__banner-text" title={errorMessage}>
-            <Icon.Alert width={13} height={13} />
-            <span>{errorMessage}</span>
+        <div className={`voice-panel__banner voice-panel__error-banner ${isErrorExpanded ? 'is-expanded' : ''}`}>
+          <div
+            className="voice-panel__banner-text"
+            onClick={() => setIsErrorExpanded((prev) => !prev)}
+            title="Click to toggle full error message"
+            style={{ cursor: 'pointer' }}
+          >
+            <Icon.Alert width={13} height={13} style={{ flexShrink: 0 }} />
+            <span className={isErrorExpanded ? 'is-expanded-text' : ''}>
+              {sanitizeError(errorMessage)}
+            </span>
           </div>
           <div className="voice-panel__banner-actions">
+            <button
+              type="button"
+              className="voice-panel__action-link"
+              onClick={() => setIsErrorExpanded((prev) => !prev)}
+              title={isErrorExpanded ? 'Collapse error details' : 'Expand full error message'}
+            >
+              {isErrorExpanded ? 'Less' : 'Details'}
+            </button>
+            <button
+              type="button"
+              className="voice-panel__action-link"
+              onClick={handleCopyError}
+              title="Copy sanitized error to clipboard"
+            >
+              {copiedError ? 'Copied!' : 'Copy'}
+            </button>
             <button
               type="button"
               className="voice-panel__action-link"

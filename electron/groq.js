@@ -8,8 +8,9 @@ const https = require('https');
 const path = require('path');
 const { app, safeStorage } = require('electron');
 
-const GROQ_DEFAULT_CHAT_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_DEFAULT_CHAT_MODEL = 'llama-3.1-8b-instant';
 const GROQ_FAST_CHAT_MODEL = 'llama-3.1-8b-instant';
+const GROQ_TIERED_CHAT_MODEL = 'llama-3.3-70b-versatile';
 const GROQ_DEFAULT_WHISPER_MODEL = 'whisper-large-v3-turbo';
 const GROQ_ACCURATE_WHISPER_MODEL = 'whisper-large-v3';
 
@@ -449,6 +450,29 @@ When the user asks to play music, check the current song, or control playback, u
             }
           } else {
             const errDetails = this._extractError(body, res);
+
+            // Auto-fallback: If a user has a model configured that is retired/restricted on their tier (HTTP 404),
+            // seamlessly retry with the active production model so voice chat succeeds without breaking.
+            if (res.statusCode === 404 && model !== GROQ_FAST_CHAT_MODEL && !arguments[0]?._isFallback) {
+              this._logDiagnostic({
+                timestamp: new Date().toISOString(),
+                provider: 'groq',
+                model,
+                callType: 'chat-fallback',
+                note: `Model '${model}' returned 404. Automatically retrying with active production model '${GROQ_FAST_CHAT_MODEL}'.`,
+              });
+
+              return this.chat({
+                text,
+                history,
+                assistantName,
+                userName,
+                model: GROQ_FAST_CHAT_MODEL,
+                temperature,
+                _isFallback: true,
+              }).then(resolve);
+            }
+
             this._logDiagnostic({
               timestamp: new Date().toISOString(),
               provider: 'groq',
@@ -463,6 +487,8 @@ When the user asks to play music, check the current song, or control playback, u
             let userError = errDetails.message;
             if (errDetails.statusCode === 401) {
               userError = 'Invalid Groq API Key. Please verify your key in Settings.';
+            } else if (errDetails.statusCode === 404) {
+              userError = `The model '${model}' is not accessible on this Groq account. Switched to '${GROQ_FAST_CHAT_MODEL}' in Settings.`;
             } else if (errDetails.isDailyQuota) {
               userError = 'Groq daily request limit reached. Please try again later or switch provider.';
             } else if (errDetails.statusCode === 429) {
