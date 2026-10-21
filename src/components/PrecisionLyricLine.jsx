@@ -7,14 +7,16 @@ export { calculateLyricScrollOffset };
  * PrecisionLyricLine
  * Renders an active lyric line with playback-synchronized horizontal scrolling.
  * 
- * Features:
- * - Scrolls ONLY if text overflows its container width; short lyrics remain stationary.
- * - Driven directly by audio playback timestamp, zero free-running CSS animations.
- * - Never oscillates or scrolls backward during forward playback.
- * - Immediately jumps on rewind/seek without playing any reverse animation.
- * - Holds position smoothly on pause.
- * - Soft edge alpha masks prevent clipping.
- * - Zero React reconciliation re-renders on RAF updates (direct DOM transform).
+ * Performance & Timing Architecture:
+ * - High-Precision Clock Anchor: Uses performance.now() microsecond interpolation between
+ *   intermittent player/SMTC updates, eliminating 20ms-50ms React render quantization.
+ * - Subpixel Fluidity: Applies subpixel floating-point offsets (translateX(-XX.XXpx))
+ *   so slow, stretched singing glides smoothly instead of integer-pixel stepping.
+ * - Monotonic Forward Motion: Enforces that forward playback never jitters backward.
+ * - Instant Seek Response: Immediate recalculation on backward/forward seeks (>300ms drift)
+ *   without reverse-scroll animations.
+ * - Pause & Resume Stability: Freezes position on pause; re-anchors wall-clock on resume.
+ * - Reduced Motion: Bypasses translation when prefers-reduced-motion is enabled.
  */
 export default function PrecisionLyricLine({
   line,
@@ -29,10 +31,16 @@ export default function PrecisionLyricLine({
   const [overflow, setOverflow] = useState(false);
   const [maxScroll, setMaxScroll] = useState(0);
 
-  const lastPosMsRef = useRef(currentPositionMs);
+  // Authoritative interpolated clock anchor
+  const clockAnchorRef = useRef({
+    timeMs: currentPositionMs,
+    perfNow: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+  });
+
   const currentOffsetRef = useRef(0);
   const rafIdRef = useRef(null);
   const activeLineIdRef = useRef(line?.id || '');
+  const wasPlayingRef = useRef(playing);
 
   // Measure overflow dimensions
   useEffect(() => {
@@ -48,7 +56,7 @@ export default function PrecisionLyricLine({
 
       // Recalculate immediate offset for new layout
       if (newMax > 0 && line) {
-        const offset = calculateLyricScrollOffset(currentPositionMs, line, newMax);
+        const offset = calculateLyricScrollOffset(currentPositionMs, line, newMax, { subpixel: true });
         currentOffsetRef.current = offset;
         applyOffset(offset, newMax);
       } else {
@@ -63,11 +71,11 @@ export default function PrecisionLyricLine({
     return () => ro.disconnect();
   }, [line?.text, line?.id]);
 
-  // Apply transform and edge gradient masks directly to DOM
+  // Apply transform and dynamic edge gradient masks directly to DOM
   const applyOffset = (offset, max) => {
     if (!contentRef.current || !containerRef.current) return;
 
-    contentRef.current.style.transform = offset > 0 ? `translateX(-${offset}px)` : 'translateX(0)';
+    contentRef.current.style.transform = offset > 0 ? `translateX(-${offset.toFixed(2)}px)` : 'translateX(0)';
 
     // Dynamic edge gradient mask to prevent clipping
     if (max > 0) {
@@ -90,35 +98,79 @@ export default function PrecisionLyricLine({
     }
   };
 
-  // Immediate recalculation when line changes or seek occurs
+  // Synchronize player updates and detect seeks / line transitions
   useEffect(() => {
     if (!line) return;
 
-    // Line changed: reset offset cleanly to new line's starting position
+    const perfNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    // 1. Line changed: reset cleanly to new line's starting position
     if (activeLineIdRef.current !== (line.id || '')) {
       activeLineIdRef.current = line.id || '';
-      const initialOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll);
+      clockAnchorRef.current = {
+        timeMs: currentPositionMs,
+        perfNow,
+      };
+      const initialOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll, { subpixel: true });
       currentOffsetRef.current = initialOffset;
-      lastPosMsRef.current = currentPositionMs;
       applyOffset(initialOffset, maxScroll);
       return;
     }
 
-    // Seek / jump detection: if current position jumped backwards or skipped forward
-    const delta = currentPositionMs - lastPosMsRef.current;
-    if (delta < -120 || delta > 1000) {
-      const seekOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll);
+    // 2. Compute drift against current local interpolated clock
+    const localEstimated = clockAnchorRef.current.timeMs + (perfNow - clockAnchorRef.current.perfNow);
+    const delta = currentPositionMs - localEstimated;
+
+    // 3. User seek or large timing correction (>300ms): immediately re-anchor
+    if (Math.abs(delta) > 300) {
+      clockAnchorRef.current = {
+        timeMs: currentPositionMs,
+        perfNow,
+      };
+      const seekOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll, { subpixel: true });
       currentOffsetRef.current = seekOffset;
-      lastPosMsRef.current = currentPositionMs;
       applyOffset(seekOffset, maxScroll);
       return;
     }
 
-    lastPosMsRef.current = currentPositionMs;
+    // 4. Normal minor forward drift: gently update clock anchor forward without backward pops
+    if (delta > 0) {
+      clockAnchorRef.current = {
+        timeMs: Math.max(localEstimated, currentPositionMs),
+        perfNow,
+      };
+    }
   }, [line?.id, currentPositionMs, maxScroll]);
 
-  // Smooth RAF loop active ONLY while playing and line overflows
+  // Handle pause & resume transitions
   useEffect(() => {
+    const perfNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    if (playing && !wasPlayingRef.current) {
+      // Resumed from pause: re-anchor perfNow so paused duration is not added to song time
+      clockAnchorRef.current = {
+        timeMs: currentPositionMs,
+        perfNow,
+      };
+    } else if (!playing && wasPlayingRef.current) {
+      // Paused: freeze offset immediately
+      if (line && maxScroll > 0) {
+        const frozenOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll, { subpixel: true });
+        currentOffsetRef.current = frozenOffset;
+        applyOffset(frozenOffset, maxScroll);
+      }
+    }
+    wasPlayingRef.current = playing;
+  }, [playing, currentPositionMs, line, maxScroll]);
+
+  // High-performance RAF animation loop running at display refresh rate
+  useEffect(() => {
+    // Respect prefers-reduced-motion
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+      if (contentRef.current) contentRef.current.style.transform = 'none';
+      return;
+    }
+
     if (!playing || !overflow || maxScroll <= 0 || !line) {
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
@@ -132,12 +184,15 @@ export default function PrecisionLyricLine({
     const tick = () => {
       if (!isSubscribed) return;
 
-      const targetOffset = calculateLyricScrollOffset(lastPosMsRef.current, line, maxScroll);
+      const perfNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const currentMs = clockAnchorRef.current.timeMs + (perfNow - clockAnchorRef.current.perfNow);
+
+      const targetOffset = calculateLyricScrollOffset(currentMs, line, maxScroll, { subpixel: true });
 
       // Monotonic forward guarantee: never reverse direction during normal forward playback
       const nextOffset = Math.max(currentOffsetRef.current, targetOffset);
 
-      if (nextOffset !== currentOffsetRef.current) {
+      if (Math.abs(nextOffset - currentOffsetRef.current) >= 0.01) {
         currentOffsetRef.current = nextOffset;
         applyOffset(nextOffset, maxScroll);
       }

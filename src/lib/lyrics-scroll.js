@@ -4,16 +4,21 @@
  * Supports both:
  * 1. Word-level timestamps (Enhanced LRC / ELRC) - tracks each sung word, holding during vocal pauses.
  * 2. Line-level timestamps (Standard LRC fallback) - distributes motion across line duration
- *    with comfortable lead-in pause and tail sustain hold.
+ *    with organic smooth Hermite easing, avoiding linear corner kicks.
  * 
  * @param {number} currentMs - Current song playback timestamp in milliseconds
  * @param {object} line - Lyric line object { timeMs, endMs, words, text }
  * @param {number} maxScroll - Maximum horizontal overflow scroll distance in pixels
+ * @param {object} [options] - Optional settings { subpixel: boolean }
  * @returns {number} Target scroll offset in pixels [0, maxScroll]
  */
-export function calculateLyricScrollOffset(currentMs, line, maxScroll) {
+export function calculateLyricScrollOffset(currentMs, line, maxScroll, options = {}) {
   if (!maxScroll || maxScroll <= 0 || !line) return 0;
-  if (currentMs <= line.timeMs) return 0;
+  if (typeof line.timeMs !== 'number' || isNaN(line.timeMs)) return 0;
+  const lineStart = line.timeMs;
+  if (currentMs <= lineStart) return 0;
+
+  const subpixel = Boolean(options && options.subpixel);
 
   // Case A: Word-level timestamps available (Enhanced LRC / ELRC)
   if (Array.isArray(line.words) && line.words.length > 0) {
@@ -40,7 +45,8 @@ export function calculateLyricScrollOffset(currentMs, line, maxScroll) {
         const wordDuration = Math.max(1, w.endMs - w.startMs);
         const frac = Math.min(1, Math.max(0, (currentMs - w.startMs) / wordDuration));
         const progress = (cumulativeChars + frac * wordLen) / totalChars;
-        return Math.min(maxScroll, Math.max(0, Math.round(maxScroll * progress)));
+        const offset = maxScroll * progress;
+        return subpixel ? Number(offset.toFixed(2)) : Math.round(offset);
       }
 
       cumulativeChars += wordLen;
@@ -48,7 +54,8 @@ export function calculateLyricScrollOffset(currentMs, line, maxScroll) {
       // In vocal pause / breath gap between words: HOLD position steadily!
       if (nextWord && currentMs > w.endMs && currentMs < nextWord.startMs) {
         const pauseProgress = cumulativeChars / totalChars;
-        return Math.min(maxScroll, Math.max(0, Math.round(maxScroll * pauseProgress)));
+        const offset = maxScroll * pauseProgress;
+        return subpixel ? Number(offset.toFixed(2)) : Math.round(offset);
       }
     }
 
@@ -57,13 +64,13 @@ export function calculateLyricScrollOffset(currentMs, line, maxScroll) {
 
   // Case B: Line-level timestamps (Standard LRC fallback)
   // Distribute motion across the line duration with natural musical pacing
-  const lineStart = line.timeMs;
-  const lineEnd = line.endMs && line.endMs > lineStart ? line.endMs : lineStart + 4000;
+  const rawEnd = typeof line.endMs === 'number' && !isNaN(line.endMs) ? line.endMs : lineStart + 4000;
+  const lineEnd = rawEnd > lineStart ? rawEnd : lineStart + 4000;
   const duration = Math.max(200, lineEnd - lineStart);
 
   // Natural pacing: comfortable lead-in pause before singing starts, and sustain hold at end
-  const leadInMs = Math.min(350, Math.round(duration * 0.08));
-  const tailHoldMs = Math.min(500, Math.round(duration * 0.12));
+  const leadInMs = Math.min(300, Math.round(duration * 0.08));
+  const tailHoldMs = Math.min(450, Math.round(duration * 0.10));
   const activeDuration = Math.max(100, duration - leadInMs - tailHoldMs);
 
   const elapsed = currentMs - lineStart;
@@ -71,7 +78,12 @@ export function calculateLyricScrollOffset(currentMs, line, maxScroll) {
   if (elapsed >= duration - tailHoldMs) return maxScroll;
 
   const activeElapsed = elapsed - leadInMs;
-  const progress = Math.min(1, Math.max(0, activeElapsed / activeDuration));
+  const linearProgress = Math.min(1, Math.max(0, activeElapsed / activeDuration));
 
-  return Math.min(maxScroll, Math.max(0, Math.round(maxScroll * progress)));
+  // Smooth Hermite interpolation (smoothstep) for organic, fluid line motion without abrupt start/stop kicks
+  // S(x) = x^2 * (3 - 2x)
+  const progress = linearProgress * linearProgress * (3 - 2 * linearProgress);
+
+  const offset = maxScroll * progress;
+  return subpixel ? Number(offset.toFixed(2)) : Math.round(offset);
 }

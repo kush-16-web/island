@@ -198,4 +198,57 @@ test('Precision Horizontal Lyrics Synchronization Suite', async (t) => {
     const startOffsetSong2 = calculateLyricScrollOffset(1500, song2Line, maxScroll2);
     assert.equal(startOffsetSong2, 0, 'New song intro must start cleanly at 0');
   });
+
+  await t.test('9. Slow vocal section (São Paulo style): subpixel continuous delta without integer stepping', () => {
+    // 8-second slow stretched vocal line
+    const saoPauloLine = {
+      id: 'sao-paulo-slow',
+      timeMs: 100000,
+      endMs: 108000,
+      text: 'Ela joga a fumaça pro alto enquanto a cidade inteira para pra assistir',
+    };
+    const maxScroll = 190;
+
+    // Simulate 16.6ms display refresh frames (60fps) during active singing
+    let prevOffset = calculateLyricScrollOffset(102000, saoPauloLine, maxScroll, { subpixel: true });
+    for (let t = 102016.6; t <= 104000; t += 16.6) {
+      const current = calculateLyricScrollOffset(t, saoPauloLine, maxScroll, { subpixel: true });
+      assert.ok(current >= prevOffset, `Offset must advance smoothly forward at ${t}ms`);
+      const delta = current - prevOffset;
+      // In slow vocal sections, per-frame delta should be smooth (under 1.5px per frame), not a sudden 15px jump
+      assert.ok(delta < 1.5, `Frame delta ${delta}px should be under 1.5px`);
+      prevOffset = current;
+    }
+  });
+
+  await t.test('10. Irregular playback timestamp updates (SMTC jitter): monotonic forward guarantee', () => {
+    const line = {
+      id: 'jitter-test',
+      timeMs: 40000,
+      endMs: 46000,
+      text: 'Irregular timestamps arriving from Windows SMTC with latency variations',
+    };
+    const maxScroll = 150;
+
+    // Simulate irregular arrival timestamps (e.g. 40500, 40580, 40620, 40750, 40760)
+    const arrivalTimes = [40350, 40500, 40580, 40620, 40750, 40760, 40900, 41200, 42000, 43500];
+    let lastOffset = 0;
+
+    for (const timeMs of arrivalTimes) {
+      const offset = calculateLyricScrollOffset(timeMs, line, maxScroll, { subpixel: true });
+      assert.ok(offset >= lastOffset, `Offset at ${timeMs}ms (${offset}) must be >= previous (${lastOffset})`);
+      lastOffset = offset;
+    }
+  });
+
+  await t.test('11. Missing or malformed timestamps: safe fallbacks without throwing or NaN', () => {
+    const malformed1 = { id: 'bad1', timeMs: null, endMs: null, text: 'No timestamps' };
+    const malformed2 = { id: 'bad2', timeMs: NaN, endMs: NaN, text: 'NaN timestamps' };
+    const malformed3 = { id: 'bad3', timeMs: 5000, endMs: 3000, text: 'Inverted timestamps' };
+
+    assert.equal(calculateLyricScrollOffset(2000, malformed1, 100), 0);
+    assert.doesNotThrow(() => calculateLyricScrollOffset(4000, malformed2, 100));
+    assert.doesNotThrow(() => calculateLyricScrollOffset(6000, malformed3, 100));
+    assert.ok(!isNaN(calculateLyricScrollOffset(6000, malformed3, 100)));
+  });
 });
