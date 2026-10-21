@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from './icons';
-import WindowsVoicePreview from './WindowsVoicePreview';
-import KokoroPreview from './KokoroPreview';
 
 /**
  * LivingWaveform: Lightweight Canvas-based continuous audio visualizer.
@@ -199,9 +197,6 @@ export default function VoicePanel({
   const userName = localStorage.getItem('island_user_name') || 'Friend';
   const scrollRef = useRef(null);
   const userScrolledUpRef = useRef(false);
-  const [showVoicePreview, setShowVoicePreview] = useState(false);
-  const [showKokoroPreview, setShowKokoroPreview] = useState(false);
-
   // Determine single clear status
   let currentStatus = 'listening';
   let statusLabel = 'Listening';
@@ -268,31 +263,6 @@ export default function VoicePanel({
         <div className="voice-panel__header-actions">
           <button
             type="button"
-            className={`voice-panel__header-action-btn ${showKokoroPreview ? 'is-active' : ''}`}
-            onClick={() => {
-              setShowVoicePreview(false);
-              setShowKokoroPreview((prev) => !prev);
-            }}
-            title="Kokoro Local TTS Prototype (CPU ONNX)"
-            aria-label="Kokoro Local TTS"
-            style={{ color: showKokoroPreview ? '#ec4899' : undefined }}
-          >
-            <Icon.Sparkles width={13} height={13} />
-          </button>
-          <button
-            type="button"
-            className={`voice-panel__header-action-btn ${showVoicePreview ? 'is-active' : ''}`}
-            onClick={() => {
-              setShowKokoroPreview(false);
-              setShowVoicePreview((prev) => !prev);
-            }}
-            title="Local Windows Voice Discovery & Preview"
-            aria-label="Windows Voice Discovery"
-          >
-            <Icon.Volume2 width={13} height={13} />
-          </button>
-          <button
-            type="button"
             className="voice-panel__close-btn"
             onClick={() => {
               stopSession();
@@ -306,12 +276,8 @@ export default function VoicePanel({
         </div>
       </div>
 
-      {/* 2. Modal Voice Preview OR Kokoro Preview OR Cooldown Card OR Error State Card OR Waveform + Transcript */}
-      {showKokoroPreview ? (
-        <KokoroPreview onClose={() => setShowKokoroPreview(false)} />
-      ) : showVoicePreview ? (
-        <WindowsVoicePreview onClose={() => setShowVoicePreview(false)} />
-      ) : status === 'cooldown' ? (
+      {/* 2. Cooldown Card OR Error State Card OR Waveform + Transcript */}
+      {status === 'cooldown' ? (
         <div className="voice-panel__cooldown-card">
           <div className="voice-panel__cooldown-icon">
             <Icon.Hourglass width={24} height={24} />

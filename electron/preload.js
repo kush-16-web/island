@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('island', {
   media: {
     control: (action) => ipcRenderer.send('media:control', action),
     seek: (posSec) => ipcRenderer.send('media:seek', Number(posSec)),
+    openUrl: (url) => ipcRenderer.send('media:open-url', String(url)),
     getVideoSourceId: () => ipcRenderer.invoke('video:get-source-id'),
     resolveYouTubeId: (query) => ipcRenderer.invoke('video:resolve-youtube-id', query),
     sampleStageColor: () => ipcRenderer.invoke('video:sample-stage-color'),

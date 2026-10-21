@@ -63,10 +63,14 @@ test('Jadu Music Actions & Kokoro TTS Offline Test Suite', async (t) => {
     });
 
     let controlledAction = null;
+    let openedUrl = null;
     const env = {
       media: { active: true, title: 'Other Song', artist: 'Other', status: 'playing' },
       onControl: (act) => {
         controlledAction = act;
+      },
+      onOpenUrl: (url) => {
+        openedUrl = url;
       },
       customStorage: storage,
     };
@@ -76,8 +80,11 @@ test('Jadu Music Actions & Kokoro TTS Offline Test Suite', async (t) => {
     assert.equal(result.ok, true);
     assert.equal(result.action, 'play_favorite');
     assert.equal(result.track.title, 'Blinding Lights');
-    assert.equal(controlledAction, 'play');
-    assert.match(result.spokenConfirmation, /Playing Blinding Lights by The Weeknd from your favorites/i);
+    // Crucial fix for Attention/Pashmina failure:
+    // Must NOT call onControl('play') because that would continue playing 'Other Song' (Pashmina)
+    assert.equal(controlledAction, null);
+    assert.ok(openedUrl);
+    assert.match(result.spokenConfirmation, /Opening Blinding Lights/i);
   });
 
   await t.test('2. Fuzzy favorite match: accents, case, and punctuation resilience', () => {
@@ -183,20 +190,21 @@ test('Jadu Music Actions & Kokoro TTS Offline Test Suite', async (t) => {
       }),
     });
 
-    let played = false;
+    let openedUrl = null;
     const env = {
       media: { active: false },
-      onControl: (act) => {
-        if (act === 'play') played = true;
+      onControl: () => {},
+      onOpenUrl: (url) => {
+        openedUrl = url;
       },
       customStorage: storage,
     };
 
     const result = executeMusicAction({ action: 'play_random_favorite' }, env);
     assert.equal(result.ok, true);
-    assert.equal(played, true);
+    assert.ok(openedUrl);
     assert.ok(['Track A', 'Track B'].includes(result.track.title));
-    assert.match(result.spokenConfirmation, /Playing .* from your favorites/i);
+    assert.match(result.spokenConfirmation, /Opening .* in/i);
   });
 
   await t.test('7. Pause & Resume actions: handles active, already paused, and already playing states', () => {

@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { SPRING } from '../lib/motion';
 import { Switch } from './bits';
 import { Icon } from './icons';
 import WindowsVoicePreview from './WindowsVoicePreview';
-import KokoroPreview from './KokoroPreview';
 
 /**
  * SettingsPanel: Apple-inspired desktop preferences for Dynamic Island.
@@ -34,7 +33,6 @@ export default function SettingsPanel({ accentColor }) {
     }
   });
   const [showVoiceDiscovery, setShowVoiceDiscovery] = useState(false);
-  const [showKokoroPreview, setShowKokoroPreview] = useState(false);
   const [vadSilenceMs, setVadSilenceMs] = useState(() => {
     try {
       return Number(localStorage.getItem('island_vad_silence_ms')) || 1400;
@@ -42,6 +40,23 @@ export default function SettingsPanel({ accentColor }) {
       return 1400;
     }
   });
+
+  // Jadu Voice Engine & Kokoro local configuration
+  const [voiceEngine, setVoiceEngine] = useState(() => {
+    return localStorage.getItem('island_voice_engine') || 'gemini';
+  });
+  const [kokoroVoice, setKokoroVoice] = useState(() => {
+    return localStorage.getItem('island_kokoro_voice') || 'af_heart';
+  });
+  const [allowCloudFallback, setAllowCloudFallback] = useState(() => {
+    return localStorage.getItem('island_voice_cloud_fallback') === 'true';
+  });
+  const [kokoroStatus, setKokoroStatus] = useState({ installed: false, isLoaded: false });
+  const [isInstallingKokoro, setIsInstallingKokoro] = useState(false);
+  const [kokoroMsg, setKokoroMsg] = useState(null);
+  const [kokoroError, setKokoroError] = useState(null);
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const previewAudioRef = useRef(null);
 
   useEffect(() => {
     window.island?.getWindowDock?.().then((res) => {
@@ -61,6 +76,12 @@ export default function SettingsPanel({ accentColor }) {
       if (typeof res === 'boolean') setAutohidePet(res);
     });
 
+    if (window.island?.kokoro?.getStatus) {
+      window.island.kokoro.getStatus().then((st) => {
+        if (st) setKokoroStatus(st);
+      }).catch(() => {});
+    }
+
     if (window.island?.on) {
       return window.island.on('window:dock-changed', (snapped) => {
         if (snapped?.preset) setCurrentPreset(snapped.preset);
@@ -68,6 +89,124 @@ export default function SettingsPanel({ accentColor }) {
       });
     }
   }, []);
+
+  // Cleanup preview audio on unmount
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleSetVoiceEngine = (engine) => {
+    setVoiceEngine(engine);
+    localStorage.setItem('island_voice_engine', engine);
+    setKokoroMsg(null);
+    setKokoroError(null);
+  };
+
+  const handleSetKokoroVoice = (voice) => {
+    setKokoroVoice(voice);
+    localStorage.setItem('island_kokoro_voice', voice);
+  };
+
+  const handleToggleCloudFallback = (allowed) => {
+    setAllowCloudFallback(allowed);
+    localStorage.setItem('island_voice_cloud_fallback', allowed ? 'true' : 'false');
+  };
+
+  const handleInstallKokoro = async () => {
+    if (!window.island?.kokoro?.installModel) return;
+    setIsInstallingKokoro(true);
+    setKokoroMsg('Downloading lightweight CPU model (q8 ~85MB)...');
+    setKokoroError(null);
+    try {
+      const res = await window.island.kokoro.installModel();
+      if (res?.ok) {
+        setKokoroMsg('Kokoro model installed successfully.');
+        const st = await window.island.kokoro.getStatus();
+        if (st) setKokoroStatus(st);
+      } else {
+        setKokoroError(res?.error || 'Installation failed.');
+        setKokoroMsg(null);
+      }
+    } catch (e) {
+      setKokoroError(e.message || 'Error installing Kokoro model.');
+      setKokoroMsg(null);
+    } finally {
+      setIsInstallingKokoro(false);
+    }
+  };
+
+  const handleFreeKokoroRam = async () => {
+    if (!window.island?.kokoro?.dispose) return;
+    await window.island.kokoro.dispose();
+    const st = await window.island.kokoro.getStatus();
+    if (st) setKokoroStatus(st);
+    setKokoroMsg('Kokoro model unloaded from RAM.');
+  };
+
+  const handleTestKokoroVoice = async () => {
+    if (isTestingVoice) {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+      setIsTestingVoice(false);
+      return;
+    }
+
+    if (!kokoroStatus.installed) {
+      setKokoroError('Please install model weights first to preview Kokoro.');
+      return;
+    }
+
+    setIsTestingVoice(true);
+    setKokoroError(null);
+    setKokoroMsg('Synthesizing voice preview...');
+
+    try {
+      const res = await window.island?.kokoro?.synthesize({
+        text: 'Hello! I am your local voice companion living right inside Island.',
+        voice: kokoroVoice,
+        speed: 1.0,
+      });
+
+      if (!res?.ok || !res?.audioBase64) {
+        setKokoroError(res?.error || 'Synthesis preview failed.');
+        setKokoroMsg(null);
+        setIsTestingVoice(false);
+        return;
+      }
+
+      setKokoroMsg(null);
+      const byteChars = atob(res.audioBase64);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteNums[i] = byteChars.charCodeAt(i);
+      }
+      const blob = new Blob([new Uint8Array(byteNums)], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      previewAudioRef.current = audio;
+
+      audio.onended = () => {
+        setIsTestingVoice(false);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => {
+        setIsTestingVoice(false);
+        URL.revokeObjectURL(url);
+      };
+
+      await audio.play();
+    } catch (err) {
+      setKokoroError(err.message || 'Error playing preview.');
+      setIsTestingVoice(false);
+    }
+  };
 
   const handleSetDockMode = (mode) => {
     setDockMode(mode);
@@ -435,47 +574,158 @@ export default function SettingsPanel({ accentColor }) {
         </div>
       </div>
 
-      {/* Local Windows Voice Discovery */}
+      {/* Jadu Voice Engine & Offline Voice */}
       <div className="settings-group">
-        <div className="settings-row">
+        <div className="settings-row settings-row--wrap">
           <div className="settings-row__text">
-            <span className="settings-row__title">Windows Voice Discovery</span>
-            <span className="settings-row__sub">Audit and test local offline voices (Heera, Ravi, David, Zira, etc.)</span>
+            <span className="settings-row__title">Jadu Voice Engine</span>
+            <span className="settings-row__sub">
+              {voiceEngine === 'gemini'
+                ? 'Cloud Gemini TTS (Despina voice). Conversational delivery with quota limits.'
+                : voiceEngine === 'kokoro'
+                ? 'Private local ONNX speech synthesis running completely offline on CPU.'
+                : 'Native Windows system speech synthesizer with zero network dependency.'}
+            </span>
           </div>
-          <button
-            type="button"
-            className="settings-chip is-active"
-            onClick={() => setShowVoiceDiscovery((prev) => !prev)}
-          >
-            {showVoiceDiscovery ? 'Hide Preview' : 'Open Preview'}
-          </button>
+          <div className="settings-chips">
+            {[
+              { id: 'gemini', label: 'Gemini (Despina)' },
+              { id: 'kokoro', label: 'Kokoro (Local CPU)' },
+              { id: 'windows', label: 'Windows Voice' },
+            ].map((eng) => (
+              <button
+                key={eng.id}
+                type="button"
+                className={`settings-chip ${voiceEngine === eng.id ? 'is-active' : ''}`}
+                onClick={() => handleSetVoiceEngine(eng.id)}
+              >
+                {eng.label}
+              </button>
+            ))}
+          </div>
         </div>
-        {showVoiceDiscovery && (
-          <div style={{ marginTop: 12 }}>
-            <WindowsVoicePreview onClose={() => setShowVoiceDiscovery(false)} />
+
+        {/* Kokoro Local Settings when selected */}
+        {voiceEngine === 'kokoro' && (
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Status & Model Installation */}
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <span className="settings-row__title">Model Weights (ONNX q8)</span>
+                <span className="settings-row__sub">
+                  {kokoroStatus.installed
+                    ? (kokoroStatus.isLoaded ? 'Loaded in RAM • Ready' : 'Installed locally (~85MB) • Ready')
+                    : 'Not downloaded. Click to install lightweight CPU model weights.'}
+                </span>
+                {kokoroMsg && (
+                  <span className="settings-row__sub" style={{ color: 'var(--panel-accent)', marginTop: 4, display: 'block' }}>
+                    {kokoroMsg}
+                  </span>
+                )}
+                {kokoroError && (
+                  <span className="settings-row__sub" style={{ color: '#ef4444', marginTop: 4, display: 'block' }}>
+                    {kokoroError}
+                  </span>
+                )}
+              </div>
+              <div className="settings-chips">
+                {!kokoroStatus.installed ? (
+                  <button
+                    type="button"
+                    className="settings-chip is-active"
+                    onClick={handleInstallKokoro}
+                    disabled={isInstallingKokoro}
+                  >
+                    {isInstallingKokoro ? 'Installing...' : 'Install Weights'}
+                  </button>
+                ) : (
+                  <>
+                    {kokoroStatus.isLoaded && (
+                      <button
+                        type="button"
+                        className="settings-chip"
+                        onClick={handleFreeKokoroRam}
+                        title="Unload model from RAM"
+                      >
+                        Free RAM
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="settings-chip is-active"
+                      onClick={handleTestKokoroVoice}
+                    >
+                      {isTestingVoice ? 'Stop Test' : 'Test Voice'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Voice Persona */}
+            <div className="settings-row settings-row--wrap">
+              <div className="settings-row__text">
+                <span className="settings-row__title">Local Voice Persona</span>
+                <span className="settings-row__sub">Select offline female voice timbre for Jadu responses</span>
+              </div>
+              <div className="settings-chips">
+                {[
+                  { id: 'af_heart', label: 'Heart' },
+                  { id: 'af_bella', label: 'Bella' },
+                  { id: 'af_nicole', label: 'Nicole' },
+                  { id: 'af_sarah', label: 'Sarah' },
+                  { id: 'af_sky', label: 'Sky' },
+                ].map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className={`settings-chip ${kokoroVoice === v.id ? 'is-active' : ''}`}
+                    onClick={() => handleSetKokoroVoice(v.id)}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cloud fallback toggle (default OFF) */}
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <span className="settings-row__title">Allow Cloud Fallback</span>
+                <span className="settings-row__sub">
+                  Only use Gemini TTS if Kokoro fails. When disabled, zero cloud audio is used.
+                </span>
+              </div>
+              <Switch
+                checked={allowCloudFallback}
+                onChange={handleToggleCloudFallback}
+                label="Toggle cloud fallback"
+              />
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Kokoro Local TTS Prototype */}
-      <div className="settings-group">
-        <div className="settings-row">
-          <div className="settings-row__text">
-            <span className="settings-row__title">Kokoro Local TTS Prototype (CPU)</span>
-            <span className="settings-row__sub">Isolated ONNX local speech synthesis test (af_heart, benchmarks, offline)</span>
-          </div>
-          <button
-            type="button"
-            className="settings-chip is-active"
-            style={{ background: '#ec4899', color: '#fff', borderColor: '#ec4899' }}
-            onClick={() => setShowKokoroPreview((prev) => !prev)}
-          >
-            {showKokoroPreview ? 'Close Prototype' : 'Open Prototype'}
-          </button>
-        </div>
-        {showKokoroPreview && (
+        {/* Windows Voice Sub-settings */}
+        {voiceEngine === 'windows' && (
           <div style={{ marginTop: 12 }}>
-            <KokoroPreview onClose={() => setShowKokoroPreview(false)} />
+            <div className="settings-row">
+              <div className="settings-row__text">
+                <span className="settings-row__title">Windows Speech Preview</span>
+                <span className="settings-row__sub">Audit and test local offline Windows voices</span>
+              </div>
+              <button
+                type="button"
+                className="settings-chip is-active"
+                onClick={() => setShowVoiceDiscovery((prev) => !prev)}
+              >
+                {showVoiceDiscovery ? 'Hide Explorer' : 'Explore Voices'}
+              </button>
+            </div>
+            {showVoiceDiscovery && (
+              <div style={{ marginTop: 12 }}>
+                <WindowsVoicePreview onClose={() => setShowVoiceDiscovery(false)} />
+              </div>
+            )}
           </div>
         )}
       </div>

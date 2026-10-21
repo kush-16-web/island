@@ -355,18 +355,54 @@ export function useRealtimeVoice(options = {}) {
         historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
 
         // Synthesize spoken confirmation for the verified outcome
+        const engine = localStorage.getItem('island_voice_engine') || 'gemini';
+        const kokoroVoice = localStorage.getItem('island_kokoro_voice') || 'af_heart';
+        const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
+
         let spokenAudioBase64 = null;
-        if (window.island?.gemini?.synthesizeSpeech) {
-          try {
-            const synthRes = await window.island.gemini.synthesizeSpeech({
-              text: finalSpokenText,
-              voice: 'Despina',
-            });
-            if (synthRes.ok && synthRes.audioBase64) {
-              spokenAudioBase64 = synthRes.audioBase64;
+        if (engine === 'kokoro') {
+          if (window.island?.kokoro?.synthesize) {
+            try {
+              const kRes = await window.island.kokoro.synthesize({
+                text: finalSpokenText,
+                voice: kokoroVoice,
+                speed: 1.0,
+              });
+              if (kRes?.ok && kRes.audioBase64) {
+                spokenAudioBase64 = kRes.audioBase64;
+              } else if (!allowCloudFallback) {
+                console.warn('[Kokoro synthesis unavailable, cloud fallback disallowed]:', kRes?.error);
+              }
+            } catch (kErr) {
+              console.warn('[Kokoro synthesis error]:', kErr);
             }
-          } catch (e) {
-            console.warn('[Synthesize spoken action failed]', e);
+          }
+          if (!spokenAudioBase64 && allowCloudFallback && window.island?.gemini?.synthesizeSpeech) {
+            try {
+              const synthRes = await window.island.gemini.synthesizeSpeech({
+                text: finalSpokenText,
+                voice: 'Despina',
+              });
+              if (synthRes?.ok && synthRes.audioBase64) {
+                spokenAudioBase64 = synthRes.audioBase64;
+              }
+            } catch (e) {
+              console.warn('[Cloud fallback synthesis failed]:', e);
+            }
+          }
+        } else if (engine === 'gemini') {
+          if (window.island?.gemini?.synthesizeSpeech) {
+            try {
+              const synthRes = await window.island.gemini.synthesizeSpeech({
+                text: finalSpokenText,
+                voice: 'Despina',
+              });
+              if (synthRes?.ok && synthRes.audioBase64) {
+                spokenAudioBase64 = synthRes.audioBase64;
+              }
+            } catch (e) {
+              console.warn('[Synthesize spoken action failed]:', e);
+            }
           }
         }
 
@@ -377,8 +413,36 @@ export function useRealtimeVoice(options = {}) {
         }
       } else {
         // Normal conversational turn
-        if (res.audioBase64) {
-          await playAssistantSpeech(res.audioBase64, finalSpokenText, turnId);
+        const engine = localStorage.getItem('island_voice_engine') || 'gemini';
+        const kokoroVoice = localStorage.getItem('island_kokoro_voice') || 'af_heart';
+        const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
+
+        let turnAudioBase64 = null;
+        if (engine === 'kokoro') {
+          if (window.island?.kokoro?.synthesize) {
+            try {
+              const kRes = await window.island.kokoro.synthesize({
+                text: finalSpokenText,
+                voice: kokoroVoice,
+                speed: 1.0,
+              });
+              if (kRes?.ok && kRes.audioBase64) {
+                turnAudioBase64 = kRes.audioBase64;
+              }
+            } catch (err) {
+              console.warn('[Kokoro synthesis error in turn]:', err);
+            }
+          }
+          // Only fall back to Gemini audio if explicitly enabled by user
+          if (!turnAudioBase64 && allowCloudFallback && res.audioBase64) {
+            turnAudioBase64 = res.audioBase64;
+          }
+        } else if (engine === 'gemini') {
+          turnAudioBase64 = res.audioBase64;
+        }
+
+        if (turnAudioBase64 && controller.isTurnActive(turnId)) {
+          await playAssistantSpeech(turnAudioBase64, finalSpokenText, turnId);
         } else {
           setTranscript((prev) => [
             ...prev,

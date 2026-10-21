@@ -377,6 +377,7 @@ Supported music actions:
 - get_current_track
 - add_current_to_favorites
 - remove_current_from_favorites
+- show_favorites
 
 For normal conversation, NEVER include an [[ACTION:...]] tag.`;
 

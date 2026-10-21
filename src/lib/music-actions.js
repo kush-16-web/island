@@ -12,15 +12,23 @@
  * - get_current_track
  * - add_current_to_favorites
  * - remove_current_from_favorites
+ * - show_favorites
  *
- * Adheres strictly to requirements:
- * 1. Uses Island's existing SMTC controller and localStorage ('island_fav_tracks').
- * 2. Normalizes track titles/artists with accent stripping and fuzzy string scoring.
- * 3. Enforces favorites-only searching when requested.
- * 4. Detects ambiguous matches and asks for clarification.
- * 5. Returns structured results with truth-grounded spoken confirmations.
- * 6. Never fabricates tracks or URLs; zero arbitrary execution.
+ * Grounded Execution Principles:
+ * 1. Single authoritative store: Uses unified provider-aware favorites (src/lib/favorites.js).
+ * 2. Multi-provider awareness: Distinguishes Spotify, YouTube Music, Apple Music, and Local sources.
+ * 3. Never reports success on track switching unless verified or explicitly framed as opening the provider.
+ * 4. Resolves the "Attention vs Pashmina" bug: Prevents sending generic SMTC play when switching songs.
+ * 5. Structured diagnostics logged to window.__islandVoiceDiagnostics for auditability.
  */
+
+import {
+  getAllFavorites,
+  addFavorite,
+  removeFavorite,
+  isTrackFavorite,
+  SUPPORTED_PROVIDERS,
+} from './favorites.js';
 
 export const ALLOWED_ACTIONS = Object.freeze([
   'play_track',
@@ -33,9 +41,8 @@ export const ALLOWED_ACTIONS = Object.freeze([
   'get_current_track',
   'add_current_to_favorites',
   'remove_current_from_favorites',
+  'show_favorites',
 ]);
-
-const STORAGE_KEY = 'island_fav_tracks';
 
 /**
  * Normalize string for resilient phonetic/spoken comparison.
@@ -47,7 +54,7 @@ export function normalizeText(str) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // remove diacritics
     .toLowerCase()
-    .replace(/[^\w\s]/g, ' ') // replace punctuation with spaces
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ') // replace punctuation with spaces
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -133,38 +140,7 @@ export function scoreTrack(track, query) {
 }
 
 /**
- * Retrieve favorites map from localStorage or fallback storage.
- */
-export function getFavorites(customStorage) {
-  try {
-    const storage = customStorage || (typeof window !== 'undefined' ? window.localStorage : null);
-    if (!storage) return {};
-    const raw = storage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Save favorites map to localStorage or fallback storage.
- */
-export function saveFavorites(favs, customStorage) {
-  try {
-    const storage = customStorage || (typeof window !== 'undefined' ? window.localStorage : null);
-    if (!storage) return false;
-    storage.setItem(STORAGE_KEY, JSON.stringify(favs));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Search a list of tracks with ranked fuzzy matching and ambiguity detection.
- * @param {Array<{title: string, artist?: string}>} tracks
- * @param {string} query
- * @returns {{ match: object|null, ambiguous: boolean, candidates: Array }}
  */
 export function matchTrack(tracks, query) {
   if (!Array.isArray(tracks) || tracks.length === 0 || !query) {
@@ -188,7 +164,7 @@ export function matchTrack(tracks, query) {
 
   // Ambiguity detection:
   // 1. Top two candidates have very close scores (<= 0.12)
-  // 2. OR query is a common root/prefix of multiple distinct track variants (e.g. "São Paulo" vs "São Paulo (Remix)")
+  // 2. OR query is a common prefix/root of multiple distinct tracks (e.g. "São Paulo" vs "São Paulo (Remix)")
   const isAmbiguous =
     second &&
     normalizeText(best.track.title) !== normalizeText(second.track.title) &&
@@ -217,28 +193,95 @@ export function matchTrack(tracks, query) {
 }
 
 /**
- * Execute an allowlisted music action safely against real Island media and favorites state.
+ * Helper to display human-friendly provider names.
+ */
+export function getFriendlyProviderName(provider) {
+  switch (provider) {
+    case SUPPORTED_PROVIDERS.SPOTIFY:
+      return 'Spotify';
+    case SUPPORTED_PROVIDERS.YOUTUBE:
+      return 'YouTube Music';
+    case SUPPORTED_PROVIDERS.APPLE:
+      return 'Apple Music';
+    case SUPPORTED_PROVIDERS.LOCAL:
+      return 'your Media Player';
+    default:
+      return 'your music player';
+  }
+}
+
+/**
+ * Log structured diagnostics for development auditability without leaking secrets.
+ */
+function logActionDiagnostic(record) {
+  if (typeof window === 'undefined') return;
+  if (!window.__islandVoiceDiagnostics) {
+    window.__islandVoiceDiagnostics = [];
+  }
+  window.__islandVoiceDiagnostics.push({
+    timestamp: new Date().toISOString(),
+    ...record,
+  });
+  if (window.__islandVoiceDiagnostics.length > 25) {
+    window.__islandVoiceDiagnostics.shift();
+  }
+}
+
+/**
+ * Execute an allowlisted music action safely against real Island media and unified favorites.
  *
- * @param {object} intent - { action: string, query?: string }
- * @param {object} env - { media, onControl, customStorage }
+ * @param {object} intent - { action: string, query?: string, provider?: string }
+ * @param {object} env - { media, onControl, onOpenUrl, customStorage, turnId }
  * @returns {object} structured action result
  */
 export function executeMusicAction(intent, env = {}) {
-  const { action, query } = intent || {};
+  const { action, query, provider: explicitProvider } = intent || {};
   const media = env.media || { active: false };
   const onControl = typeof env.onControl === 'function' ? env.onControl : () => {};
+  const onOpenUrl =
+    typeof env.onOpenUrl === 'function'
+      ? env.onOpenUrl
+      : (url) => {
+          if (typeof window !== 'undefined' && window.island?.media?.openUrl) {
+            window.island.media.openUrl(url);
+          }
+        };
   const storage = env.customStorage || null;
+  const turnId = env.turnId || Date.now();
 
   if (!ALLOWED_ACTIONS.includes(action)) {
-    return {
+    const res = {
       ok: false,
       action: action || 'unknown',
       reason: 'invalid_action',
       spokenConfirmation: "I'm sorry, that music command is not supported.",
     };
+    logActionDiagnostic({ turnId, action, ok: false, reason: 'invalid_action' });
+    return res;
   }
 
   switch (action) {
+    case 'show_favorites': {
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(
+          new CustomEvent('island:navigate', {
+            detail: { tab: 'playing', viewMode: 'favorites' },
+          })
+        );
+      }
+      const list = getAllFavorites(storage);
+      const count = list.length;
+      const countMsg = count > 0 ? ` You have ${count} saved song${count === 1 ? '' : 's'}.` : ' Your list is currently empty.';
+      const res = {
+        ok: true,
+        action,
+        count,
+        spokenConfirmation: `Opening your favorites.${countMsg}`,
+      };
+      logActionDiagnostic({ turnId, action, ok: true, count });
+      return res;
+    }
+
     case 'pause': {
       if (!media.active) {
         return {
@@ -257,12 +300,14 @@ export function executeMusicAction(intent, env = {}) {
         };
       }
       onControl('pause');
-      return {
+      const res = {
         ok: true,
         action,
         track: { title: media.title, artist: media.artist },
         spokenConfirmation: 'Paused music playback.',
       };
+      logActionDiagnostic({ turnId, action, ok: true, track: media.title });
+      return res;
     }
 
     case 'resume': {
@@ -283,12 +328,14 @@ export function executeMusicAction(intent, env = {}) {
         };
       }
       onControl('play');
-      return {
+      const res = {
         ok: true,
         action,
         track: { title: media.title, artist: media.artist },
         spokenConfirmation: 'Resumed music playback.',
       };
+      logActionDiagnostic({ turnId, action, ok: true, track: media.title });
+      return res;
     }
 
     case 'next_track': {
@@ -338,7 +385,7 @@ export function executeMusicAction(intent, env = {}) {
       return {
         ok: true,
         action,
-        track: { title: media.title, artist: media.artist, album: media.album },
+        track: { title: media.title, artist: media.artist, album: media.album, app: media.app },
         spokenConfirmation: `Currently playing ${media.title}${artist}.`,
       };
     }
@@ -352,9 +399,7 @@ export function executeMusicAction(intent, env = {}) {
           spokenConfirmation: 'No song is currently playing to add to favorites.',
         };
       }
-      const trackKey = `${media.title}|${media.artist || ''}`;
-      const favs = getFavorites(storage);
-      if (favs[trackKey]) {
+      if (isTrackFavorite(media, storage)) {
         return {
           ok: true,
           action,
@@ -362,18 +407,15 @@ export function executeMusicAction(intent, env = {}) {
           spokenConfirmation: `${media.title} is already in your favorites.`,
         };
       }
-      favs[trackKey] = {
-        title: media.title,
-        artist: media.artist || '',
-        addedAt: Date.now(),
-      };
-      saveFavorites(favs, storage);
-      return {
+      const added = addFavorite(media, storage);
+      const res = {
         ok: true,
         action,
-        track: { title: media.title, artist: media.artist },
+        track: { title: media.title, artist: media.artist, provider: added?.provider },
         spokenConfirmation: `Added ${media.title} to your favorites.`,
       };
+      logActionDiagnostic({ turnId, action, ok: true, track: media.title });
+      return res;
     }
 
     case 'remove_current_from_favorites': {
@@ -385,9 +427,7 @@ export function executeMusicAction(intent, env = {}) {
           spokenConfirmation: 'No song is currently playing to remove.',
         };
       }
-      const trackKey = `${media.title}|${media.artist || ''}`;
-      const favs = getFavorites(storage);
-      if (!favs[trackKey]) {
+      if (!isTrackFavorite(media, storage)) {
         return {
           ok: false,
           action,
@@ -396,19 +436,19 @@ export function executeMusicAction(intent, env = {}) {
           spokenConfirmation: `${media.title} is not in your favorites.`,
         };
       }
-      delete favs[trackKey];
-      saveFavorites(favs, storage);
-      return {
+      removeFavorite(media, storage);
+      const res = {
         ok: true,
         action,
         track: { title: media.title, artist: media.artist },
         spokenConfirmation: `Removed ${media.title} from your favorites.`,
       };
+      logActionDiagnostic({ turnId, action, ok: true, track: media.title });
+      return res;
     }
 
     case 'play_random_favorite': {
-      const favs = getFavorites(storage);
-      const list = Object.values(favs);
+      let list = getAllFavorites(storage);
       if (list.length === 0) {
         return {
           ok: false,
@@ -417,33 +457,27 @@ export function executeMusicAction(intent, env = {}) {
           spokenConfirmation: 'Your favorites list is empty.',
         };
       }
+
+      // Check if user specifically requested a provider
+      if (explicitProvider) {
+        const filtered = list.filter((f) => f.provider === explicitProvider);
+        if (filtered.length > 0) list = filtered;
+      }
+
       const randomIndex = Math.floor(Math.random() * list.length);
       const chosen = list[randomIndex];
 
-      // If already playing this track, ensure playback is active
-      const isCurrent =
-        media.active &&
-        normalizeText(media.title) === normalizeText(chosen.title) &&
-        (!chosen.artist || normalizeText(media.artist) === normalizeText(chosen.artist));
-
-      if (isCurrent) {
-        if (media.status !== 'playing') onControl('play');
-      } else {
-        onControl('play');
-      }
-
-      const artistText = chosen.artist ? ` by ${chosen.artist}` : '';
-      return {
-        ok: true,
-        action,
-        track: { title: chosen.title, artist: chosen.artist },
-        spokenConfirmation: `Playing ${chosen.title}${artistText} from your favorites.`,
-      };
+      return handlePlaybackExecution(chosen, {
+        action: 'play_random_favorite',
+        media,
+        onControl,
+        onOpenUrl,
+        turnId,
+      });
     }
 
     case 'play_favorite': {
-      const favs = getFavorites(storage);
-      const list = Object.values(favs);
+      let list = getAllFavorites(storage);
       if (list.length === 0) {
         return {
           ok: false,
@@ -453,12 +487,46 @@ export function executeMusicAction(intent, env = {}) {
         };
       }
 
-      if (!query || !query.trim()) {
-        // Fall back to first or random favorite if query omitted
-        return executeMusicAction({ action: 'play_random_favorite' }, env);
+      // Parse provider filter if specified in query, e.g. "play my spotify favorites"
+      let cleanQuery = query || '';
+      let targetProvider = explicitProvider || null;
+
+      if (/spotify/i.test(cleanQuery)) {
+        targetProvider = SUPPORTED_PROVIDERS.SPOTIFY;
+        cleanQuery = cleanQuery.replace(/spotify/gi, '').trim();
+      } else if (/youtube/i.test(cleanQuery)) {
+        targetProvider = SUPPORTED_PROVIDERS.YOUTUBE;
+        cleanQuery = cleanQuery.replace(/youtube(\s+music)?/gi, '').trim();
+      } else if (/apple(\s+music)?/i.test(cleanQuery)) {
+        targetProvider = SUPPORTED_PROVIDERS.APPLE;
+        cleanQuery = cleanQuery.replace(/apple(\s+music)?/gi, '').trim();
       }
 
-      const { match, ambiguous, candidates } = matchTrack(list, query);
+      if (targetProvider) {
+        const filtered = list.filter((f) => f.provider === targetProvider);
+        if (filtered.length === 0) {
+          return {
+            ok: false,
+            action,
+            reason: 'no_provider_favorites',
+            spokenConfirmation: `You don't have any songs from ${getFriendlyProviderName(targetProvider)} in your favorites.`,
+          };
+        }
+        list = filtered;
+      }
+
+      // Strip conversational filler words: e.g. "play something from my favorites" -> ""
+      // "play attention from my favorites" -> "attention"
+      cleanQuery = cleanQuery
+        .replace(/\b(play|something|from|my|favorites?|favs?|saved|songs?|tracks?)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!cleanQuery) {
+        return executeMusicAction({ action: 'play_random_favorite', provider: targetProvider }, env);
+      }
+
+      const { match, ambiguous, candidates } = matchTrack(list, cleanQuery);
 
       if (ambiguous) {
         const names = candidates.map((c) => `"${c.title}"`).join(' or ');
@@ -473,33 +541,22 @@ export function executeMusicAction(intent, env = {}) {
       }
 
       if (!match) {
+        logActionDiagnostic({ turnId, action, ok: false, reason: 'not_found', query: cleanQuery });
         return {
           ok: false,
           action,
           reason: 'not_found',
-          spokenConfirmation: `I couldn't find "${query}" in your favorites.`,
+          spokenConfirmation: `I couldn't find "${cleanQuery}" in your favorites.`,
         };
       }
 
-      // Check if match matches currently active track
-      const isCurrent =
-        media.active &&
-        normalizeText(media.title) === normalizeText(match.title) &&
-        (!match.artist || normalizeText(media.artist) === normalizeText(match.artist));
-
-      if (isCurrent) {
-        if (media.status !== 'playing') onControl('play');
-      } else {
-        onControl('play');
-      }
-
-      const artistText = match.artist ? ` by ${match.artist}` : '';
-      return {
-        ok: true,
-        action,
-        track: { title: match.title, artist: match.artist },
-        spokenConfirmation: `Playing ${match.title}${artistText} from your favorites.`,
-      };
+      return handlePlaybackExecution(match, {
+        action: 'play_favorite',
+        media,
+        onControl,
+        onOpenUrl,
+        turnId,
+      });
     }
 
     case 'play_track': {
@@ -507,7 +564,7 @@ export function executeMusicAction(intent, env = {}) {
         return executeMusicAction({ action: 'resume' }, env);
       }
 
-      // First check if user is asking to play the currently loaded track
+      // Check if user is asking to resume the currently active song
       if (media.active && media.title) {
         const sim = stringSimilarity(query, media.title);
         if (sim >= 0.7) {
@@ -521,9 +578,8 @@ export function executeMusicAction(intent, env = {}) {
         }
       }
 
-      // Check favorites list for a matching track
-      const favs = getFavorites(storage);
-      const list = Object.values(favs);
+      // Check favorites list
+      const list = getAllFavorites(storage);
       if (list.length > 0) {
         const { match, ambiguous, candidates } = matchTrack(list, query);
         if (ambiguous) {
@@ -538,18 +594,17 @@ export function executeMusicAction(intent, env = {}) {
           };
         }
         if (match) {
-          onControl('play');
-          const artistText = match.artist ? ` by ${match.artist}` : '';
-          return {
-            ok: true,
-            action,
-            track: { title: match.title, artist: match.artist },
-            spokenConfirmation: `Playing ${match.title}${artistText}.`,
-          };
+          return handlePlaybackExecution(match, {
+            action: 'play_track',
+            media,
+            onControl,
+            onOpenUrl,
+            turnId,
+          });
         }
       }
 
-      // If not in favorites and not active track, never fabricate a track!
+      // Never fabricate tracks or playback URLs
       return {
         ok: false,
         action,
@@ -566,4 +621,75 @@ export function executeMusicAction(intent, env = {}) {
         spokenConfirmation: "I'm not sure how to perform that music action.",
       };
   }
+}
+
+/**
+ * Handle playback execution with provider awareness and truth-grounded confirmation.
+ * Resolves the "Attention vs Pashmina" bug where sending SMTC 'play' blindly resumed the wrong song.
+ */
+function handlePlaybackExecution(track, { action, media, onControl, onOpenUrl, turnId }) {
+  const isCurrent =
+    media.active &&
+    normalizeText(media.title) === normalizeText(track.title) &&
+    (!track.artist || normalizeText(media.artist) === normalizeText(track.artist));
+
+  const artistText = track.artist ? ` by ${track.artist}` : '';
+  const providerName = getFriendlyProviderName(track.provider);
+
+  // 1. If the requested song is ALREADY the active song on SMTC, send SMTC play to resume it
+  if (isCurrent) {
+    if (media.status !== 'playing') {
+      onControl('play');
+    }
+    const res = {
+      ok: true,
+      action,
+      track: { title: track.title, artist: track.artist, provider: track.provider },
+      spokenConfirmation: `Resuming ${track.title}${artistText}.`,
+    };
+    logActionDiagnostic({ turnId, action, ok: true, track: track.title, status: 'resumed_current' });
+    return res;
+  }
+
+  // 2. The requested song is a DIFFERENT track than what's playing (e.g. Pashmina is active, user asked for Attention)
+  // Check if we have a playable reference (e.g. spotify:search:... or youtube URL)
+  if (track.playableUrl) {
+    onOpenUrl(track.playableUrl);
+
+    // Honest truth: We launched the playback command to the provider
+    const res = {
+      ok: true,
+      action,
+      track: { title: track.title, artist: track.artist, provider: track.provider },
+      spokenConfirmation: `Opening ${track.title} in ${providerName}.`,
+    };
+    logActionDiagnostic({
+      turnId,
+      action,
+      ok: true,
+      track: track.title,
+      status: 'opened_provider',
+      provider: track.provider,
+      url: track.playableUrl,
+    });
+    return res;
+  }
+
+  // 3. Fallback: If no playable URL or provider integration exists, do NOT falsely claim playback succeeded!
+  const res = {
+    ok: false,
+    action,
+    reason: 'unsupported_provider_playback',
+    track: { title: track.title, artist: track.artist, provider: track.provider },
+    spokenConfirmation: `Found ${track.title} in your favorites, but automatic switching is not supported by ${providerName}. Please select it in your Favorites menu.`,
+  };
+  logActionDiagnostic({
+    turnId,
+    action,
+    ok: false,
+    track: track.title,
+    status: 'unsupported_provider_playback',
+    provider: track.provider,
+  });
+  return res;
 }

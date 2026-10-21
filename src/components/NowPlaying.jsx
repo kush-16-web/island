@@ -8,6 +8,8 @@ import MarqueeText from './MarqueeText';
 import MiniLyrics from './MiniLyrics';
 import FullLyrics from './FullLyrics';
 import VideoPiP from './VideoPiP';
+import FavoritesMenu from './FavoritesMenu';
+import { isTrackFavorite, addFavorite, removeFavorite } from '../lib/favorites';
 
 export default function NowPlaying({
   media,
@@ -104,44 +106,46 @@ export default function NowPlaying({
     onLyricsViewChange?.(mode === 'player' ? false : mode);
   };
 
-  // Favorite track state
-  const trackKey = `${media.title || ''}|${media.artist || ''}`;
-  const [isFavorite, setIsFavorite] = useState(() => {
-    try {
-      const favs = JSON.parse(localStorage.getItem('island_fav_tracks') || '{}');
-      return Boolean(favs[trackKey]);
-    } catch {
-      return false;
-    }
-  });
-
-  const [rightTab, setRightTab] = useState(() => (isVideoSource ? 'video' : 'lyrics'));
+  // Unified favorite track state
+  const [isFavorite, setIsFavorite] = useState(() => isTrackFavorite(media));
 
   useEffect(() => {
-    if (isVideoSource && (!lyricsData?.lines || lyricsData.lines.length === 0)) {
-      setRightTab('video');
-    }
-  }, [isVideoSource, lyricsData?.lines?.length, media.title]);
+    setIsFavorite(isTrackFavorite(media));
+    const handleFavChange = () => {
+      setIsFavorite(isTrackFavorite(media));
+    };
+    window.addEventListener('island:favorites-changed', handleFavChange);
+    return () => window.removeEventListener('island:favorites-changed', handleFavChange);
+  }, [media.title, media.artist]);
 
+  // Listen for navigation events (e.g. from Jadu "show_favorites")
   useEffect(() => {
-    try {
-      const favs = JSON.parse(localStorage.getItem('island_fav_tracks') || '{}');
-      setIsFavorite(Boolean(favs[trackKey]));
-    } catch {
-      setIsFavorite(false);
-    }
-  }, [trackKey]);
+    const handleNav = (e) => {
+      if (e.detail?.viewMode === 'favorites') {
+        handleSetViewMode('favorites');
+      }
+    };
+    window.addEventListener('island:navigate', handleNav);
+    return () => window.removeEventListener('island:navigate', handleNav);
+  }, []);
 
   const toggleFavorite = (e) => {
     e.stopPropagation();
-    try {
-      const favs = JSON.parse(localStorage.getItem('island_fav_tracks') || '{}');
-      const next = !isFavorite;
-      if (next) favs[trackKey] = { title: media.title, artist: media.artist, addedAt: Date.now() };
-      else delete favs[trackKey];
-      localStorage.setItem('island_fav_tracks', JSON.stringify(favs));
-      setIsFavorite(next);
-    } catch {}
+    if (isFavorite) {
+      removeFavorite(media);
+      setIsFavorite(false);
+    } else {
+      addFavorite(media);
+      setIsFavorite(true);
+    }
+  };
+
+  const handlePlayFavoriteTrack = (item) => {
+    if (item.playableUrl && window.island?.media?.openUrl) {
+      window.island.media.openUrl(item.playableUrl);
+    } else if (onControl) {
+      onControl('play');
+    }
   };
 
   // Update view mode when active track or source changes
@@ -197,13 +201,49 @@ export default function NowPlaying({
     window.addEventListener('pointercancel', onPointerUp);
   };
 
+  if (viewMode === 'favorites') {
+    return (
+      <FavoritesMenu
+        onPlayTrack={handlePlayFavoriteTrack}
+        onClose={() => handleSetViewMode(isVideoSource ? 'cinema' : 'player')}
+        accentColor={accentColor}
+      />
+    );
+  }
+
   if (!media.active) {
     return (
-      <Empty
-        icon="♪"
-        title="Nothing playing"
-        hint="Start audio or video in Spotify, your browser, or any media player and it will show up here."
-      />
+      <div className="empty-with-actions" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <Empty
+          icon="♪"
+          title="Nothing playing"
+          hint="Start audio or video in Spotify, your browser, or any media player and it will show up here."
+        />
+        <button
+          type="button"
+          className="fav-browse-btn"
+          onClick={() => handleSetViewMode('favorites')}
+          title="Browse and play your saved favorites"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            marginTop: '-10px',
+            padding: '6px 14px',
+            borderRadius: '16px',
+            background: 'var(--fill-2)',
+            border: '1px solid var(--hair-2)',
+            color: 'var(--text)',
+            fontSize: '12px',
+            fontWeight: 580,
+            cursor: 'pointer',
+            transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
+          <Icon.Heart width={12} height={12} filled style={{ color: accentColor || 'var(--music-accent, #ff3b69)' }} />
+          <span>Browse Favorites</span>
+        </button>
+      </div>
     );
   }
 
@@ -382,7 +422,7 @@ export default function NowPlaying({
           <div className="np__right-tabs np__right-tabs--bottom">
             <button
               type="button"
-              className="np__tab-pill is-active"
+              className={`np__tab-pill${viewMode === 'lyrics' ? ' is-active' : ''}`}
               onClick={() => handleSetViewMode('lyrics')}
               title="Open Synchronized Lyrics"
             >
@@ -391,12 +431,21 @@ export default function NowPlaying({
             </button>
             <button
               type="button"
-              className="np__tab-pill"
+              className={`np__tab-pill${viewMode === 'cinema' ? ' is-active' : ''}`}
               onClick={() => handleSetViewMode('cinema')}
               title="Switch to Fullscreen Cinema PiP"
             >
               <Icon.Video width={11} height={11} />
               <span>Cinema</span>
+            </button>
+            <button
+              type="button"
+              className={`np__tab-pill${viewMode === 'favorites' ? ' is-active' : ''}`}
+              onClick={() => handleSetViewMode('favorites')}
+              title="Open Favorites Menu"
+            >
+              <Icon.Heart width={11} height={11} filled={isFavorite} />
+              <span>Favorites</span>
             </button>
           </div>
         </div>

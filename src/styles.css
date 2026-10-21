@@ -391,7 +391,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   pointer-events: none;
   background: radial-gradient(110% 60% at 50% -15%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%);
 }
-.hub__head { position: relative; display: flex; align-items: center; justify-content: center; height: 34px; flex: none; }
+.hub__head { position: relative; display: flex; align-items: center; justify-content: center; height: 34px; flex: none; padding: 0 38px; box-sizing: border-box; }
 .hub__body { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 .panel { position: absolute; inset: 0; }
 
@@ -2814,14 +2814,14 @@ button:hover .lucide-icon--bell {
 /* Hub Header Voice Button */
 .hub-voice-btn {
   position: absolute;
-  right: 8px;
-  top: 2px;
+  right: 4px;
+  top: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--fill-2);
   border: 1px solid var(--hair);
@@ -2831,6 +2831,7 @@ button:hover .lucide-icon--bell {
   aspect-ratio: 1 / 1;
   box-sizing: border-box;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
 }
 .hub-voice-btn:hover {
   background: var(--fill-3);
@@ -3641,6 +3642,250 @@ button:hover .lucide-icon--bell {
 .pet-field-input:focus {
   border-color: var(--voice-color, #38bdf8);
   background: var(--fill-3);
+}
+
+/* ------------------------------------------------------------------ Favorites Menu */
+.fav-menu {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+.fav-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 8px;
+  flex: none;
+}
+.fav-menu__title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fav-menu__icon {
+  display: grid;
+  place-items: center;
+  color: var(--menu-accent, #ff3b69);
+}
+.fav-menu__title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.fav-menu__badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--fill-2);
+  color: var(--text-2);
+}
+.fav-menu__toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+  flex: none;
+}
+.fav-menu__chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.fav-chip {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 580;
+  background: var(--fill-1);
+  border: 1px solid var(--hair);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+.fav-chip:hover {
+  background: var(--fill-2);
+  color: var(--text);
+}
+.fav-chip.is-active {
+  background: var(--fill-3);
+  border-color: var(--menu-accent, var(--accent, #38bdf8));
+  color: var(--text);
+}
+.fav-menu__search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  background: var(--fill-1);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+.fav-menu__search-icon {
+  color: var(--text-3);
+  flex: none;
+}
+.fav-menu__search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 11.5px;
+  width: 100%;
+  margin-left: 6px;
+}
+.fav-menu__search-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.fav-menu__search-clear:hover {
+  color: var(--text);
+}
+.fav-menu__list-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.fav-menu__no-results {
+  display: grid;
+  place-items: center;
+  height: 100px;
+  font-size: 12px;
+  color: var(--text-3);
+  text-align: center;
+}
+.fav-menu__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--fill-1);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+}
+.fav-item:hover {
+  background: var(--fill-2);
+  border-color: var(--hair);
+}
+.fav-item__art-wrapper {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex: none;
+  background: var(--fill-2);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.fav-item__art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fav-item__art-fallback {
+  color: var(--text-3);
+}
+.fav-item__play-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: #fff;
+}
+.fav-item:hover .fav-item__play-overlay {
+  opacity: 1;
+}
+.fav-item__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fav-item__title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fav-item__artist {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fav-item__provider {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--fill-2);
+  color: var(--text-3);
+  flex: none;
+}
+.fav-item__provider--spotify {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+.fav-item__provider--youtube {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+.fav-item__provider--apple {
+  background: rgba(236, 72, 153, 0.12);
+  color: #ec4899;
+  border: 1px solid rgba(236, 72, 153, 0.25);
+}
+.fav-item__heart-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--menu-accent, #ff3b69);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s;
+  flex: none;
+}
+.fav-item__heart-btn:hover {
+  transform: scale(1.18);
 }
 
 @media (prefers-reduced-motion: reduce) {
