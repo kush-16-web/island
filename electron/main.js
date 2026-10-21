@@ -1075,7 +1075,12 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (win) openHub();
+    if (win && !win.isDestroyed()) {
+      visible = true;
+      win.showInactive();
+      placeWindow();
+      send('hub:open');
+    }
   });
 
   // Keep running in the tray even though the window can't be closed.
@@ -1153,6 +1158,11 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    if (kokoroLocalService) {
+      try {
+        kokoroLocalService.dispose();
+      } catch {}
+    }
     if (media) media.stop();
     if (fullscreenWatcher) fullscreenWatcher.stop();
     if (scheduler) scheduler.stop();

@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EASE_OUT, SPRING } from '../lib/motion';
+import { getAssistantName } from '../lib/assistant';
+import LauncherPanel from './LauncherPanel';
 import ClockPanel from './ClockPanel';
 import InboxPanel from './InboxPanel';
 import NowPlaying from './NowPlaying';
@@ -9,17 +11,11 @@ import SettingsPanel from './SettingsPanel';
 import VoicePanel from './VoicePanel';
 import { Icon } from './icons';
 
-const TABS = [
-  { id: 'playing', label: 'Playing', Glyph: Icon.Music },
-  { id: 'clock', label: 'Clock', Glyph: Icon.Timer },
-  { id: 'pet', label: 'Pet', Glyph: Icon.Paw },
-  { id: 'inbox', label: 'Inbox', Glyph: Icon.Inbox },
-  { id: 'settings', label: 'Settings', Glyph: Icon.Settings },
-];
+const ALL_TABS = ['launcher', 'playing', 'clock', 'pet', 'inbox', 'settings', 'voice'];
 
 const tabIndex = (id) => {
-  const idx = TABS.findIndex((t) => t.id === id);
-  return idx >= 0 ? idx : (id === 'voice' ? 5 : 0);
+  const idx = ALL_TABS.indexOf(id);
+  return idx >= 0 ? idx : 0;
 };
 
 const panelVariants = {
@@ -43,13 +39,24 @@ export default function Hub({
   youtubeId,
   voice,
 }) {
+  const [assistantName, setAssistantNameState] = useState(getAssistantName);
+
+  useEffect(() => {
+    const handleAssistantChange = (e) => {
+      if (e.detail?.name) setAssistantNameState(e.detail.name);
+    };
+    window.addEventListener('island:assistant-changed', handleAssistantChange);
+    return () => window.removeEventListener('island:assistant-changed', handleAssistantChange);
+  }, []);
+
   const previous = useRef(tabIndex(tab));
   const dir = tabIndex(tab) >= previous.current ? 1 : -1;
   useEffect(() => {
     previous.current = tabIndex(tab);
   }, [tab]);
 
-  const unread = s.inbox.filter((n) => !n.read).length;
+  const unread = s.inbox?.filter((n) => !n.read).length || 0;
+  const hasActiveTimers = s.schedule?.some((i) => i.kind === 'timer');
 
   useEffect(() => {
     if (tab !== 'inbox' || unread === 0) return undefined;
@@ -57,56 +64,87 @@ export default function Hub({
     return () => clearTimeout(id);
   }, [tab, unread, actions]);
 
+  // Contextual segmented navigation bar
+  const visibleTabs = [
+    { id: 'launcher', label: 'Home', Glyph: Icon.Home },
+    { id: 'playing', label: s.media?.active ? 'Playing' : 'Music', Glyph: Icon.Music },
+    { id: 'pet', label: 'Pet', Glyph: Icon.Paw },
+  ];
+
+  if (hasActiveTimers || tab === 'clock') {
+    visibleTabs.push({ id: 'clock', label: 'Clock', Glyph: Icon.Timer });
+  }
+  if (unread > 0 || tab === 'inbox') {
+    visibleTabs.push({ id: 'inbox', label: 'Inbox', Glyph: Icon.Inbox });
+  }
+
   return (
     <div className="hub" style={{ '--accent': accentColor || 'var(--c-info)' }}>
       <div className="hub__head">
-        <div className="seg" role="tablist" aria-label="Island sections">
-          {TABS.map(({ id, label, Glyph }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              className={`seg__btn${tab === id ? ' is-active' : ''}`}
-              onClick={() => {
-                if (tab === id) onClose?.();
-                else setTab(id);
-              }}
-              title={tab === id ? `Click to collapse ${label}` : label}
-            >
-              {tab === id && <motion.span layoutId="seg-pill" className="seg__pill" transition={SPRING} />}
-              <span className="seg__label">
-                <Glyph width={15} height={15} />
-                {label}
-                {id === 'inbox' && unread > 0 && <span className="badge">{unread > 9 ? '9+' : unread}</span>}
-              </span>
-            </button>
-          ))}
+        <div className="hub__nav">
+          <div className="seg" role="tablist" aria-label="Island sections">
+            {visibleTabs.map(({ id, label, Glyph }) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                className={`seg__btn${tab === id ? ' is-active' : ''}`}
+                onClick={() => {
+                  if (tab === id) onClose?.();
+                  else setTab(id);
+                }}
+                title={tab === id ? `Click to collapse ${label}` : label}
+              >
+                {tab === id && <motion.span layoutId="seg-pill" className="seg__pill" transition={SPRING} />}
+                <span className="seg__label">
+                  <Glyph width={15} height={15} />
+                  {label}
+                  {id === 'inbox' && unread > 0 && <span className="badge">{unread > 9 ? '9+' : unread}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {voice && (
+        <div className="hub__actions">
           <button
             type="button"
-            className={`hub-voice-btn${voice.status !== 'idle' ? ' is-active' : ''}${tab === 'voice' ? ' is-selected' : ''}`}
+            className={`hub-action-btn${tab === 'settings' ? ' is-active' : ''}`}
             onClick={() => {
-              if (voice.status === 'idle' || voice.status === 'error') {
-                voice.startSession();
-                setTab('voice');
-              } else if (tab === 'voice') {
-                setTab('playing');
-              } else {
-                setTab('voice');
-              }
+              if (tab === 'settings') setTab(s.media?.active ? 'playing' : 'launcher');
+              else setTab('settings');
             }}
-            title={voice.status !== 'idle' ? 'Voice companion active (Click to view)' : 'Talk to Island (Ctrl+Shift+Space)'}
-            aria-label="Voice Companion"
+            title="Settings"
+            aria-label="Settings"
           >
-            <Icon.Mic width={14} height={14} />
-            {voice.status !== 'idle' && (
-              <span className={`hub-voice-pulse is-${voice.status}`} />
-            )}
+            <Icon.Settings width={15} height={15} />
           </button>
-        )}
+
+          {voice && (
+            <button
+              type="button"
+              className={`hub-voice-btn${voice.status !== 'idle' ? ' is-active' : ''}${tab === 'voice' ? ' is-selected' : ''}`}
+              onClick={() => {
+                if (voice.status === 'idle' || voice.status === 'error') {
+                  voice.startSession();
+                  setTab('voice');
+                } else if (tab === 'voice') {
+                  setTab(s.media?.active ? 'playing' : 'launcher');
+                } else {
+                  setTab('voice');
+                }
+              }}
+              title={voice.status !== 'idle' ? `${assistantName} active (Click to view)` : `Talk to ${assistantName} (Ctrl+Shift+Space)`}
+              aria-label="Voice Companion"
+            >
+              <Icon.Mic width={14} height={14} />
+              {voice.status !== 'idle' && (
+                <span className={`hub-voice-pulse is-${voice.status}`} />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="hub__body">
@@ -121,6 +159,16 @@ export default function Hub({
             exit="exit"
             transition={{ duration: 0.26, ease: EASE_OUT }}
           >
+            {tab === 'launcher' && (
+              <LauncherPanel
+                s={s}
+                now={now}
+                actions={actions}
+                setTab={setTab}
+                voice={voice}
+                accentColor={accentColor}
+              />
+            )}
             {tab === 'playing' && (
               <NowPlaying
                 media={s.media}
@@ -141,7 +189,7 @@ export default function Hub({
             {tab === 'voice' && voice && (
               <VoicePanel
                 voice={voice}
-                onClose={() => setTab('playing')}
+                onClose={() => setTab(s.media?.active ? 'playing' : 'launcher')}
                 accentColor={accentColor}
               />
             )}

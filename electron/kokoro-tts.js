@@ -30,7 +30,12 @@ class KokoroLocalService {
     };
 
     // Dedicated local cache directory for Kokoro ONNX weights
-    const basePath = app && typeof app.getPath === 'function' ? app.getPath('userData') : process.cwd();
+    let basePath = process.cwd();
+    try {
+      if (app && typeof app.getPath === 'function') {
+        basePath = app.getPath('userData');
+      }
+    } catch {}
     this.modelDir = path.join(basePath, 'models', 'kokoro');
   }
 
@@ -156,6 +161,7 @@ class KokoroLocalService {
 
       this.model = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-ONNX', {
         dtype: this.dtype,
+        local_files_only: true,
       });
 
       this.metrics.coldStartMs = Math.round(performance.now() - startTime);
@@ -166,6 +172,7 @@ class KokoroLocalService {
       };
     } catch (err) {
       this.isLoading = false;
+      this.model = null;
       return {
         ok: false,
         error: `Could not load local Kokoro model: ${err.message}`,

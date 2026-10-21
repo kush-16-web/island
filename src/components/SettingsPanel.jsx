@@ -4,6 +4,7 @@ import { SPRING } from '../lib/motion';
 import { Switch } from './bits';
 import { Icon } from './icons';
 import WindowsVoicePreview from './WindowsVoicePreview';
+import { getAssistantName, setAssistantName } from '../lib/assistant';
 
 /**
  * SettingsPanel: Apple-inspired desktop preferences for Dynamic Island.
@@ -24,6 +25,7 @@ export default function SettingsPanel({ accentColor }) {
       return 'Friend';
     }
   });
+  const [assistantName, setAssistantNameInput] = useState(() => getAssistantName());
   const [lyricsOffset, setLyricsOffset] = useState(() => {
     try {
       const saved = localStorage.getItem('island_lyrics_offset');
@@ -41,7 +43,7 @@ export default function SettingsPanel({ accentColor }) {
     }
   });
 
-  // Jadu Voice Engine & Kokoro local configuration
+  // AI Assistant Voice Engine & Kokoro local configuration
   const [voiceEngine, setVoiceEngine] = useState(() => {
     return localStorage.getItem('island_voice_engine') || 'gemini';
   });
@@ -99,6 +101,12 @@ export default function SettingsPanel({ accentColor }) {
       }
     };
   }, []);
+
+  const handleAssistantNameChange = (val) => {
+    const clean = val.slice(0, 24);
+    setAssistantNameInput(clean);
+    setAssistantName(clean);
+  };
 
   const handleSetVoiceEngine = (engine) => {
     setVoiceEngine(engine);
@@ -544,12 +552,30 @@ export default function SettingsPanel({ accentColor }) {
         </div>
       </div>
 
-      {/* Voice Assistant Silence Detection Tuning */}
+      {/* AI Assistant Identity & Settings */}
       <div className="settings-group">
+        <div className="settings-row">
+          <div className="settings-row__text">
+            <span className="settings-row__title">AI Assistant Name</span>
+            <span className="settings-row__sub">Configurable companion name used in greetings, notifications, and voice conversations</span>
+          </div>
+          <div className="settings-input-box">
+            <input
+              type="text"
+              className="settings-text-input"
+              value={assistantName}
+              onChange={(e) => handleAssistantNameChange(e.target.value)}
+              placeholder="Nova"
+              maxLength={24}
+            />
+          </div>
+        </div>
+
+        {/* Speech Pause Detection Tuning */}
         <div className="settings-row settings-row--wrap">
           <div className="settings-row__text">
             <span className="settings-row__title">Speech Pause Detection</span>
-            <span className="settings-row__sub">Silence delay before Jadu processes your turn (prevents premature cut-offs)</span>
+            <span className="settings-row__sub">Silence delay before {assistantName} processes your turn (prevents premature cut-offs)</span>
           </div>
           <div className="settings-chips">
             {[
@@ -572,13 +598,11 @@ export default function SettingsPanel({ accentColor }) {
             ))}
           </div>
         </div>
-      </div>
 
-      {/* Jadu Voice Engine & Offline Voice */}
-      <div className="settings-group">
+        {/* Voice Engine Selector */}
         <div className="settings-row settings-row--wrap">
           <div className="settings-row__text">
-            <span className="settings-row__title">Jadu Voice Engine</span>
+            <span className="settings-row__title">Voice Engine</span>
             <span className="settings-row__sub">
               {voiceEngine === 'gemini'
                 ? 'Cloud Gemini TTS (Despina voice). Conversational delivery with quota limits.'
@@ -666,7 +690,7 @@ export default function SettingsPanel({ accentColor }) {
             <div className="settings-row settings-row--wrap">
               <div className="settings-row__text">
                 <span className="settings-row__title">Local Voice Persona</span>
-                <span className="settings-row__sub">Select offline female voice timbre for Jadu responses</span>
+                <span className="settings-row__sub">Select offline voice timbre for {assistantName}</span>
               </div>
               <div className="settings-chips">
                 {[

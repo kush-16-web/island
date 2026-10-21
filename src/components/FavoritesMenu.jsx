@@ -75,7 +75,7 @@ export default function FavoritesMenu({
       <div className="fav-menu__header">
         <div className="fav-menu__title-group">
           <div className="fav-menu__icon">
-            <Icon.Heart width={15} height={15} filled />
+            <Icon.HeartSolid width={15} height={15} />
           </div>
           <span className="fav-menu__title">Favorites</span>
           <span className="fav-menu__badge">{favorites.length}</span>
@@ -159,7 +159,7 @@ export default function FavoritesMenu({
           <Empty
             icon="♥"
             title="No favorites yet"
-            hint="Click the heart button on any playing track or ask Jadu 'Add this to my favorites' to save your music library here."
+            hint="Click the heart button on any playing track or ask your assistant 'Add this to my favorites' to save your music library here."
           />
         ) : filteredList.length === 0 ? (
           <div className="fav-menu__no-results">
@@ -221,7 +221,7 @@ export default function FavoritesMenu({
                   title="Remove from favorites"
                   aria-label="Remove from favorites"
                 >
-                  <Icon.Heart width={14} height={14} filled />
+                  <Icon.HeartSolid width={14} height={14} />
                 </button>
               </div>
             ))}

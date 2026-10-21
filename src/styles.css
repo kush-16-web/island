@@ -391,7 +391,55 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   pointer-events: none;
   background: radial-gradient(110% 60% at 50% -15%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%);
 }
-.hub__head { position: relative; display: flex; align-items: center; justify-content: center; height: 34px; flex: none; padding: 0 38px; box-sizing: border-box; }
+.hub__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  flex: none;
+  padding: 0 4px;
+  box-sizing: border-box;
+  gap: 8px;
+}
+.hub__nav {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+.hub__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.hub-action-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--text-2);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex: none;
+}
+.hub-action-btn:hover {
+  background: var(--fill-3);
+  color: var(--text);
+  transform: scale(1.05);
+}
+.hub-action-btn.is-active {
+  background: var(--fill-3);
+  border-color: var(--hair-2);
+  color: var(--text);
+}
 .hub__body { position: relative; flex: 1; min-height: 0; margin-top: 10px; }
 .panel { position: absolute; inset: 0; }
 
@@ -2813,9 +2861,7 @@ button:hover .lucide-icon--bell {
 
 /* Hub Header Voice Button */
 .hub-voice-btn {
-  position: absolute;
-  right: 4px;
-  top: 3px;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2830,8 +2876,8 @@ button:hover .lucide-icon--bell {
   flex-shrink: 0;
   aspect-ratio: 1 / 1;
   box-sizing: border-box;
+  cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 2;
 }
 .hub-voice-btn:hover {
   background: var(--fill-3);
@@ -3886,6 +3932,157 @@ button:hover .lucide-icon--bell {
 }
 .fav-item__heart-btn:hover {
   transform: scale(1.18);
+}
+
+/* ------------------------------------------------------------------ launcher / home view */
+.launcher {
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 2px 4px;
+  overflow-y: auto;
+}
+.launcher__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  height: 100%;
+}
+.launcher-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: var(--fill-1);
+  border: 1px solid var(--hair);
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.launcher-card:hover {
+  background: var(--fill-2);
+  border-color: var(--hair-2);
+  transform: translateY(-1px);
+}
+.launcher-card:active {
+  transform: scale(0.985);
+}
+.launcher-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+.launcher-card__icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--fill-2);
+  color: var(--text-2);
+  flex: none;
+}
+.launcher-card__icon--music { color: var(--accent, #38bdf8); }
+.launcher-card__icon--voice { color: #a78bfa; }
+.launcher-card__icon--clock { color: var(--c-timer, #f59e0b); }
+.launcher-card__icon--pet { color: #ec4899; }
+.launcher-card__icon--inbox { color: var(--c-info, #38bdf8); }
+.launcher-card__icon--settings { color: var(--text-2); }
+.launcher-card__tag {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.launcher-card__content {
+  margin-top: 8px;
+}
+.launcher-card__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.launcher-card__sub {
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.35;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.launcher-music-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.launcher-music-meta {
+  min-width: 0;
+  flex: 1;
+}
+.launcher-music-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.launcher-music-sub {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.launcher-card__eq {
+  position: absolute;
+  right: 0;
+  top: 4px;
+}
+.launcher-timer-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.launcher-chip {
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.launcher-chip:hover {
+  background: var(--fill-3);
+  color: var(--text);
+  border-color: var(--hair-2);
+}
+.launcher-pulse {
+  position: absolute;
+  right: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #a78bfa;
+  box-shadow: 0 0 6px #a78bfa;
+  animation: voice-pulse-anim 1.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

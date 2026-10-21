@@ -345,7 +345,8 @@ class GeminiVoiceService {
     audioData,
     text,
     history = [],
-    petName = 'Cat',
+    assistantName,
+    petName,
     userName = 'Friend',
     voice = 'Despina',
   }) {
@@ -358,7 +359,8 @@ class GeminiVoiceService {
 
     try {
       // 1. Build conversation contents
-      const systemPrompt = `You are "${petName}", an intelligent, witty, warm and concise desktop companion living inside Island for your human friend "${userName}".
+      const resolvedName = (assistantName || petName || 'Assistant').trim();
+      const systemPrompt = `You are "${resolvedName}", an intelligent, witty, warm and concise desktop companion living inside Island for your human friend "${userName}".
 Keep your answers very concise (1 to 2 sentences maximum, never lengthy paragraphs or lists) so it sounds like real spoken dialogue.
 You naturally understand and respond in English, Hindi, and Hinglish. Match the language and tone used by the user.
 Never output markdown symbols like asterisks, bullet points, or emojis, since your text will be read aloud as speech.

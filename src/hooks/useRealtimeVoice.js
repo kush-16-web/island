@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { VoiceTurnController } from '../lib/voice-turn-controller';
 import { processTurnIntent } from '../lib/voice-intent';
+import { getAssistantName } from '../lib/assistant';
 
 /**
  * Helper to encode float32 PCM samples into standard 16-bit mono WAV ArrayBuffer
@@ -299,7 +300,7 @@ export function useRealtimeVoice(options = {}) {
   // Submit recorded user utterance to Gemini
   const submitUserSpeech = useCallback(async (samples, sampleRate, turnId) => {
     try {
-      const petName = localStorage.getItem('island_pet_name') || 'Cat';
+      const assistantName = getAssistantName();
       const userName = localStorage.getItem('island_user_name') || 'Friend';
 
       // Encode samples into standard 16-bit mono WAV
@@ -313,7 +314,7 @@ export function useRealtimeVoice(options = {}) {
       const res = await window.island.gemini.processSpeech({
         audioData,
         history: historyRef.current,
-        petName,
+        assistantName,
         userName,
       });
 
@@ -333,9 +334,9 @@ export function useRealtimeVoice(options = {}) {
       // Add user speech entry to transcript
       setTranscript((prev) => [
         ...prev,
-        { role: 'user', text: `Voice message to ${petName}` },
+        { role: 'user', text: `Voice message to ${assistantName}` },
       ]);
-      historyRef.current.push({ role: 'user', text: `Voice message to ${petName}` });
+      historyRef.current.push({ role: 'user', text: `Voice message to ${assistantName}` });
 
       // Execute allowlisted music actions embedded in LLM response
       const turnResult = processTurnIntent(res.text, {

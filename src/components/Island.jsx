@@ -144,7 +144,7 @@ export default function Island() {
   const voice = useRealtimeVoice({ media: s.media, onControl: actions.mediaControl });
   const now = useNow(1000);
   const [hubOpen, setHubOpen] = useState(false);
-  const [tab, setTab] = useState('playing');
+  const [tab, setTab] = useState(s.media?.active ? 'playing' : 'launcher');
   const [hovered, setHovered] = useState(false);
   const [typing, setTyping] = useState(false);
   const [isLyricsFull, setIsLyricsFull] = useState(false);
@@ -184,6 +184,8 @@ export default function Island() {
 
   const getDynamicHubHeight = () => {
     switch (tab) {
+      case 'launcher':
+        return 320;
       case 'voice':
         return 340;
       case 'playing':
@@ -245,8 +247,9 @@ export default function Island() {
 
   const openHub = useCallback((nextTab) => {
     if (nextTab) setTab(nextTab);
+    else if (!s.media?.active && tab === 'playing') setTab('launcher');
     setHubOpen(true);
-  }, []);
+  }, [s.media?.active, tab]);
 
   // Sync expanded state with Electron window focus
   useEffect(() => {
@@ -405,7 +408,7 @@ export default function Island() {
       }
 
       // Normal click: expand into hub!
-      if (mode === 'idle') openHub('playing');
+      if (mode === 'idle') openHub('launcher');
       else if (mode === 'voice') openHub('voice');
       else if (mode === 'media') openHub('playing');
       else if (mode === 'timer' || mode === 'both') openHub('clock');

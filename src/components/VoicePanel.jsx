@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from './icons';
+import { getAssistantName } from '../lib/assistant';
 
 /**
  * LivingWaveform: Lightweight Canvas-based continuous audio visualizer.
@@ -193,10 +194,17 @@ export default function VoicePanel({
     toggleMute,
   } = voice;
 
-  const petName = localStorage.getItem('island_pet_name') || 'Mochi';
+  const [assistantName, setAssistantNameState] = useState(() => getAssistantName());
   const userName = localStorage.getItem('island_user_name') || 'Friend';
   const scrollRef = useRef(null);
   const userScrolledUpRef = useRef(false);
+
+  useEffect(() => {
+    const handleNameChange = () => setAssistantNameState(getAssistantName());
+    window.addEventListener('island:assistant-changed', handleNameChange);
+    return () => window.removeEventListener('island:assistant-changed', handleNameChange);
+  }, []);
+
   // Determine single clear status
   let currentStatus = 'listening';
   let statusLabel = 'Listening';
@@ -249,10 +257,10 @@ export default function VoicePanel({
       <div className="voice-panel__header">
         <div className="voice-panel__identity">
           <div className="voice-panel__avatar" aria-hidden="true">
-            <Icon.Paw width={14} height={14} />
+            <Icon.Sparkles width={14} height={14} />
           </div>
           <div className="voice-panel__meta">
-            <div className="voice-panel__name">{petName}</div>
+            <div className="voice-panel__name">{assistantName}</div>
             <div className="voice-panel__status-row">
               <span className={`voice-panel__status-dot is-${currentStatus}`} />
               <span className="voice-panel__status-text">{statusLabel}</span>
@@ -284,7 +292,7 @@ export default function VoicePanel({
           </div>
           <div className="voice-panel__cooldown-title">Rate Limit Cooldown</div>
           <div className="voice-panel__cooldown-desc">
-            Gemini free-tier rate limit active. Jadu is catching its breath. Ready in{' '}
+            Gemini rate limit cooldown active. {assistantName} is catching breath. Ready in{' '}
             <strong>{cooldownSeconds}s</strong>...
           </div>
           <div className="voice-panel__cooldown-progress">
@@ -329,7 +337,7 @@ export default function VoicePanel({
             <div className="voice-transcript__spacer-top" />
             {transcript.length === 0 ? (
               <div className="voice-transcript__empty">
-                <span>Ask anything or speak naturally with {petName}...</span>
+                <span>Ask anything or speak naturally with {assistantName}...</span>
               </div>
             ) : (
               transcript.map((item, index) => {
@@ -342,7 +350,7 @@ export default function VoicePanel({
                     className={`voice-turn voice-turn--${item.role}${item.isLive ? ' is-live' : ''}${isLatest ? ' is-latest' : ''}`}
                   >
                     <div className="voice-turn__speaker">
-                      {isAssistant ? petName : userName}
+                      {isAssistant ? assistantName : userName}
                     </div>
                     <div className="voice-turn__text">{item.text}</div>
                   </div>
