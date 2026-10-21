@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { VoiceTurnController } from '../lib/voice-turn-controller';
 
 /**
  * Helper to encode float32 PCM samples into standard 16-bit mono WAV ArrayBuffer
@@ -21,7 +22,7 @@ function encodeWav(samples, sampleRate = 16000) {
   view.setUint16(20, 1, true); // PCM format
   view.setUint16(22, 1, true); // Mono channel
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // Byte rate (SampleRate * NumChannels * BitsPerSample/8)
+  view.setUint32(28, sampleRate * 2, true); // Byte rate
   view.setUint16(32, 2, true); // Block align
   view.setUint16(34, 16, true); // 16-bit samples
   writeString(36, 'data');
@@ -58,22 +59,32 @@ function base64ToArrayBuffer(base64) {
 
 /**
  * useRealtimeVoice: Provider-based real-time voice companion engine.
- * Default provider: Gemini Voice Pipeline (Gemini 3.5 Flash intelligence + Gemini 3.8 Flash TTS).
- * Features:
- * - Real audio-driven waveforms (both user mic and assistant speaker)
- * - Intelligent client-side VAD with auto-turn detection
- * - Instant voice interruption upon user speaking or clicking interrupt
- * - Multi-turn conversational context in English, Hindi, and Hinglish
- * - Clean resource release on session close
+ * Hardened with VoiceTurnController:
+ * - Synchronous in-flight lock preventing overlapping API requests
+ * - Explicit State Machine: idle, connecting, listening, processing, speaking, cooldown, error
+ * - Monotonically increasing Turn IDs discarding stale or interrupted responses
+ * - 1400ms configurable end-of-speech silence detection
+ * - Pre-speech ring buffer ensuring leading word consonants are never clipped
+ * - Automatic microphone gating while assistant is speaking (zero self-recording)
+ * - Model 429 rate-limit cooldown with live countdown timer
  */
 export function useRealtimeVoice() {
   const [provider, setProvider] = useState(() => localStorage.getItem('island_voice_provider') || 'gemini');
-  const [status, setStatus] = useState('idle'); // 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'connecting' | 'listening' | 'processing' | 'speaking' | 'cooldown' | 'error'
   const [errorMessage, setErrorMessage] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [transcript, setTranscript] = useState([]);
   const [audioLevel, setAudioLevel] = useState(0);
   const [waveformData, setWaveformData] = useState(() => new Float32Array(16).fill(0.1));
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [vadSilenceMs, setVadSilenceMsState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('island_vad_silence_ms');
+      return saved ? Number(saved) : 1400;
+    } catch {
+      return 1400;
+    }
+  });
 
   // Audio nodes and references
   const micStreamRef = useRef(null);
@@ -83,24 +94,66 @@ export function useRealtimeVoice() {
   const scriptProcessorRef = useRef(null);
   const currentSourceRef = useRef(null);
   const animFrameRef = useRef(null);
-
-  // VAD and recording state
-  const isSpeakingRef = useRef(false);
-  const isUserSpeakingRef = useRef(false);
-  const accumulatedSamplesRef = useRef([]);
-  const silenceTimerRef = useRef(null);
   const historyRef = useRef([]);
+
+  // Deterministic Turn Controller
+  const controllerRef = useRef(null);
+  if (!controllerRef.current) {
+    controllerRef.current = new VoiceTurnController({
+      silenceDurationMs: vadSilenceMs,
+      sampleRate: 16000,
+      speechThreshold: 0.02,
+      interruptThreshold: 0.045,
+      minUtteranceDurationMs: 400,
+      onStateChange: (newState, _oldState, meta) => {
+        if (newState === 'cooldown') {
+          setStatus('cooldown');
+          setCooldownSeconds(meta.cooldownSeconds || 0);
+          setErrorMessage(meta.reason || 'Rate limit cooldown active.');
+          window.island?.setVoiceMood?.('idle');
+        } else if (newState === 'processing') {
+          setStatus('processing');
+          window.island?.setVoiceMood?.('listening');
+        } else if (newState === 'speaking') {
+          setStatus('speaking');
+          window.island?.setVoiceMood?.('speaking');
+        } else if (newState === 'listening') {
+          setStatus('listening');
+          setErrorMessage(null);
+          setCooldownSeconds(0);
+          window.island?.setVoiceMood?.('listening');
+        } else if (newState === 'error') {
+          setStatus('error');
+          setErrorMessage(meta.error || 'Voice error occurred.');
+          window.island?.setVoiceMood?.('idle');
+        } else if (newState === 'idle') {
+          setStatus('idle');
+          window.island?.setVoiceMood?.('idle');
+        }
+      },
+      onCooldownTick: (remaining) => {
+        setCooldownSeconds(remaining);
+      },
+    });
+  }
+  const controller = controllerRef.current;
+
+  // Sync configurable silence duration
+  const setVadSilenceMs = useCallback((ms) => {
+    setVadSilenceMsState(ms);
+    try {
+      localStorage.setItem('island_vad_silence_ms', String(ms));
+    } catch {}
+    controller.setSilenceDurationMs(ms);
+  }, [controller]);
 
   // Clean up all audio contexts, tracks, and timers
   const cleanup = useCallback(() => {
+    controller.stopSession();
+
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
-    }
-
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
     }
 
     if (currentSourceRef.current) {
@@ -132,22 +185,18 @@ export function useRealtimeVoice() {
 
     micAnalyserRef.current = null;
     speakerAnalyserRef.current = null;
-    isSpeakingRef.current = false;
-    isUserSpeakingRef.current = false;
-    accumulatedSamplesRef.current = [];
 
     setAudioLevel(0);
     setWaveformData(new Float32Array(16).fill(0.1));
-
-    // Reset pet voice state
     window.island?.setVoiceMood?.('idle');
-  }, []);
+  }, [controller]);
 
   // Stop active session
   const stopSession = useCallback(() => {
     cleanup();
     setStatus('idle');
     setErrorMessage(null);
+    setCooldownSeconds(0);
   }, [cleanup]);
 
   // Interrupt assistant immediately
@@ -159,10 +208,10 @@ export function useRealtimeVoice() {
       } catch {}
       currentSourceRef.current = null;
     }
-    isSpeakingRef.current = false;
+    controller.interrupt();
     setStatus('listening');
     window.island?.setVoiceMood?.('listening');
-  }, []);
+  }, [controller]);
 
   // Toggle microphone mute
   const toggleMute = useCallback(() => {
@@ -176,13 +225,18 @@ export function useRealtimeVoice() {
   }, []);
 
   // Play audio buffer received from Gemini TTS with real-time waveform connection
-  const playAssistantSpeech = useCallback(async (audioBase64, text) => {
+  const playAssistantSpeech = useCallback(async (audioBase64, text, turnId) => {
     const audioCtx = audioContextRef.current;
     if (!audioCtx) return;
 
     try {
       const arrayBuffer = base64ToArrayBuffer(audioBase64);
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+      // Verify turn is still active before starting playback
+      if (!controller.isTurnActive(turnId)) {
+        return;
+      }
 
       // Stop any existing playback
       if (currentSourceRef.current) {
@@ -208,7 +262,7 @@ export function useRealtimeVoice() {
       speakerAnalyser.connect(audioCtx.destination);
       currentSourceRef.current = source;
 
-      isSpeakingRef.current = true;
+      controller.beginSpeaking(turnId);
       setStatus('speaking');
       window.island?.setVoiceMood?.('speaking');
 
@@ -217,40 +271,24 @@ export function useRealtimeVoice() {
         ...prev,
         { role: 'assistant', text, isLive: false },
       ]);
-
       historyRef.current.push({ role: 'model', text });
 
       source.onended = () => {
         if (currentSourceRef.current === source) {
           currentSourceRef.current = null;
-          isSpeakingRef.current = false;
-          setStatus('listening');
-          window.island?.setVoiceMood?.('listening');
+          controller.finishSpeaking(turnId);
         }
       };
 
       source.start(0);
     } catch (err) {
       console.warn('[Audio Playback Error]', err);
-      // Fallback to listening if audio decode fails
-      isSpeakingRef.current = false;
-      setStatus('listening');
-      window.island?.setVoiceMood?.('listening');
+      controller.finishSpeaking(turnId);
     }
-  }, []);
+  }, [controller]);
 
   // Submit recorded user utterance to Gemini
-  const submitUserSpeech = useCallback(async (samples, sampleRate) => {
-    if (!samples || samples.length < sampleRate * 0.4) {
-      // Too short / background pop: resume listening
-      setStatus('listening');
-      window.island?.setVoiceMood?.('listening');
-      return;
-    }
-
-    setStatus('thinking');
-    window.island?.setVoiceMood?.('listening');
-
+  const submitUserSpeech = useCallback(async (samples, sampleRate, turnId) => {
     try {
       const petName = localStorage.getItem('island_pet_name') || 'Cat';
       const userName = localStorage.getItem('island_user_name') || 'Friend';
@@ -270,8 +308,17 @@ export function useRealtimeVoice() {
         userName,
       });
 
+      // Discard stale response if turn was interrupted or session stopped
+      if (!controller.isTurnActive(turnId)) {
+        return;
+      }
+
       if (!res.ok) {
-        throw new Error(res.error || 'Failed to get response from Gemini.');
+        const retryDelaySec = res.retryDelaySeconds || (res.error?.includes('rate limit') ? 30 : 0);
+        controller.handleTurnFailure(turnId, res.error || 'Failed to get response from Gemini.', {
+          retryDelaySeconds: retryDelaySec,
+        });
+        return;
       }
 
       // Add user speech entry to transcript
@@ -283,23 +330,27 @@ export function useRealtimeVoice() {
 
       // Play generated speech audio
       if (res.audioBase64) {
-        await playAssistantSpeech(res.audioBase64, res.text);
+        await playAssistantSpeech(res.audioBase64, res.text, turnId);
       } else {
         // Text-only fallback if audio failed
         setTranscript((prev) => [
           ...prev,
           { role: 'assistant', text: res.text },
         ]);
-        setStatus('listening');
-        window.island?.setVoiceMood?.('listening');
+        controller.finishSpeaking(turnId);
       }
     } catch (err) {
       console.warn('[Gemini voice submit error]', err);
-      setStatus('error');
-      setErrorMessage(err.message || 'Error processing speech with Gemini.');
-      window.island?.setVoiceMood?.('idle');
+      controller.handleTurnFailure(turnId, err.message || 'Error processing speech with Gemini.');
     }
-  }, [playAssistantSpeech]);
+  }, [controller, playAssistantSpeech]);
+
+  // Wire turn submission handler to controller
+  useEffect(() => {
+    controller.onTurnTriggered = (samples, turnId) => {
+      submitUserSpeech(samples, 16000, turnId);
+    };
+  }, [controller, submitUserSpeech]);
 
   // Start real-time voice session
   const startSession = useCallback(async () => {
@@ -353,14 +404,10 @@ export function useRealtimeVoice() {
       speakerAnalyser.smoothingTimeConstant = 0.75;
       speakerAnalyserRef.current = speakerAnalyser;
 
-      // 4. Client-side VAD (Voice Activity Detection) via ScriptProcessor
-      // Accumulates microphone PCM floats when user speaks; auto-submits on natural pause.
+      // 4. Hardened VAD via ScriptProcessor & VoiceTurnController
       const bufferSize = 2048;
       const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
       scriptProcessorRef.current = processor;
-
-      accumulatedSamplesRef.current = [];
-      isUserSpeakingRef.current = false;
 
       processor.onaudioprocess = (e) => {
         if (!micStreamRef.current || !micStreamRef.current.getAudioTracks()[0]?.enabled) {
@@ -376,57 +423,17 @@ export function useRealtimeVoice() {
         }
         const rms = Math.sqrt(sum / inputData.length);
 
-        // Interrupt assistant if user starts speaking while assistant is talking
-        if (isSpeakingRef.current && rms > 0.035) {
-          interrupt();
-        }
-
-        // Voice Activity Detection threshold
-        if (rms > 0.02) {
-          isUserSpeakingRef.current = true;
-          if (silenceTimerRef.current) {
-            clearTimeout(silenceTimerRef.current);
-            silenceTimerRef.current = null;
-          }
-          // Accumulate raw PCM samples
-          const chunk = new Float32Array(inputData);
-          accumulatedSamplesRef.current.push(chunk);
-        } else if (isUserSpeakingRef.current) {
-          // Still accumulate minor trailing frames
-          const chunk = new Float32Array(inputData);
-          accumulatedSamplesRef.current.push(chunk);
-
-          // If silence lasts >= 850ms, user has completed their turn!
-          if (!silenceTimerRef.current) {
-            silenceTimerRef.current = setTimeout(() => {
-              isUserSpeakingRef.current = false;
-              silenceTimerRef.current = null;
-
-              // Flatten accumulated sample chunks
-              const totalLength = accumulatedSamplesRef.current.reduce((acc, c) => acc + c.length, 0);
-              const flatSamples = new Float32Array(totalLength);
-              let offset = 0;
-              for (const c of accumulatedSamplesRef.current) {
-                flatSamples.set(c, offset);
-                offset += c.length;
-              }
-              accumulatedSamplesRef.current = [];
-
-              // Send to Gemini
-              submitUserSpeech(flatSamples, audioCtx.sampleRate);
-            }, 850);
-          }
-        }
+        // Feed to VoiceTurnController: enforces in-flight lock, silence timers, ring buffer, mic gating
+        controller.processAudioFrame(inputData, rms);
       };
 
       micSource.connect(processor);
-      // Connect to destination through a gain node with 0 volume to keep the processor running without audio feedback
       const nullGain = audioCtx.createGain();
       nullGain.gain.value = 0;
       processor.connect(nullGain);
       nullGain.connect(audioCtx.destination);
 
-      // 5. Start audio-reactive animation loop (drives visualizer with actual audio)
+      // 5. Audio-reactive animation loop (drives visualizer)
       const micData = new Uint8Array(32);
       const speakerData = new Uint8Array(32);
       const bars = new Float32Array(16);
@@ -434,7 +441,7 @@ export function useRealtimeVoice() {
       const updateAudioVisuals = () => {
         let currentLevel = 0;
 
-        if (isSpeakingRef.current && speakerAnalyserRef.current) {
+        if (controller.state === 'speaking' && speakerAnalyserRef.current) {
           speakerAnalyserRef.current.getByteFrequencyData(speakerData);
           let sum = 0;
           for (let i = 0; i < 16; i++) {
@@ -443,7 +450,7 @@ export function useRealtimeVoice() {
             sum += val;
           }
           currentLevel = sum / 16;
-        } else if (micAnalyserRef.current) {
+        } else if (micAnalyserRef.current && controller.state === 'listening') {
           micAnalyserRef.current.getByteFrequencyData(micData);
           let sum = 0;
           for (let i = 0; i < 16; i++) {
@@ -462,14 +469,13 @@ export function useRealtimeVoice() {
 
       animFrameRef.current = requestAnimationFrame(updateAudioVisuals);
 
-      setStatus('listening');
-      window.island?.setVoiceMood?.('listening');
+      controller.startSession();
     } catch (err) {
       cleanup();
       setStatus('error');
       setErrorMessage(err.message || 'Failed to start Gemini voice companion.');
     }
-  }, [cleanup, interrupt, submitUserSpeech]);
+  }, [cleanup, controller]);
 
   // Listen to global shortcut 'voice:toggle' from Electron (Ctrl+Shift+Space)
   useEffect(() => {
@@ -500,6 +506,9 @@ export function useRealtimeVoice() {
     transcript,
     audioLevel,
     waveformData,
+    cooldownSeconds,
+    vadSilenceMs,
+    setVadSilenceMs,
     startSession,
     stopSession,
     interrupt,

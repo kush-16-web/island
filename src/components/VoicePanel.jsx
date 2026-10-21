@@ -1,11 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from './icons';
+import WindowsVoicePreview from './WindowsVoicePreview';
 
 /**
  * LivingWaveform: Lightweight Canvas-based continuous audio visualizer.
  * Renders layered, organic sine waves with tapered bell envelopes.
  * Reacts to actual microphone amplitude when listening, and actual assistant audio when speaking.
- * Uses a restrained harmonic wave for thinking, and a calm flatline for muted state.
+ * Uses a restrained harmonic wave for thinking/processing, and a calm flatline for muted/cooldown state.
  * Inherits dynamic theme colors via CSS variable --voice-accent.
  */
 function LivingWaveform({ status, audioLevel, isMuted }) {
@@ -70,7 +71,7 @@ function LivingWaveform({ status, audioLevel, isMuted }) {
       if (curMuted) {
         targetAmp = 0.5;
         phaseSpeed = 0.005;
-      } else if (curStatus === 'thinking') {
+      } else if (curStatus === 'thinking' || curStatus === 'processing') {
         // Restrained, distinctive continuous harmonic motion without pretending to be mic audio
         targetAmp = 6.5;
         phaseSpeed = 0.03;
@@ -84,6 +85,9 @@ function LivingWaveform({ status, audioLevel, isMuted }) {
         const micBoost = Math.min(1, Math.max(0, curAudio));
         targetAmp = 2.8 + micBoost * 22;
         phaseSpeed = 0.032 + micBoost * 0.05;
+      } else if (curStatus === 'cooldown') {
+        targetAmp = 1.0;
+        phaseSpeed = 0.008;
       } else if (curStatus === 'connecting') {
         targetAmp = 2;
         phaseSpeed = 0.02;
@@ -167,10 +171,10 @@ function drawWaveCurve(ctx, w, midY, amplitude, freqMultiplier, phase, color, al
 /**
  * VoicePanel: Refined Voice Session Interface.
  * - Inherits Island's dynamic accent colors naturally without hardcoded voice palettes.
- * - Living continuous audio waveform (Canvas) replacing equalizer bars and generic loaders.
- * - Floating conversation transcript inspired by synchronized lyrics (no cards, no bubbles, no borders).
- * - Understated identity and single clear voice status.
- * - Preserved voice controls (Mute, Interrupt, End Session, Shortcuts).
+ * - Living continuous audio waveform (Canvas).
+ * - Floating conversation transcript.
+ * - Synchronous state machine with in-flight turn locking and rate-limit cooldown display.
+ * - Integrated Windows Voice Discovery and Preview interface.
  */
 export default function VoicePanel({
   voice,
@@ -183,6 +187,7 @@ export default function VoicePanel({
     isMuted,
     transcript = [],
     audioLevel = 0,
+    cooldownSeconds = 0,
     startSession,
     stopSession,
     interrupt,
@@ -193,21 +198,25 @@ export default function VoicePanel({
   const userName = localStorage.getItem('island_user_name') || 'Friend';
   const scrollRef = useRef(null);
   const userScrolledUpRef = useRef(false);
+  const [showVoicePreview, setShowVoicePreview] = useState(false);
 
-  // Determine single clear status (Section 4)
+  // Determine single clear status
   let currentStatus = 'listening';
   let statusLabel = 'Listening';
 
   if (status === 'error') {
     currentStatus = 'error';
     statusLabel = 'Error';
+  } else if (status === 'cooldown') {
+    currentStatus = 'cooldown';
+    statusLabel = cooldownSeconds > 0 ? `Cooldown (${cooldownSeconds}s)` : 'Cooling Down';
   } else if (isMuted) {
     currentStatus = 'muted';
     statusLabel = 'Muted';
   } else if (status === 'connecting') {
     currentStatus = 'connecting';
     statusLabel = 'Connecting';
-  } else if (status === 'thinking') {
+  } else if (status === 'thinking' || status === 'processing') {
     currentStatus = 'thinking';
     statusLabel = 'Thinking';
   } else if (status === 'speaking') {
@@ -234,12 +243,12 @@ export default function VoicePanel({
     }
   }, [transcript]);
 
-  // Dynamic theme accent color (Section 1)
+  // Dynamic theme accent color
   const dynamicAccent = accentColor || 'var(--music-accent, var(--accent, #38bdf8))';
 
   return (
     <div className="voice-panel" style={{ '--voice-accent': dynamicAccent }}>
-      {/* 1. Understated Top Header (Section 4) */}
+      {/* 1. Top Header */}
       <div className="voice-panel__header">
         <div className="voice-panel__identity">
           <div className="voice-panel__avatar" aria-hidden="true">
@@ -254,22 +263,52 @@ export default function VoicePanel({
           </div>
         </div>
 
-        <button
-          type="button"
-          className="voice-panel__close-btn"
-          onClick={() => {
-            stopSession();
-            onClose?.();
-          }}
-          title="End voice session (Ctrl+Shift+Space)"
-          aria-label="End voice session"
-        >
-          <Icon.Close width={14} height={14} />
-        </button>
+        <div className="voice-panel__header-actions">
+          <button
+            type="button"
+            className={`voice-panel__header-action-btn ${showVoicePreview ? 'is-active' : ''}`}
+            onClick={() => setShowVoicePreview((prev) => !prev)}
+            title="Local Windows Voice Discovery & Preview"
+            aria-label="Windows Voice Discovery"
+          >
+            <Icon.Volume2 width={13} height={13} />
+          </button>
+          <button
+            type="button"
+            className="voice-panel__close-btn"
+            onClick={() => {
+              stopSession();
+              onClose?.();
+            }}
+            title="End voice session (Ctrl+Shift+Space)"
+            aria-label="End voice session"
+          >
+            <Icon.Close width={14} height={14} />
+          </button>
+        </div>
       </div>
 
-      {/* 2. Error State Card OR Living Waveform + Floating Transcript */}
-      {status === 'error' ? (
+      {/* 2. Modal Voice Preview OR Cooldown Card OR Error State Card OR Waveform + Transcript */}
+      {showVoicePreview ? (
+        <WindowsVoicePreview onClose={() => setShowVoicePreview(false)} />
+      ) : status === 'cooldown' ? (
+        <div className="voice-panel__cooldown-card">
+          <div className="voice-panel__cooldown-icon">
+            <Icon.Hourglass width={24} height={24} />
+          </div>
+          <div className="voice-panel__cooldown-title">Rate Limit Cooldown</div>
+          <div className="voice-panel__cooldown-desc">
+            Gemini free-tier rate limit active. Jadu is catching its breath. Ready in{' '}
+            <strong>{cooldownSeconds}s</strong>...
+          </div>
+          <div className="voice-panel__cooldown-progress">
+            <div
+              className="voice-panel__cooldown-bar"
+              style={{ width: `${Math.min(100, Math.max(5, (cooldownSeconds / 45) * 100))}%` }}
+            />
+          </div>
+        </div>
+      ) : status === 'error' ? (
         <div className="voice-panel__error-card">
           <div className="voice-panel__error-icon">
             <Icon.Alert width={24} height={24} />
@@ -286,14 +325,14 @@ export default function VoicePanel({
         </div>
       ) : (
         <>
-          {/* Living Audio Waveform (Section 2) */}
+          {/* Living Audio Waveform */}
           <LivingWaveform
             status={currentStatus}
             audioLevel={audioLevel}
             isMuted={isMuted}
           />
 
-          {/* Floating Conversation Transcript (Section 3 - Lyric-style floating text) */}
+          {/* Floating Conversation Transcript */}
           <div
             className="voice-transcript scroll-transcript"
             ref={scrollRef}
@@ -329,9 +368,9 @@ export default function VoicePanel({
         </>
       )}
 
-      {/* 3. Bottom Controls (Section 5) */}
+      {/* 3. Bottom Controls */}
       <div className="voice-panel__controls">
-        {status !== 'error' && (
+        {status !== 'error' && status !== 'cooldown' && (
           <button
             type="button"
             className={`voice-btn voice-btn--mute${isMuted ? ' is-muted' : ''}`}
@@ -357,16 +396,17 @@ export default function VoicePanel({
           </button>
         )}
 
-        {status === 'error' ? (
+        {status === 'error' || status === 'cooldown' ? (
           <>
             <button
               type="button"
-              className="voice-btn voice-btn--retry"
-              onClick={startSession}
-              title="Retry voice session"
+              className={`voice-btn voice-btn--retry ${cooldownSeconds > 0 ? 'is-disabled' : ''}`}
+              onClick={cooldownSeconds > 0 ? undefined : startSession}
+              disabled={cooldownSeconds > 0}
+              title={cooldownSeconds > 0 ? `Wait ${cooldownSeconds}s before retrying` : 'Retry voice session'}
               aria-label="Retry voice session"
             >
-              <span>Retry</span>
+              <span>{cooldownSeconds > 0 ? `Wait (${cooldownSeconds}s)` : 'Retry'}</span>
             </button>
             <button
               type="button"

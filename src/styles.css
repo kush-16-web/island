@@ -2988,6 +2988,11 @@ button:hover .lucide-icon--bell {
   background: #ef4444;
   box-shadow: 0 0 6px #ef4444;
 }
+.voice-panel__status-dot.is-cooldown {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+  animation: voice-pulse-anim 1.5s ease-in-out infinite;
+}
 .voice-panel__status-text {
   font-size: 11px;
   font-weight: 500;
@@ -3244,6 +3249,376 @@ button:hover .lucide-icon--bell {
   font-size: 11px;
   color: var(--text-3);
   margin-top: 4px;
+}
+
+/* Voice Panel Header Actions */
+.voice-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.voice-panel__header-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--hair);
+  background: var(--fill-2);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.voice-panel__header-action-btn:hover {
+  background: var(--fill-3);
+  color: var(--text);
+  border-color: var(--voice-accent, #38bdf8);
+  transform: scale(1.05);
+}
+.voice-panel__header-action-btn.is-active {
+  background: var(--voice-accent, #38bdf8);
+  color: #000;
+  border-color: var(--voice-accent, #38bdf8);
+}
+
+/* Rate Limit Cooldown Card */
+.voice-panel__cooldown-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 20px;
+  margin: 16px 20px;
+  border-radius: 16px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  backdrop-filter: blur(20px);
+}
+.voice-panel__cooldown-icon {
+  color: #f59e0b;
+  margin-bottom: 8px;
+  animation: voice-pulse-anim 2s infinite ease-in-out;
+}
+.voice-panel__cooldown-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f59e0b;
+  margin-bottom: 6px;
+}
+.voice-panel__cooldown-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  max-width: 320px;
+  margin-bottom: 12px;
+}
+.voice-panel__cooldown-progress {
+  width: 100%;
+  max-width: 240px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(245, 158, 11, 0.18);
+  overflow: hidden;
+}
+.voice-panel__cooldown-bar {
+  height: 100%;
+  background: #f59e0b;
+  border-radius: 2px;
+  transition: width 1s linear;
+}
+
+.voice-btn--retry.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+/* Windows Voice Discovery & Preview Styles */
+.voice-preview-modal {
+  width: 100%;
+  box-sizing: border-box;
+}
+.voice-preview-card {
+  background: var(--card-bg, rgba(20, 20, 24, 0.85));
+  border: 1px solid var(--hair, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  padding: 14px 16px;
+  backdrop-filter: blur(24px);
+}
+.voice-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.voice-preview-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.voice-preview-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+.voice-preview-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.voice-preview-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.voice-preview-close:hover {
+  background: var(--fill-3);
+  color: var(--text);
+}
+.voice-preview-target-box {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--hair);
+}
+.voice-preview-subheading {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.voice-target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.voice-target-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--fill-1);
+  border: 1px solid var(--hair);
+}
+.voice-target-chip.is-available {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.05);
+}
+.voice-target-chip.is-unavailable {
+  border-color: rgba(239, 68, 68, 0.15);
+  opacity: 0.75;
+}
+.voice-target-info {
+  display: flex;
+  flex-direction: column;
+}
+.voice-target-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+.voice-target-meta {
+  font-size: 9px;
+  color: var(--text-3);
+}
+.voice-target-status {
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.voice-target-status.status-ok {
+  color: #22c55e;
+}
+.voice-target-status.status-missing {
+  color: var(--text-3);
+}
+.voice-target-note {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-3);
+  margin: 6px 0 0 0;
+}
+.voice-preview-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.voice-preview-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.voice-preview-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.voice-search-input {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--text);
+  outline: none;
+  max-width: 120px;
+}
+.voice-preview-select {
+  width: 100%;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--text);
+  outline: none;
+}
+.voice-phrase-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.voice-phrase-chip {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.voice-phrase-chip:hover {
+  background: var(--fill-3);
+  color: var(--text);
+}
+.voice-phrase-chip.is-active {
+  background: var(--voice-accent, #38bdf8);
+  color: #000;
+  font-weight: 600;
+  border-color: var(--voice-accent, #38bdf8);
+}
+.voice-preview-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--text);
+  outline: none;
+  resize: none;
+  font-family: inherit;
+}
+.voice-preview-sliders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.voice-slider-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.voice-slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-2);
+}
+.voice-slider-reset {
+  background: none;
+  border: none;
+  font-size: 9px;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+}
+.voice-slider-reset:hover {
+  color: var(--text);
+}
+.voice-slider-item input[type='range'] {
+  width: 100%;
+  height: 4px;
+  accent-color: var(--voice-accent, #38bdf8);
+  cursor: pointer;
+}
+.voice-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.voice-preview-play-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--voice-accent, #38bdf8);
+  color: #000;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+.voice-preview-play-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.voice-preview-play-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.voice-preview-play-btn.is-speaking {
+  animation: voice-pulse-anim 1.2s infinite ease-in-out;
+}
+.voice-preview-stop-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--hair);
+  background: var(--fill-2);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.voice-preview-stop-btn:hover:not(:disabled) {
+  background: var(--fill-3);
+  color: var(--text);
+}
+.voice-preview-stop-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* User Identity Field in Pet Studio */

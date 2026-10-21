@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { SPRING } from '../lib/motion';
 import { Switch } from './bits';
 import { Icon } from './icons';
+import WindowsVoicePreview from './WindowsVoicePreview';
 
 /**
  * SettingsPanel: Apple-inspired desktop preferences for Dynamic Island.
@@ -29,6 +30,14 @@ export default function SettingsPanel({ accentColor }) {
       return saved !== null ? Number(saved) : 0;
     } catch {
       return 0;
+    }
+  });
+  const [showVoiceDiscovery, setShowVoiceDiscovery] = useState(false);
+  const [vadSilenceMs, setVadSilenceMs] = useState(() => {
+    try {
+      return Number(localStorage.getItem('island_vad_silence_ms')) || 1400;
+    } catch {
+      return 1400;
     }
   });
 
@@ -392,6 +401,58 @@ export default function SettingsPanel({ accentColor }) {
             />
           </div>
         </div>
+      </div>
+
+      {/* Voice Assistant Silence Detection Tuning */}
+      <div className="settings-group">
+        <div className="settings-row settings-row--wrap">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Speech Pause Detection</span>
+            <span className="settings-row__sub">Silence delay before Jadu processes your turn (prevents premature cut-offs)</span>
+          </div>
+          <div className="settings-chips">
+            {[
+              { label: '850ms (Rapid)', val: 850 },
+              { label: '1400ms (Recommended)', val: 1400 },
+              { label: '2000ms (Relaxed)', val: 2000 },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className={`settings-chip ${vadSilenceMs === item.val ? 'is-active' : ''}`}
+                onClick={() => {
+                  setVadSilenceMs(item.val);
+                  localStorage.setItem('island_vad_silence_ms', String(item.val));
+                  window.dispatchEvent(new CustomEvent('island:vad-timing-changed', { detail: item.val }));
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Local Windows Voice Discovery */}
+      <div className="settings-group">
+        <div className="settings-row">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Windows Voice Discovery</span>
+            <span className="settings-row__sub">Audit and test local offline voices (Heera, Ravi, David, Zira, etc.)</span>
+          </div>
+          <button
+            type="button"
+            className="settings-chip is-active"
+            onClick={() => setShowVoiceDiscovery((prev) => !prev)}
+          >
+            {showVoiceDiscovery ? 'Hide Preview' : 'Open Preview'}
+          </button>
+        </div>
+        {showVoiceDiscovery && (
+          <div style={{ marginTop: 12 }}>
+            <WindowsVoicePreview onClose={() => setShowVoiceDiscovery(false)} />
+          </div>
+        )}
       </div>
 
       {/* Shortcuts & Footer */}

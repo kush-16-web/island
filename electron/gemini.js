@@ -101,6 +101,24 @@ class GeminiVoiceService {
     const status = (errorObj && errorObj.status) ? String(errorObj.status) : null;
     const code = (errorObj && errorObj.code) ? Number(errorObj.code) : httpStatus;
 
+    let retryDelaySeconds = null;
+    if (retryDelay) {
+      const matchS = String(retryDelay).match(/^([0-9.]+)\s*s?$/i);
+      if (matchS) {
+        retryDelaySeconds = Math.ceil(parseFloat(matchS[1]));
+      }
+    }
+    if (!retryDelaySeconds && message) {
+      const matchMsg = message.match(/Please retry in\s+(?:(\d+)h)?(?:(\d+)m)?([0-9.]+)s/i);
+      if (matchMsg) {
+        const hours = parseInt(matchMsg[1] || '0', 10);
+        const mins = parseInt(matchMsg[2] || '0', 10);
+        const secs = parseFloat(matchMsg[3] || '0');
+        retryDelaySeconds = Math.ceil(hours * 3600 + mins * 60 + secs);
+        if (!retryDelay) retryDelay = `${retryDelaySeconds}s`;
+      }
+    }
+
     return {
       httpStatus,
       status,
@@ -109,6 +127,7 @@ class GeminiVoiceService {
       quotaMetric,
       quotaId,
       retryDelay,
+      retryDelaySeconds,
     };
   }
 
@@ -406,6 +425,7 @@ Never output markdown symbols like asterisks, bullet points, or emojis, since yo
           failedModel: 'gemini-3.5-flash',
           stage: 'chat',
           errorDetails: chatRes.errorDetails || null,
+          retryDelaySeconds: chatRes.errorDetails?.retryDelaySeconds || (chatRes.code === 429 ? 30 : null),
           usage: chatRes.usage || null,
         };
       }
@@ -451,6 +471,7 @@ Never output markdown symbols like asterisks, bullet points, or emojis, since yo
           stage: 'tts',
           error: ttsRes.error,
           errorDetails: ttsRes.errorDetails || null,
+          retryDelaySeconds: ttsRes.errorDetails?.retryDelaySeconds || (ttsRes.code === 429 ? 40 : null),
         };
       }
 
@@ -516,6 +537,7 @@ Never output markdown symbols like asterisks, bullet points, or emojis, since yo
       failedModel: 'gemini-3.8-flash-tts',
       stage: 'tts',
       errorDetails: ttsRes.errorDetails || null,
+      retryDelaySeconds: ttsRes.errorDetails?.retryDelaySeconds || (ttsRes.code === 429 ? 40 : null),
     };
   }
 }

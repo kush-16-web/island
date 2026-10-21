@@ -239,4 +239,19 @@ export const Icon = {
       <polyline points="20 6 9 17 4 12" />
     </svg>
   ),
+  Volume2: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon ${className}`} {...p}>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  ),
+  Hourglass: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon ${className}`} {...p}>
+      <path d="M5 22h14" />
+      <path d="M5 2h14" />
+      <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
+      <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
+    </svg>
+  ),
 };
