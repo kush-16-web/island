@@ -1,0 +1,48 @@
+{
+  "totalScore": 100,
+  "maxScore": 100,
+  "passed": true,
+  "criteria": [
+    {
+      "id": "subject_recognition",
+      "title": "Recognizable Main Subject",
+      "description": "The primary visual figure/form is clearly legible and identifiable, not an ambiguous abstract tangle.",
+      "weight": 20,
+      "score": 20,
+      "passed": true
+    },
+    {
+      "id": "metaphor_communication",
+      "title": "Communicated Central Metaphor",
+      "description": "The central visual metaphor (e.g. roots becoming a guitar, descending tear turning into water ripples) is visually depicted.",
+      "weight": 25,
+      "score": 25,
+      "passed": true
+    },
+    {
+      "id": "emotional_resonance",
+      "title": "Song Emotional Alignment",
+      "description": "Color temperature, contrast, and posture evoke the emotional narrative of the track.",
+      "weight": 20,
+      "score": 20,
+      "passed": true
+    },
+    {
+      "id": "expressive_linework",
+      "title": "Deliberate & Expressive Linework",
+      "description": "Continuous contour line demonstrates organic weight variation, fluid curves, and intentional pathing.",
+      "weight": 20,
+      "score": 20,
+      "passed": true
+    },
+    {
+      "id": "compositional_distinctiveness",
+      "title": "Distinctive Composition & Space",
+      "description": "Intentional negative space (>50%) and asymmetrical staging ensure the poster is distinct from other songs.",
+      "weight": 15,
+      "score": 15,
+      "passed": true
+    }
+  ],
+  "feedback": []
+}

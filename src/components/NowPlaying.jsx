@@ -39,6 +39,7 @@ export default function NowPlaying({
   );
 
   const [viewMode, setViewMode] = useState(() => (isVideoSource ? 'cinema' : 'player'));
+  const [showSongArt, setShowSongArt] = useState(false);
 
   // Automatically reset to cinema view for video/trailers, or standard player for music
   useEffect(() => {
@@ -286,6 +287,7 @@ export default function NowPlaying({
             youtubeId={youtubeId || media?.youtubeId}
             stream={videoStream}
             streamActive={videoStreamActive}
+            showSongArt={showSongArt}
           />
 
           {/* YouTube Fullscreen Style Top Overlay */}
@@ -309,6 +311,16 @@ export default function NowPlaying({
                 title={isFavorite ? 'Favorited' : 'Favorite'}
               >
                 {isFavorite ? <Icon.HeartSolid width={13} height={13} /> : <Icon.Heart width={13} height={13} />}
+              </button>
+
+              <button
+                type="button"
+                className={`cinema-hud__switch-btn${showSongArt ? ' is-active' : ''}`}
+                onClick={() => setShowSongArt((prev) => !prev)}
+                title={showSongArt ? 'Switch to Studio Poster' : 'View Living Canvas Song Art'}
+              >
+                <Icon.Sparkles width={11} height={11} />
+                <span>{showSongArt ? 'Poster' : 'Song Art'}</span>
               </button>
 
               <button

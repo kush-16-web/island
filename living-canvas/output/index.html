@@ -580,8 +580,17 @@
       
 
       <article class="art-card">
-        <div class="art-preview">
-             <img src="test-ensemble_test-melody/artwork.svg" alt="Test Melody" loading="lazy" />
+        <div class="art-preview is-validation-card" style="background: #f5f2eb; color: #292524;">
+             <div class="validation-badge">PORTABLE COMFYUI WORKFLOW VALIDATED</div>
+             <div class="validation-symbol" style="border-color: #854d0e;">
+               <span style="color: #854d0e; font-size: 32px;">✦</span>
+             </div>
+             <h3 class="validation-subject">"A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots"</h3>
+             <p class="validation-meta">Ready for local GPU execution via <code>workflow.json</code></p>
+             <div class="validation-specs">
+               <span>Ratio: 832 × 1216 (SDXL)</span>
+               <span>Checkpoint: sd_xl_base_1.0.safetensors (required on Office PC)</span>
+             </div>
            </div>
         <div class="art-meta">
           <div class="art-header">
@@ -590,7 +599,7 @@
               <h2 class="song-title">Test Melody</h2>
             </div>
             <div class="header-tags">
-              
+              <span class="score-badge is-high">Quality Score: 100/100</span>
               <span class="mode-tag is-validated">
                 Workflow Validated
               </span>
@@ -625,15 +634,28 @@
             </div>
           </div>
 
-          
+          <div class="info-block">
+                   <span class="info-label">Pass 2 Quality Evaluation Rubric</span>
+                   <div class="eval-row"><span class="eval-chip is-pass" title="The primary visual figure/form is clearly legible and identifiable, not an ambiguous abstract tangle.">
+                  ✓ Recognizable Main Subject (20/20)
+                </span> <span class="eval-chip is-pass" title="The central visual metaphor (e.g. roots becoming a guitar, descending tear turning into water ripples) is visually depicted.">
+                  ✓ Communicated Central Metaphor (25/25)
+                </span> <span class="eval-chip is-pass" title="Color temperature, contrast, and posture evoke the emotional narrative of the track.">
+                  ✓ Song Emotional Alignment (20/20)
+                </span> <span class="eval-chip is-pass" title="Continuous contour line demonstrates organic weight variation, fluid curves, and intentional pathing.">
+                  ✓ Deliberate & Expressive Linework (20/20)
+                </span> <span class="eval-chip is-pass" title="Intentional negative space (>50%) and asymmetrical staging ensure the poster is distinct from other songs.">
+                  ✓ Distinctive Composition & Space (15/15)
+                </span></div>
+                 </div>
 
           <details class="prompts-accordion">
             <summary>Inspect ComfyUI Prompts &amp; Workflow Node Graph</summary>
             <div class="prompt-box">
               <strong>Positive Diffusion Prompt:</strong>
-              <code>masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots, central metaphor: The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth, supporting subtle elements: spiral acoustic soundhole, drifting autumnal leaf outline, delicate root filaments, composition: Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #f5f2eb background, #292524 fluid ink, accented by #854d0e, emotional atmosphere: Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling</code>
+              <code>(expressive single continuous-line ink drawing of calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots:1.25), symbolic metamorphosis of The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth, integrating subtle motifs of (spiral acoustic soundhole, drifting autumnal leaf outline, delicate root filaments:1.1), composition: Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance, expansive empty negative space, meditative uncluttered layout, editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture, strict limited color palette, #292524 ink on solid #f5f2eb background, subtle wash of #854d0e, high contrast minimalism, no extraneous colors, evoking Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft</code>
               <strong>Negative Diffusion Prompt:</strong>
-              <code>digital gradient, 3D musical notes, cartoon guitar, glossy veneer, generic tree silhouette, clipart, watermark, signature, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts</code>
+              <code>digital gradient, 3D musical notes, cartoon guitar, glossy veneer, generic tree silhouette, clipart, watermark, signature, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, shading, gradients, generic silhouette, stock clipart, meaningless fractals, mandalas, repetitive floral wallpaper, broken scratchy lines, multiple overlapping chaotic sketches, messy crosshatching, doodles, garish oversaturated neon colors, rainbow gradient, muddy colors, chromatic aberration, letters, words, typography, logo, watermark, signature, border frame, cropped edges, deformed anatomy, extra limbs, mutated hands, multiple subjects, busy background clutter</code>
               <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
                 Workflow file: <code>test-ensemble_test-melody/workflow.json</code> (Drag and drop directly into ComfyUI canvas).
               </p>

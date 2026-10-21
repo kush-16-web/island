@@ -65,7 +65,7 @@ export default function LauncherPanel({
           tabIndex={0}
         >
           <div className="launcher-card__head">
-            <span className="launcher-card__icon launcher-card__icon--music">
+            <span className="launcher-card__icon">
               <Icon.Music width={15} height={15} />
             </span>
             <span className="launcher-card__tag">
@@ -159,7 +159,7 @@ export default function LauncherPanel({
           tabIndex={0}
         >
           <div className="launcher-card__head">
-            <span className="launcher-card__icon launcher-card__icon--voice">
+            <span className="launcher-card__icon">
               <Icon.Sparkles width={15} height={15} />
             </span>
             <span className="launcher-card__tag">Companion</span>
@@ -193,7 +193,7 @@ export default function LauncherPanel({
           tabIndex={0}
         >
           <div className="launcher-card__head">
-            <span className="launcher-card__icon launcher-card__icon--clock">
+            <span className="launcher-card__icon">
               <Icon.Timer width={15} height={15} />
             </span>
             <span className="launcher-card__tag">
@@ -247,7 +247,7 @@ export default function LauncherPanel({
           tabIndex={0}
         >
           <div className="launcher-card__head">
-            <span className="launcher-card__icon launcher-card__icon--pet">
+            <span className="launcher-card__icon">
               <Icon.Paw width={15} height={15} />
             </span>
             <span className="launcher-card__tag">Desktop Pet</span>
@@ -266,7 +266,7 @@ export default function LauncherPanel({
           tabIndex={0}
         >
           <div className="launcher-card__head">
-            <span className="launcher-card__icon launcher-card__icon--inbox">
+            <span className="launcher-card__icon">
               <Icon.Inbox width={15} height={15} />
             </span>
             <span className="launcher-card__tag">Inbox</span>
@@ -289,7 +289,7 @@ export default function LauncherPanel({
         >
           <div className="launcher-settings-row">
             <div className="launcher-settings-left">
-              <span className="launcher-card__icon launcher-card__icon--settings">
+              <span className="launcher-card__icon">
                 <Icon.Settings width={15} height={15} />
               </span>
               <div className="launcher-settings-text">

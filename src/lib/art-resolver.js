@@ -77,12 +77,20 @@ export function upgradeProviderArtUrl(url) {
  * @param {string} artist
  * @returns {Promise<{ artwork: string|null, artist: string|null, album: string|null, provider: string|null }>}
  */
+// In-memory artwork cache to prevent duplicate queries and provide zero-latency poster displays
+const trackArtCache = new Map();
+
 export async function enrichTrackMetadata(title, artist = '') {
   if (!title) return { artwork: null, artist: null, album: null, provider: null };
 
+  const cacheKey = `${title.toLowerCase().trim()}__${(artist || '').toLowerCase().trim()}`;
+  if (trackArtCache.has(cacheKey)) {
+    return trackArtCache.get(cacheKey);
+  }
+
   const query = `${title} ${artist}`.trim();
 
-  // 1. Query iTunes API (Fast, public, provides crystal-clear 600x600 HD album covers)
+  // 1. Query iTunes API (Fast, public, provides crystal-clear 1000x1000 studio album covers)
   try {
     const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`, {
       signal: AbortSignal.timeout(4000),
@@ -92,13 +100,15 @@ export async function enrichTrackMetadata(title, artist = '') {
       if (data.results && data.results.length > 0) {
         const item = data.results[0];
         const rawArt = item.artworkUrl100 || '';
-        const hdArt = rawArt.replace(/\/\d+x\d+bb\./, '/600x600bb.');
-        return {
+        const hdArt = rawArt.replace(/\/\d+x\d+bb\./, '/1000x1000bb.');
+        const result = {
           artwork: hdArt || rawArt || null,
           artist: item.artistName || artist || null,
           album: item.collectionName || null,
           provider: 'apple',
         };
+        trackArtCache.set(cacheKey, result);
+        return result;
       }
     }
   } catch {}
@@ -108,15 +118,19 @@ export async function enrichTrackMetadata(title, artist = '') {
     try {
       const ytId = await window.island.media.resolveYouTubeId(query);
       if (ytId) {
-        return {
-          artwork: `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`,
+        const result = {
+          artwork: `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`,
           artist: artist || null,
           album: null,
           provider: 'youtube',
+          youtubeId: ytId,
         };
+        trackArtCache.set(cacheKey, result);
+        return result;
       }
     } catch {}
   }
 
   return { artwork: null, artist: null, album: null, provider: null };
 }
+

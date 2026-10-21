@@ -264,4 +264,16 @@ module.exports = {
   discoverLocalCheckpoints,
   validateWorkflowStructure,
   processComfyUIGeneration,
+  // Backward-compatible test aliases
+  buildPromptsFromConcept: (concept, options) => {
+    const res = buildEditorialPrompts(concept, options);
+    return {
+      positive_prompt: res.positivePrompt,
+      negative_prompt: res.negativePrompt,
+      ...res,
+    };
+  },
+  createComfyWorkflow: createPortableWorkflow,
+  generateArtwork: processComfyUIGeneration,
 };
+

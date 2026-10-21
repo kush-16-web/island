@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Equalizer } from './bits';
+import SongArtPoster from './SongArtPoster';
 import {
+  enrichTrackMetadata,
   extractYouTubeIdFromMedia,
   getYouTubePosterCandidates,
   upgradeProviderArtUrl,
@@ -13,6 +15,7 @@ export default function VideoPiP({
   youtubeId,
   stream,
   streamActive = false,
+  showSongArt = false,
 }) {
   const iframeRef = useRef(null);
   const videoRef = useRef(null);
@@ -21,11 +24,37 @@ export default function VideoPiP({
     youtubeId || media?.youtubeId || extractYouTubeIdFromMedia(media) || null
   ));
 
+  // HD official studio artwork resolved from public catalog
+  const [hdArtUrl, setHdArtUrl] = useState(null);
+
   // High-resolution poster candidates and fallback index
   const [candidateIndex, setCandidateIndex] = useState(0);
 
   const playing = media?.status === 'playing';
   const hasArt = Boolean(media?.art);
+
+  // Background enrich HD artwork whenever song changes
+  useEffect(() => {
+    let cancelled = false;
+    if (!media?.title) {
+      setHdArtUrl(null);
+      return;
+    }
+
+    enrichTrackMetadata(media.title, media.artist || '').then((res) => {
+      if (!cancelled && res?.artwork) {
+        setHdArtUrl(res.artwork);
+        setCandidateIndex(0);
+      }
+      if (!cancelled && res?.youtubeId && !activeYtId) {
+        setActiveYtId(res.youtubeId);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [media?.title, media?.artist]);
 
   // Sync / resolve YouTube ID dynamically if not supplied
   useEffect(() => {
@@ -48,6 +77,9 @@ export default function VideoPiP({
 
   // Construct candidates list in order of priority (Highest resolution first)
   const posterCandidates = [];
+  if (hdArtUrl) {
+    posterCandidates.push(hdArtUrl);
+  }
   if (activeYtId) {
     posterCandidates.push(...getYouTubePosterCandidates(activeYtId));
   }
@@ -118,56 +150,71 @@ export default function VideoPiP({
   return (
     <div className="cinema-screen">
       <div className="cinema-screen__stage">
-        {/* 1. Pure YouTube Embedded Video Player (No desktop bleed, no browser UI) */}
-        {!isDrmPlatform && activeYtId && (
-          <iframe
-            ref={iframeRef}
-            src={`https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&enablejsapi=1&start=${startSec}`}
-            className={`cinema-screen__iframe${iframeLoaded ? ' is-ready' : ''}`}
-            title="Cinema Video Stream"
-            allow="autoplay; encrypted-media; picture-in-picture"
-            onLoad={() => setIframeLoaded(true)}
-          />
-        )}
-
-        {/* 2. Local Video Window Capture (for VLC / MPV dedicated players) */}
-        {!isDrmPlatform && !activeYtId && streamActive && stream && (
-          <video
-            ref={videoRef}
-            className="cinema-screen__video is-active"
-            autoPlay
-            playsInline
-            muted
-          />
-        )}
-
-        {/* 3. Cinematic High-Resolution Backdrop Poster */}
-        {(isDrmPlatform || (!activeYtId && !streamActive) || (!iframeLoaded && activeYtId)) && (
-          <div className="cinema-screen__backdrop">
-            {currentPosterUrl ? (
-              <img
-                src={currentPosterUrl}
-                alt=""
-                className="cinema-screen__poster-img"
-                onError={handlePosterError}
+        {/* 0. Living Canvas Fine-Art Mode */}
+        {showSongArt ? (
+          <SongArtPoster media={media} accentColor={accentColor} />
+        ) : (
+          <>
+            {/* 1. Pure YouTube Embedded Video Player (No desktop bleed, no browser UI) */}
+            {!isDrmPlatform && activeYtId && (
+              <iframe
+                ref={iframeRef}
+                src={`https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&enablejsapi=1&start=${startSec}`}
+                className={`cinema-screen__iframe${iframeLoaded ? ' is-ready' : ''}`}
+                title="Cinema Video Stream"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                onLoad={() => setIframeLoaded(true)}
               />
-            ) : hasArt ? (
-              <img
-                src={media.art}
-                alt=""
-                className="cinema-screen__poster-img"
-              />
-            ) : (
-              <div className="cinema-screen__glow-gradient" />
             )}
 
-            {/* Ambient Backdrop Depth Overlay */}
-            <div className="cinema-screen__poster-overlay">
-              <div className="cinema-screen__center-eq">
-                <Equalizer color={accentColor || 'var(--accent, #38bdf8)'} playing={playing} />
+            {/* 2. Local Video Window Capture (for VLC / MPV dedicated players) */}
+            {!isDrmPlatform && !activeYtId && streamActive && stream && (
+              <video
+                ref={videoRef}
+                className="cinema-screen__video is-active"
+                autoPlay
+                playsInline
+                muted
+              />
+            )}
+
+            {/* 3. Cinematic High-Resolution Backdrop Poster */}
+            {(isDrmPlatform || (!activeYtId && !streamActive) || (!iframeLoaded && activeYtId)) && (
+              <div className="cinema-screen__backdrop">
+                {/* Ambient Blurred Aura Layer for seamless, vibrant edge blending */}
+                <div
+                  className="cinema-screen__backdrop-ambient"
+                  style={{
+                    backgroundImage: currentPosterUrl ? `url("${currentPosterUrl}")` : undefined,
+                  }}
+                />
+
+                {currentPosterUrl ? (
+                  <img
+                    src={currentPosterUrl}
+                    alt=""
+                    className="cinema-screen__poster-img"
+                    onError={handlePosterError}
+                  />
+                ) : hasArt ? (
+                  <img
+                    src={media.art}
+                    alt=""
+                    className="cinema-screen__poster-img"
+                  />
+                ) : (
+                  <div className="cinema-screen__glow-gradient" />
+                )}
+
+                {/* Ambient Backdrop Depth Overlay */}
+                <div className="cinema-screen__poster-overlay">
+                  <div className="cinema-screen__center-eq">
+                    <Equalizer color={accentColor || 'var(--accent, #38bdf8)'} playing={playing} />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
       </div>
     </div>

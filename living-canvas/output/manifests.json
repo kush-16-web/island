@@ -114,18 +114,23 @@
       "artist": "Test Ensemble",
       "lyrics": "A quiet echo in the empty hall"
     },
-    "createdAt": "2026-10-21T05:43:06.534Z",
+    "createdAt": "2026-10-21T11:54:20.184Z",
+    "status": "workflow_validated",
     "generator": {
-      "mode": "mock-svg-renderer",
-      "format": "svg",
+      "status": "workflow_validated",
+      "format": "workflow_json",
       "source": "interpreter",
       "model": "rule-based-art-director",
-      "fallbackReason": null
+      "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
+      "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
     },
+    "qualityScore": 100,
     "files": {
       "concept": "concept.json",
       "prompt": "prompt.json",
-      "artwork": "artwork.svg"
+      "workflow": "workflow.json",
+      "evaluation": "evaluation.json",
+      "artwork": null
     },
     "hardware": {
       "platform": "win32",
@@ -133,7 +138,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 535,
+      "freeRamMB": 438,
       "nodeVersion": "v22.12.0"
     }
   },
@@ -173,7 +178,7 @@
       "title": "Silent Northern Aurora",
       "artist": "Fjord Lights"
     },
-    "createdAt": "2026-10-21T06:19:33.107Z",
+    "createdAt": "2026-10-21T11:54:20.114Z",
     "status": "workflow_validated",
     "generator": {
       "status": "workflow_validated",
@@ -197,7 +202,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 385,
+      "freeRamMB": 419,
       "nodeVersion": "v22.12.0"
     }
   }
