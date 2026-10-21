@@ -136,6 +136,7 @@ export default function SettingsPanel({ accentColor }) {
   const handleSetChatProvider = (p) => {
     setChatProvider(p);
     localStorage.setItem('island_chat_provider', p);
+    localStorage.setItem('island_voice_provider', p);
     window.dispatchEvent(new CustomEvent('island:ai-provider-changed', { detail: { chatProvider: p } }));
   };
 
@@ -161,12 +162,14 @@ export default function SettingsPanel({ accentColor }) {
     setGroqKeyMsg(null);
     setGroqKeyError(null);
     try {
-      const res = await window.island?.groq?.setKey(groqKeyInput.trim());
+      const res = await window.island?.groq?.setKey({ key: groqKeyInput.trim() });
       if (res?.ok) {
-        setGroqKeyMsg('Groq API Key saved securely.');
+        setGroqKeyMsg('Groq API Key saved securely. Groq Chat & Whisper activated.');
         setGroqKeyInput('');
         const st = await window.island?.groq?.getStatus();
         if (st) setGroqStatus(st);
+        handleSetChatProvider('groq');
+        handleSetSttProvider('groq-whisper');
       } else {
         setGroqKeyError(res?.error || 'Failed to save key.');
       }

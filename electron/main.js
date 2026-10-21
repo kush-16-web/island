@@ -1045,7 +1045,8 @@ function wireIpc() {
 
   handle('groq:set-key', (params) => {
     if (!groqService) groqService = new GroqService({ store });
-    return groqService.setKey(params?.key, store);
+    const key = typeof params === 'string' ? params : (params?.key || params?.apiKey);
+    return groqService.setKey(key, store);
   });
 
   handle('groq:clear-key', () => {

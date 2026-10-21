@@ -212,9 +212,23 @@ export function createMockIsland() {
     groq: {
       chat: async () => ({ ok: false, error: 'Groq service requires desktop Electron app.' }),
       transcribe: async () => ({ ok: false, error: 'Groq Whisper requires desktop Electron app.' }),
-      getStatus: async () => ({ hasKey: false, provider: 'groq' }),
-      setKey: async () => ({ ok: true }),
-      clearKey: async () => ({ ok: true }),
+      getStatus: async () => {
+        const key = typeof window !== 'undefined' ? localStorage.getItem('island_mock_groq_key') : null;
+        return {
+          hasKey: Boolean(key && key.length > 8),
+          keyMasked: key && key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : null,
+          provider: 'groq',
+        };
+      },
+      setKey: async (p) => {
+        const key = typeof p === 'string' ? p : (p?.key || p?.apiKey);
+        if (key && typeof window !== 'undefined') localStorage.setItem('island_mock_groq_key', key);
+        return { ok: true };
+      },
+      clearKey: async () => {
+        if (typeof window !== 'undefined') localStorage.removeItem('island_mock_groq_key');
+        return { ok: true };
+      },
     },
     ai: {
       getStatus: async () => ({

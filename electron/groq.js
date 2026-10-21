@@ -177,10 +177,16 @@ class GroqService {
   }
 
   hasKey() {
+    if (!this.apiKey) {
+      this.apiKey = this._loadApiKey();
+    }
     return Boolean(this.apiKey && this.apiKey.length > 10);
   }
 
   getKeyMasked() {
+    if (!this.apiKey) {
+      this.apiKey = this._loadApiKey();
+    }
     if (!this.apiKey || this.apiKey.length < 8) return null;
     const prefix = this.apiKey.slice(0, 4);
     const suffix = this.apiKey.slice(-4);
@@ -201,13 +207,16 @@ class GroqService {
           const encrypted = safeStorage.encryptString(trimmed).toString('base64');
           store.set('groq_api_key_encrypted', encrypted);
           store.set('groq_api_key', null); // remove unencrypted
+          if (typeof store.flush === 'function') store.flush();
           return { ok: true, encrypted: true };
         } catch {
           store.set('groq_api_key', trimmed);
+          if (typeof store.flush === 'function') store.flush();
           return { ok: true, encrypted: false };
         }
       } else {
         store.set('groq_api_key', trimmed);
+        if (typeof store.flush === 'function') store.flush();
         return { ok: true, encrypted: false };
       }
     }
@@ -220,6 +229,7 @@ class GroqService {
     if (store) {
       store.set('groq_api_key_encrypted', null);
       store.set('groq_api_key', null);
+      if (typeof store.flush === 'function') store.flush();
     }
     return { ok: true };
   }

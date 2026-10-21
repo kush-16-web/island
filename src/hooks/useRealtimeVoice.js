@@ -71,7 +71,7 @@ function base64ToArrayBuffer(base64) {
  * - Model 429 rate-limit cooldown with live countdown timer
  */
 export function useRealtimeVoice(options = {}) {
-  const [provider, setProvider] = useState(() => localStorage.getItem('island_voice_provider') || 'gemini');
+  const [provider, setProvider] = useState(() => localStorage.getItem('island_chat_provider') || localStorage.getItem('island_voice_provider') || 'gemini');
   const [status, setStatus] = useState('idle'); // 'idle' | 'connecting' | 'listening' | 'processing' | 'speaking' | 'cooldown' | 'error'
   const [errorMessage, setErrorMessage] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -87,6 +87,16 @@ export function useRealtimeVoice(options = {}) {
       return 1400;
     }
   });
+
+  // Listen for dynamic provider changes from Settings
+  useEffect(() => {
+    const onProviderChanged = (e) => {
+      const newProvider = e.detail?.chatProvider || localStorage.getItem('island_chat_provider') || 'gemini';
+      setProvider(newProvider);
+    };
+    window.addEventListener('island:ai-provider-changed', onProviderChanged);
+    return () => window.removeEventListener('island:ai-provider-changed', onProviderChanged);
+  }, []);
 
   // Keep live references to active media state & control actions for safe music command execution
   const mediaRef = useRef(options.media);
@@ -304,13 +314,28 @@ export function useRealtimeVoice(options = {}) {
       const userName = localStorage.getItem('island_user_name') || 'Friend';
 
       // 0. Provider configuration resolution
-      const chatProvider = localStorage.getItem('island_voice_provider') || 'gemini';
-      const sttProvider = localStorage.getItem('island_stt_provider') || (chatProvider === 'groq' ? 'groq-whisper' : 'gemini');
+      const chatProvider = localStorage.getItem('island_chat_provider') || localStorage.getItem('island_voice_provider') || 'gemini';
+      let sttProvider = localStorage.getItem('island_stt_provider');
+      if (!sttProvider || (chatProvider === 'groq' && sttProvider === 'gemini')) {
+        sttProvider = chatProvider === 'groq' ? 'groq-whisper' : 'gemini';
+      }
       const ttsEngine = localStorage.getItem('island_voice_engine') || 'gemini';
       const kokoroVoice = localStorage.getItem('island_kokoro_voice') || 'af_heart';
       const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
       const groqChatModel = localStorage.getItem('island_groq_chat_model') || 'llama-3.3-70b-versatile';
       const groqWhisperModel = localStorage.getItem('island_groq_whisper_model') || 'whisper-large-v3-turbo';
+
+      // Validate provider readiness before proceeding to avoid mysterious failures
+      if (chatProvider === 'groq' || sttProvider === 'groq-whisper') {
+        const groqStatus = await window.island?.groq?.getStatus?.();
+        if (!groqStatus?.hasKey) {
+          controller.handleTurnFailure(turnId, 'Groq API Key is not configured. Please paste your key in Settings and click Save Key.', {
+            retryDelaySeconds: 0,
+            isDailyQuota: false,
+          });
+          return;
+        }
+      }
 
       // Encode samples into standard 16-bit mono WAV
       const wavBuffer = encodeWav(samples, sampleRate);

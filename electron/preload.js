@@ -70,7 +70,7 @@ contextBridge.exposeInMainWorld('island', {
     chat: (params) => ipcRenderer.invoke('groq:chat', params),
     transcribe: (params) => ipcRenderer.invoke('groq:transcribe', params),
     getStatus: () => ipcRenderer.invoke('groq:get-status'),
-    setKey: (params) => ipcRenderer.invoke('groq:set-key', params),
+    setKey: (keyOrParams) => ipcRenderer.invoke('groq:set-key', typeof keyOrParams === 'string' ? { key: keyOrParams } : keyOrParams),
     clearKey: () => ipcRenderer.invoke('groq:clear-key'),
   },
 
