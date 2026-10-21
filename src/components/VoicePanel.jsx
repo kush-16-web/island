@@ -179,6 +179,7 @@ function drawWaveCurve(ctx, w, midY, amplitude, freqMultiplier, phase, color, al
 export default function VoicePanel({
   voice,
   onClose,
+  onOpenSettings,
   accentColor,
 }) {
   const {
@@ -192,6 +193,8 @@ export default function VoicePanel({
     stopSession,
     interrupt,
     toggleMute,
+    dismissCooldown,
+    clearError,
   } = voice;
 
   const [assistantName, setAssistantNameState] = useState(() => getAssistantName());
@@ -211,10 +214,10 @@ export default function VoicePanel({
 
   if (status === 'error') {
     currentStatus = 'error';
-    statusLabel = 'Error';
+    statusLabel = 'Notice';
   } else if (status === 'cooldown') {
     currentStatus = 'cooldown';
-    statusLabel = cooldownSeconds > 0 ? `Cooldown (${cooldownSeconds}s)` : 'Cooling Down';
+    statusLabel = cooldownSeconds > 0 ? `Resting (${cooldownSeconds}s)` : 'Cooling Down';
   } else if (isMuted) {
     currentStatus = 'muted';
     statusLabel = 'Muted';
@@ -284,47 +287,60 @@ export default function VoicePanel({
         </div>
       </div>
 
-      {/* 2. Cooldown Card OR Error State Card OR Waveform + Transcript */}
-      {status === 'cooldown' ? (
-        <div className="voice-panel__cooldown-card">
-          <div className="voice-panel__cooldown-icon">
-            <Icon.Hourglass width={24} height={24} />
+      {/* 2. Non-blocking Rate Limit Cooldown Banner */}
+      {status === 'cooldown' && (
+        <div className="voice-panel__banner voice-panel__cooldown-banner">
+          <div className="voice-panel__banner-text">
+            <Icon.Hourglass width={13} height={13} />
+            <span>{assistantName} is catching breath ({cooldownSeconds}s)</span>
           </div>
-          <div className="voice-panel__cooldown-title">Rate Limit Cooldown</div>
-          <div className="voice-panel__cooldown-desc">
-            Gemini rate limit cooldown active. {assistantName} is catching breath. Ready in{' '}
-            <strong>{cooldownSeconds}s</strong>...
-          </div>
-          <div className="voice-panel__cooldown-progress">
-            <div
-              className="voice-panel__cooldown-bar"
-              style={{ width: `${Math.min(100, Math.max(5, (cooldownSeconds / 45) * 100))}%` }}
-            />
+          <div className="voice-panel__banner-actions">
+            <button
+              type="button"
+              className="voice-panel__dismiss-btn"
+              onClick={() => (dismissCooldown ? dismissCooldown() : stopSession())}
+              title="Dismiss cooldown and resume"
+            >
+              Dismiss
+            </button>
           </div>
         </div>
-      ) : status === 'error' ? (
-        <div className="voice-panel__error-card">
-          <div className="voice-panel__error-icon">
-            <Icon.Alert width={24} height={24} />
+      )}
+
+      {/* 3. Non-blocking Error Banner */}
+      {status === 'error' && errorMessage && (
+        <div className="voice-panel__banner voice-panel__error-banner">
+          <div className="voice-panel__banner-text" title={errorMessage}>
+            <Icon.Alert width={13} height={13} />
+            <span>{errorMessage}</span>
           </div>
-          <div className="voice-panel__error-title">Voice Connection Issue</div>
-          <div className="voice-panel__error-desc">
-            {errorMessage || 'Unable to establish real-time voice connection with Gemini.'}
+          <div className="voice-panel__banner-actions">
+            <button
+              type="button"
+              className="voice-panel__action-link"
+              onClick={() => onOpenSettings?.()}
+              title="Open AI Assistant Settings"
+            >
+              Settings
+            </button>
+            <button
+              type="button"
+              className="voice-panel__dismiss-btn"
+              onClick={() => (clearError ? clearError() : stopSession())}
+              title="Dismiss error"
+            >
+              Dismiss
+            </button>
           </div>
-          {errorMessage?.includes('.env') && (
-            <div className="voice-panel__env-hint">
-              Make sure <code>GEMINI_API_KEY</code> is set in your <code>.env</code> file.
-            </div>
-          )}
         </div>
-      ) : (
-        <>
-          {/* Living Audio Waveform */}
-          <LivingWaveform
-            status={currentStatus}
-            audioLevel={audioLevel}
-            isMuted={isMuted}
-          />
+      )}
+
+      {/* Living Audio Waveform */}
+      <LivingWaveform
+        status={currentStatus}
+        audioLevel={audioLevel}
+        isMuted={isMuted}
+      />
 
           {/* Floating Conversation Transcript */}
           <div
@@ -357,10 +373,7 @@ export default function VoicePanel({
                 );
               })
             )}
-            <div className="voice-transcript__spacer-bottom" />
           </div>
-        </>
-      )}
 
       {/* 3. Bottom Controls */}
       <div className="voice-panel__controls">

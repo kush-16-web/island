@@ -31,9 +31,11 @@ const { FullscreenWatcher } = require('./fullscreen');
 const { RealtimeSessionBroker } = require('./realtime');
 const { GeminiVoiceService } = require('./gemini');
 const { KokoroLocalService } = require('./kokoro-tts');
+const { GroqService } = require('./groq');
 
 let geminiVoiceService = null;
 let kokoroLocalService = null;
+let groqService = null;
 
 const DEV_URL = process.env.ISLAND_DEV_URL || '';
 const WIN_W = 720;
@@ -1023,6 +1025,48 @@ function wireIpc() {
   handle('kokoro:dispose', () => {
     if (!kokoroLocalService) return { ok: true, disposed: false };
     return kokoroLocalService.dispose();
+  });
+
+  // Groq Service (Conversational Llama & Whisper STT)
+  handle('groq:chat', (params) => {
+    if (!groqService) groqService = new GroqService({ store });
+    return groqService.chat(params || {});
+  });
+
+  handle('groq:transcribe', (params) => {
+    if (!groqService) groqService = new GroqService({ store });
+    return groqService.transcribe(params || {});
+  });
+
+  handle('groq:get-status', () => {
+    if (!groqService) groqService = new GroqService({ store });
+    return groqService.getStatus();
+  });
+
+  handle('groq:set-key', (params) => {
+    if (!groqService) groqService = new GroqService({ store });
+    return groqService.setKey(params?.key, store);
+  });
+
+  handle('groq:clear-key', () => {
+    if (!groqService) groqService = new GroqService({ store });
+    return groqService.clearKey(store);
+  });
+
+  // Unified Multi-Provider AI Status
+  handle('ai:get-status', () => {
+    if (!geminiVoiceService) geminiVoiceService = new GeminiVoiceService();
+    if (!groqService) groqService = new GroqService({ store });
+    if (!kokoroLocalService) kokoroLocalService = new KokoroLocalService();
+
+    return {
+      gemini: {
+        hasKey: geminiVoiceService.hasKey(),
+        provider: 'gemini',
+      },
+      groq: groqService.getStatus(),
+      kokoro: kokoroLocalService.getStatus(),
+    };
   });
 
   // OpenAI Realtime voice broker (development session creation)

@@ -190,6 +190,7 @@ export default function Hub({
               <VoicePanel
                 voice={voice}
                 onClose={() => setTab(s.media?.active ? 'playing' : 'launcher')}
+                onOpenSettings={() => setTab('settings')}
                 accentColor={accentColor}
               />
             )}

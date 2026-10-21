@@ -60,6 +60,25 @@ export default function SettingsPanel({ accentColor }) {
   const [isTestingVoice, setIsTestingVoice] = useState(false);
   const previewAudioRef = useRef(null);
 
+  // Multi-Provider AI Assistant configuration
+  const [chatProvider, setChatProvider] = useState(() => {
+    return localStorage.getItem('island_chat_provider') || 'gemini';
+  });
+  const [groqChatModel, setGroqChatModel] = useState(() => {
+    return localStorage.getItem('island_groq_chat_model') || 'llama-3.3-70b-versatile';
+  });
+  const [sttProvider, setSttProvider] = useState(() => {
+    return localStorage.getItem('island_stt_provider') || 'gemini';
+  });
+  const [groqWhisperModel, setGroqWhisperModel] = useState(() => {
+    return localStorage.getItem('island_groq_whisper_model') || 'whisper-large-v3-turbo';
+  });
+  const [groqStatus, setGroqStatus] = useState({ hasKey: false, keyMasked: null });
+  const [groqKeyInput, setGroqKeyInput] = useState('');
+  const [groqKeyMsg, setGroqKeyMsg] = useState(null);
+  const [groqKeyError, setGroqKeyError] = useState(null);
+  const [isSavingGroqKey, setIsSavingGroqKey] = useState(false);
+
   useEffect(() => {
     window.island?.getWindowDock?.().then((res) => {
       if (res?.preset) setCurrentPreset(res.preset);
@@ -81,6 +100,12 @@ export default function SettingsPanel({ accentColor }) {
     if (window.island?.kokoro?.getStatus) {
       window.island.kokoro.getStatus().then((st) => {
         if (st) setKokoroStatus(st);
+      }).catch(() => {});
+    }
+
+    if (window.island?.groq?.getStatus) {
+      window.island.groq.getStatus().then((st) => {
+        if (st) setGroqStatus(st);
       }).catch(() => {});
     }
 
@@ -106,6 +131,65 @@ export default function SettingsPanel({ accentColor }) {
     const clean = val.slice(0, 24);
     setAssistantNameInput(clean);
     setAssistantName(clean);
+  };
+
+  const handleSetChatProvider = (p) => {
+    setChatProvider(p);
+    localStorage.setItem('island_chat_provider', p);
+    window.dispatchEvent(new CustomEvent('island:ai-provider-changed', { detail: { chatProvider: p } }));
+  };
+
+  const handleSetGroqChatModel = (m) => {
+    setGroqChatModel(m);
+    localStorage.setItem('island_groq_chat_model', m);
+  };
+
+  const handleSetSttProvider = (p) => {
+    setSttProvider(p);
+    localStorage.setItem('island_stt_provider', p);
+    window.dispatchEvent(new CustomEvent('island:ai-provider-changed', { detail: { sttProvider: p } }));
+  };
+
+  const handleSetGroqWhisperModel = (m) => {
+    setGroqWhisperModel(m);
+    localStorage.setItem('island_groq_whisper_model', m);
+  };
+
+  const handleSaveGroqKey = async () => {
+    if (!groqKeyInput.trim()) return;
+    setIsSavingGroqKey(true);
+    setGroqKeyMsg(null);
+    setGroqKeyError(null);
+    try {
+      const res = await window.island?.groq?.setKey(groqKeyInput.trim());
+      if (res?.ok) {
+        setGroqKeyMsg('Groq API Key saved securely.');
+        setGroqKeyInput('');
+        const st = await window.island?.groq?.getStatus();
+        if (st) setGroqStatus(st);
+      } else {
+        setGroqKeyError(res?.error || 'Failed to save key.');
+      }
+    } catch (e) {
+      setGroqKeyError(e?.message || 'Error saving key');
+    } finally {
+      setIsSavingGroqKey(false);
+    }
+  };
+
+  const handleClearGroqKey = async () => {
+    setGroqKeyMsg(null);
+    setGroqKeyError(null);
+    try {
+      const res = await window.island?.groq?.clearKey();
+      if (res?.ok) {
+        setGroqKeyMsg('Groq API Key removed.');
+        const st = await window.island?.groq?.getStatus();
+        if (st) setGroqStatus(st);
+      }
+    } catch (e) {
+      setGroqKeyError(e?.message || 'Error clearing key');
+    }
   };
 
   const handleSetVoiceEngine = (engine) => {
@@ -599,10 +683,174 @@ export default function SettingsPanel({ accentColor }) {
           </div>
         </div>
 
+        {/* Conversational AI Provider */}
+        <div className="settings-row settings-row--wrap">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Conversational AI</span>
+            <span className="settings-row__sub">
+              {chatProvider === 'groq'
+                ? `Groq Llama 3.3 (Fast 70B inference with native music/favorites tool calling)`
+                : `Google Gemini (Cloud multimodal conversational model)`}
+            </span>
+          </div>
+          <div className="settings-chips">
+            {[
+              { id: 'gemini', label: 'Gemini (Cloud)' },
+              { id: 'groq', label: 'Groq (Llama 3.3)' },
+            ].map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`settings-chip ${chatProvider === p.id ? 'is-active' : ''}`}
+                onClick={() => handleSetChatProvider(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Groq Chat Model Selection */}
+        {chatProvider === 'groq' && (
+          <div className="settings-row settings-row--wrap" style={{ paddingLeft: 12 }}>
+            <div className="settings-row__text">
+              <span className="settings-row__title">Groq Chat Model</span>
+              <span className="settings-row__sub">Select conversational reasoning & tool model</span>
+            </div>
+            <div className="settings-chips">
+              {[
+                { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Recommended)' },
+                { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Ultra-fast)' },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`settings-chip ${groqChatModel === m.id ? 'is-active' : ''}`}
+                  onClick={() => handleSetGroqChatModel(m.id)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Speech Recognition (STT) Provider */}
+        <div className="settings-row settings-row--wrap">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Speech Recognition (STT)</span>
+            <span className="settings-row__sub">
+              {sttProvider === 'groq-whisper'
+                ? 'Groq Whisper STT. Independent transcription, zero Gemini quota usage, preserves spoken language.'
+                : 'Gemini Multimodal direct voice recognition.'}
+            </span>
+          </div>
+          <div className="settings-chips">
+            {[
+              { id: 'gemini', label: 'Gemini Multimodal' },
+              { id: 'groq-whisper', label: 'Groq Whisper' },
+            ].map((stt) => (
+              <button
+                key={stt.id}
+                type="button"
+                className={`settings-chip ${sttProvider === stt.id ? 'is-active' : ''}`}
+                onClick={() => handleSetSttProvider(stt.id)}
+              >
+                {stt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Groq Whisper Model Selection */}
+        {sttProvider === 'groq-whisper' && (
+          <div className="settings-row settings-row--wrap" style={{ paddingLeft: 12 }}>
+            <div className="settings-row__text">
+              <span className="settings-row__title">Whisper Model</span>
+              <span className="settings-row__sub">Transcription engine running on Groq LPU</span>
+            </div>
+            <div className="settings-chips">
+              {[
+                { id: 'whisper-large-v3-turbo', label: 'Large v3 Turbo (Recommended)' },
+                { id: 'whisper-large-v3', label: 'Large v3 (Accurate)' },
+              ].map((wm) => (
+                <button
+                  key={wm.id}
+                  type="button"
+                  className={`settings-chip ${groqWhisperModel === wm.id ? 'is-active' : ''}`}
+                  onClick={() => handleSetGroqWhisperModel(wm.id)}
+                >
+                  {wm.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Groq API Key Setup */}
+        {(chatProvider === 'groq' || sttProvider === 'groq-whisper') && (
+          <div style={{ marginTop: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span className="settings-row__title" style={{ fontSize: 12 }}>Groq API Key</span>
+                <span className="settings-row__sub">
+                  {groqStatus.hasKey
+                    ? `Configured (${groqStatus.keyMasked || '••••'})`
+                    : 'Not configured • Required for Groq Chat & Whisper'}
+                </span>
+              </div>
+              {groqStatus.hasKey && (
+                <button
+                  type="button"
+                  className="settings-chip"
+                  onClick={handleClearGroqKey}
+                  style={{ color: '#ef4444' }}
+                >
+                  Clear Key
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="password"
+                className="settings-text-input"
+                value={groqKeyInput}
+                onChange={(e) => setGroqKeyInput(e.target.value)}
+                placeholder={groqStatus.hasKey ? 'Enter new key to replace' : 'Paste Groq key (gsk_...)'}
+                style={{ flex: 1, height: 32, fontSize: 11 }}
+              />
+              <button
+                type="button"
+                className="settings-chip is-active"
+                onClick={handleSaveGroqKey}
+                disabled={isSavingGroqKey || !groqKeyInput.trim()}
+                style={{ height: 32 }}
+              >
+                {isSavingGroqKey ? 'Saving...' : 'Save Key'}
+              </button>
+            </div>
+
+            {groqKeyMsg && (
+              <span className="settings-row__sub" style={{ color: 'var(--panel-accent)', fontSize: 11 }}>
+                {groqKeyMsg}
+              </span>
+            )}
+            {groqKeyError && (
+              <span className="settings-row__sub" style={{ color: '#ef4444', fontSize: 11 }}>
+                {groqKeyError}
+              </span>
+            )}
+            <span className="settings-row__sub" style={{ fontSize: 10, opacity: 0.6 }}>
+              Key is encrypted using Windows Data Protection API (safeStorage) and never logged or exposed.
+            </span>
+          </div>
+        )}
+
         {/* Voice Engine Selector */}
         <div className="settings-row settings-row--wrap">
           <div className="settings-row__text">
-            <span className="settings-row__title">Voice Engine</span>
+            <span className="settings-row__title">Speech Synthesis (TTS)</span>
             <span className="settings-row__sub">
               {voiceEngine === 'gemini'
                 ? 'Cloud Gemini TTS (Despina voice). Conversational delivery with quota limits.'

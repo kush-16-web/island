@@ -65,6 +65,22 @@ contextBridge.exposeInMainWorld('island', {
     getStatus: () => ipcRenderer.invoke('gemini:get-status'),
   },
 
+  // Groq Service (Conversational Llama & Whisper STT)
+  groq: {
+    chat: (params) => ipcRenderer.invoke('groq:chat', params),
+    transcribe: (params) => ipcRenderer.invoke('groq:transcribe', params),
+    getStatus: () => ipcRenderer.invoke('groq:get-status'),
+    setKey: (params) => ipcRenderer.invoke('groq:set-key', params),
+    clearKey: () => ipcRenderer.invoke('groq:clear-key'),
+  },
+
+  // Unified Multi-Provider AI Status & Controls
+  ai: {
+    getStatus: () => ipcRenderer.invoke('ai:get-status'),
+    setGroqKey: (key) => ipcRenderer.invoke('groq:set-key', { key }),
+    clearGroqKey: () => ipcRenderer.invoke('groq:clear-key'),
+  },
+
   // Kokoro Local TTS Prototype Service (CPU ONNX)
   kokoro: {
     getStatus: () => ipcRenderer.invoke('kokoro:get-status'),

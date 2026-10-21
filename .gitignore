@@ -6,3 +6,6 @@ release/
 .env.*
 !.env.example
 *.zip
+*-diagnostics.jsonl
+*.jsonl
+scratch_logs/

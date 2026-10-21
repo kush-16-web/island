@@ -3638,6 +3638,81 @@ button:hover .lucide-icon--bell {
   border-color: var(--voice-accent, #38bdf8);
 }
 
+/* Non-blocking Cooldown & Error Banners */
+.voice-panel__banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  margin: 4px 14px 2px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 540;
+  backdrop-filter: blur(16px);
+  animation: fadeIn 0.2s ease-out;
+  flex: none;
+  z-index: 2;
+}
+.voice-panel__cooldown-banner {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  color: #fbbf24;
+}
+.voice-panel__error-banner {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  color: #f87171;
+}
+.voice-panel__banner-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.voice-panel__banner-text span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.voice-panel__banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.voice-panel__dismiss-btn {
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.voice-panel__dismiss-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: scale(1.02);
+}
+.voice-panel__action-link {
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--fill-2);
+  border: 1px solid var(--hair-2);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.voice-panel__action-link:hover {
+  background: var(--fill-3);
+  transform: scale(1.02);
+}
+
 /* Rate Limit Cooldown Card */
 .voice-panel__cooldown-card {
   display: flex;

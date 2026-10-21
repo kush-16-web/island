@@ -102,6 +102,9 @@ class GeminiVoiceService {
     const code = (errorObj && errorObj.code) ? Number(errorObj.code) : httpStatus;
 
     let retryDelaySeconds = null;
+    let resetAfterSeconds = null;
+    let isDailyQuota = false;
+
     if (retryDelay) {
       const matchS = String(retryDelay).match(/^([0-9.]+)\s*s?$/i);
       if (matchS) {
@@ -119,6 +122,19 @@ class GeminiVoiceService {
       }
     }
 
+    if (retryDelaySeconds !== null) {
+      resetAfterSeconds = retryDelaySeconds;
+      if (retryDelaySeconds > 90) {
+        // Multi-minute/multi-hour delay is a daily quota reset (e.g. 72,947s), NOT a short RPM burst limit
+        isDailyQuota = true;
+        retryDelaySeconds = null; // Do NOT feed multi-hour delays into an active second countdown timer
+      }
+    }
+
+    if (code === 429 && (message.includes('Quota exceeded') || message.includes('exceeded your current quota') || isDailyQuota)) {
+      isDailyQuota = true;
+    }
+
     return {
       httpStatus,
       status,
@@ -128,6 +144,8 @@ class GeminiVoiceService {
       quotaId,
       retryDelay,
       retryDelaySeconds,
+      resetAfterSeconds,
+      isDailyQuota,
     };
   }
 
@@ -349,6 +367,8 @@ class GeminiVoiceService {
     petName,
     userName = 'Friend',
     voice = 'Despina',
+    skipTts = false,
+    ttsEngine = 'gemini',
   }) {
     if (!this.hasKey()) {
       return {
@@ -434,8 +454,11 @@ For normal conversation, NEVER include an [[ACTION:...]] tag.`;
       if (!chatRes.ok) {
         // Translate error cleanly for user display while preserving diagnostic detail
         let userFacingError = chatRes.error;
-        if (chatRes.error?.includes('Resource has been exhausted') || chatRes.code === 429) {
-          userFacingError = 'Gemini free-tier rate limit reached. Please wait a moment and retry.';
+        const isDaily = chatRes.errorDetails?.isDailyQuota || Boolean(chatRes.error?.includes('exceeded your current quota'));
+        if (isDaily) {
+          userFacingError = 'Gemini daily free-tier quota exhausted (20 requests/day limit reached). Quota resets at midnight UTC. You can switch to Groq or local commands in Settings.';
+        } else if (chatRes.error?.includes('Resource has been exhausted') || chatRes.code === 429) {
+          userFacingError = 'Gemini rate limit reached. Please wait a moment and retry.';
         } else if (chatRes.code === 503 || chatRes.error?.includes('high demand')) {
           userFacingError = 'Gemini is temporarily experiencing high traffic. Please retry in a few seconds.';
         }
@@ -444,8 +467,9 @@ For normal conversation, NEVER include an [[ACTION:...]] tag.`;
           error: userFacingError,
           failedModel: 'gemini-3.5-flash',
           stage: 'chat',
+          isDailyQuota: isDaily,
           errorDetails: chatRes.errorDetails || null,
-          retryDelaySeconds: chatRes.errorDetails?.retryDelaySeconds || (chatRes.code === 429 ? 30 : null),
+          retryDelaySeconds: isDaily ? 0 : Math.min(60, chatRes.errorDetails?.retryDelaySeconds || (chatRes.code === 429 ? 30 : null)),
           usage: chatRes.usage || null,
         };
       }
@@ -471,7 +495,21 @@ For normal conversation, NEVER include an [[ACTION:...]] tag.`;
         };
       }
 
-      // 3. Synthesize speech using gemini-3.8-flash-tts for conversational turns
+      // 3. Synthesize speech using gemini-3.8-flash-tts ONLY if not using Kokoro and TTS is not skipped
+      if (skipTts || ttsEngine === 'kokoro' || ttsEngine === 'none') {
+        return {
+          ok: true,
+          text: replyText,
+          hasAction: false,
+          audioBase64: null,
+          mimeType: 'audio/wav',
+          provider: 'gemini',
+          chatUsage: chatRes.usage || null,
+          ttsUsage: null,
+          ttsError: null,
+        };
+      }
+
       const ttsRes = await this._postJson(
         '/v1beta/models/gemini-3.8-flash-tts:generateContent',
         {

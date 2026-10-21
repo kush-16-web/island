@@ -204,6 +204,35 @@ export function createMockIsland() {
     setVoiceMood(voiceState) {
       emit('voice:state', voiceState);
     },
+    gemini: {
+      processSpeech: async () => ({ ok: false, error: 'Voice service requires desktop Electron app.' }),
+      synthesizeSpeech: async () => ({ ok: false, error: 'Speech synthesis requires desktop Electron app.' }),
+      getStatus: async () => ({ hasKey: false, provider: 'gemini' }),
+    },
+    groq: {
+      chat: async () => ({ ok: false, error: 'Groq service requires desktop Electron app.' }),
+      transcribe: async () => ({ ok: false, error: 'Groq Whisper requires desktop Electron app.' }),
+      getStatus: async () => ({ hasKey: false, provider: 'groq' }),
+      setKey: async () => ({ ok: true }),
+      clearKey: async () => ({ ok: true }),
+    },
+    ai: {
+      getStatus: async () => ({
+        gemini: { hasKey: false, provider: 'gemini' },
+        groq: { hasKey: false, provider: 'groq' },
+        kokoro: { installed: false, isLoaded: false },
+      }),
+      setGroqKey: async () => ({ ok: true }),
+      clearGroqKey: async () => ({ ok: true }),
+    },
+    kokoro: {
+      getStatus: async () => ({ installed: false, isLoaded: false }),
+      loadModel: async () => ({ ok: false, error: 'Local Kokoro requires desktop Electron app.' }),
+      installModel: async () => ({ ok: false, error: 'Local Kokoro requires desktop Electron app.' }),
+      synthesize: async () => ({ ok: false, error: 'Local Kokoro requires desktop Electron app.' }),
+      cancel: async () => ({ ok: true, cancelled: false }),
+      dispose: async () => ({ ok: true, disposed: false }),
+    },
     realtime: {
       async createSession() {
         return { ok: false, error: 'Realtime voice requires the desktop Electron app with .env OPENAI_API_KEY.' };

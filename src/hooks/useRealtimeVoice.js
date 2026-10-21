@@ -297,49 +297,144 @@ export function useRealtimeVoice(options = {}) {
     }
   }, [controller]);
 
-  // Submit recorded user utterance to Gemini
+  // Submit recorded user utterance through modular AI pipeline: STT -> Conversational LLM -> Island Action -> TTS
   const submitUserSpeech = useCallback(async (samples, sampleRate, turnId) => {
     try {
       const assistantName = getAssistantName();
       const userName = localStorage.getItem('island_user_name') || 'Friend';
 
+      // 0. Provider configuration resolution
+      const chatProvider = localStorage.getItem('island_voice_provider') || 'gemini';
+      const sttProvider = localStorage.getItem('island_stt_provider') || (chatProvider === 'groq' ? 'groq-whisper' : 'gemini');
+      const ttsEngine = localStorage.getItem('island_voice_engine') || 'gemini';
+      const kokoroVoice = localStorage.getItem('island_kokoro_voice') || 'af_heart';
+      const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
+      const groqChatModel = localStorage.getItem('island_groq_chat_model') || 'llama-3.3-70b-versatile';
+      const groqWhisperModel = localStorage.getItem('island_groq_whisper_model') || 'whisper-large-v3-turbo';
+
       // Encode samples into standard 16-bit mono WAV
       const wavBuffer = encodeWav(samples, sampleRate);
       const audioData = arrayBufferToBase64(wavBuffer);
 
-      if (!window.island?.gemini?.processSpeech) {
-        throw new Error('Gemini voice service is not available in Electron.');
-      }
+      let userText = null;
 
-      const res = await window.island.gemini.processSpeech({
-        audioData,
-        history: historyRef.current,
-        assistantName,
-        userName,
-      });
+      // 1. Stage 1: Speech-to-Text (STT)
+      if (sttProvider === 'groq-whisper') {
+        if (!window.island?.groq?.transcribe) {
+          throw new Error('Groq Whisper speech recognition service is not available in Electron.');
+        }
 
-      // Discard stale response if turn was interrupted or session stopped
-      if (!controller.isTurnActive(turnId)) {
-        return;
-      }
-
-      if (!res.ok) {
-        const retryDelaySec = res.retryDelaySeconds || (res.error?.includes('rate limit') ? 30 : 0);
-        controller.handleTurnFailure(turnId, res.error || 'Failed to get response from Gemini.', {
-          retryDelaySeconds: retryDelaySec,
+        const sttRes = await window.island.groq.transcribe({
+          audioBase64: audioData,
+          model: groqWhisperModel,
         });
-        return;
+
+        if (!controller.isTurnActive(turnId)) return;
+
+        if (!sttRes?.ok) {
+          controller.handleTurnFailure(turnId, sttRes?.error || 'Failed to transcribe audio with Groq Whisper.', {
+            retryDelaySeconds: sttRes?.retryDelaySeconds || 0,
+            isDailyQuota: sttRes?.isDailyQuota || false,
+          });
+          return;
+        }
+
+        if (sttRes.empty || !sttRes.text?.trim()) {
+          // Silence or no speech detected; reset turn cleanly without error
+          controller.finishSpeaking(turnId);
+          return;
+        }
+
+        userText = sttRes.text.trim();
       }
 
       // Add user speech entry to transcript
+      const displayedUserText = userText || `Voice message to ${assistantName}`;
       setTranscript((prev) => [
         ...prev,
-        { role: 'user', text: `Voice message to ${assistantName}` },
+        { role: 'user', text: displayedUserText },
       ]);
-      historyRef.current.push({ role: 'user', text: `Voice message to ${assistantName}` });
+      historyRef.current.push({ role: 'user', text: displayedUserText });
 
-      // Execute allowlisted music actions embedded in LLM response
-      const turnResult = processTurnIntent(res.text, {
+      // 2. Direct Local Fast-Path Execution (Phase 8): Check for common playback commands locally
+      let directActionTag = null;
+      if (userText) {
+        const cleanCmd = userText.toLowerCase().replace(/[.,!?;:]/g, '').trim();
+        if (/^(pause|pause music|stop music|pause playback|halt)$/.test(cleanCmd)) {
+          directActionTag = '[[ACTION:{"action":"pause"}]]';
+        } else if (/^(resume|resume music|play music|play|continue|unpause)$/.test(cleanCmd)) {
+          directActionTag = '[[ACTION:{"action":"resume"}]]';
+        } else if (/^(next|next song|next track|skip|skip track)$/.test(cleanCmd)) {
+          directActionTag = '[[ACTION:{"action":"next_track"}]]';
+        } else if (/^(previous|previous song|previous track|prev song|go back)$/.test(cleanCmd)) {
+          directActionTag = '[[ACTION:{"action":"previous_track"}]]';
+        } else if (/^(what is playing|whats playing|current song|what song is this|current track)$/.test(cleanCmd)) {
+          directActionTag = '[[ACTION:{"action":"get_current_track"}]]';
+        }
+      }
+
+      let llmReplyText = directActionTag;
+      let geminiAudioBase64 = null;
+
+      // 3. Stage 2: Conversational LLM (if not handled by direct local action)
+      if (!llmReplyText) {
+        if (chatProvider === 'groq') {
+          if (!window.island?.groq?.chat) {
+            throw new Error('Groq conversational service is not available in Electron.');
+          }
+
+          const chatRes = await window.island.groq.chat({
+            text: userText,
+            history: historyRef.current,
+            assistantName,
+            userName,
+            model: groqChatModel,
+          });
+
+          if (!controller.isTurnActive(turnId)) return;
+
+          if (!chatRes?.ok) {
+            controller.handleTurnFailure(turnId, chatRes?.error || 'Failed to get response from Groq.', {
+              retryDelaySeconds: chatRes?.retryDelaySeconds || 0,
+              isDailyQuota: chatRes?.isDailyQuota || false,
+            });
+            return;
+          }
+
+          llmReplyText = chatRes.text;
+        } else {
+          // Gemini provider
+          if (!window.island?.gemini?.processSpeech) {
+            throw new Error('Gemini voice service is not available in Electron.');
+          }
+
+          const chatRes = await window.island.gemini.processSpeech({
+            audioData: sttProvider === 'gemini' ? audioData : null,
+            text: userText || null,
+            history: historyRef.current,
+            assistantName,
+            userName,
+            skipTts: ttsEngine === 'kokoro',
+            ttsEngine,
+          });
+
+          if (!controller.isTurnActive(turnId)) return;
+
+          if (!chatRes?.ok) {
+            controller.handleTurnFailure(turnId, chatRes?.error || 'Failed to get response from Gemini.', {
+              retryDelaySeconds: chatRes?.retryDelaySeconds || 0,
+              isDailyQuota: chatRes?.isDailyQuota || false,
+            });
+            return;
+          }
+
+          llmReplyText = chatRes.text;
+          geminiAudioBase64 = chatRes.audioBase64;
+        }
+      }
+
+      // 4. Stage 3: Truth-grounded Island Action Execution
+      const turnResult = processTurnIntent(llmReplyText, {
         media: mediaRef.current || { active: false },
         onControl: onControlRef.current || ((act) => window.island?.media?.control?.(act)),
       });
@@ -347,115 +442,72 @@ export function useRealtimeVoice(options = {}) {
       const finalSpokenText = turnResult.spokenText;
       const finalTranscriptText = turnResult.transcriptText;
 
-      if (turnResult.executed) {
-        // Truth-grounded action execution: add verified result to transcript
-        setTranscript((prev) => [
-          ...prev,
-          { role: 'assistant', text: finalTranscriptText },
-        ]);
-        historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
+      setTranscript((prev) => [
+        ...prev,
+        { role: 'assistant', text: finalTranscriptText },
+      ]);
+      historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
 
-        // Synthesize spoken confirmation for the verified outcome
-        const engine = localStorage.getItem('island_voice_engine') || 'gemini';
-        const kokoroVoice = localStorage.getItem('island_kokoro_voice') || 'af_heart';
-        const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
+      // 5. Stage 4: Speech Synthesis (TTS)
+      let spokenAudioBase64 = null;
 
-        let spokenAudioBase64 = null;
-        if (engine === 'kokoro') {
-          if (window.island?.kokoro?.synthesize) {
-            try {
-              const kRes = await window.island.kokoro.synthesize({
-                text: finalSpokenText,
-                voice: kokoroVoice,
-                speed: 1.0,
-              });
-              if (kRes?.ok && kRes.audioBase64) {
-                spokenAudioBase64 = kRes.audioBase64;
-              } else if (!allowCloudFallback) {
-                console.warn('[Kokoro synthesis unavailable, cloud fallback disallowed]:', kRes?.error);
-              }
-            } catch (kErr) {
-              console.warn('[Kokoro synthesis error]:', kErr);
+      if (ttsEngine === 'kokoro') {
+        if (window.island?.kokoro?.synthesize) {
+          try {
+            const kRes = await window.island.kokoro.synthesize({
+              text: finalSpokenText,
+              voice: kokoroVoice,
+              speed: 1.0,
+            });
+            if (kRes?.ok && kRes.audioBase64) {
+              spokenAudioBase64 = kRes.audioBase64;
+            } else if (!allowCloudFallback) {
+              console.warn('[Kokoro synthesis unavailable, cloud fallback disallowed]:', kRes?.error);
             }
-          }
-          if (!spokenAudioBase64 && allowCloudFallback && window.island?.gemini?.synthesizeSpeech) {
-            try {
-              const synthRes = await window.island.gemini.synthesizeSpeech({
-                text: finalSpokenText,
-                voice: 'Despina',
-              });
-              if (synthRes?.ok && synthRes.audioBase64) {
-                spokenAudioBase64 = synthRes.audioBase64;
-              }
-            } catch (e) {
-              console.warn('[Cloud fallback synthesis failed]:', e);
-            }
-          }
-        } else if (engine === 'gemini') {
-          if (window.island?.gemini?.synthesizeSpeech) {
-            try {
-              const synthRes = await window.island.gemini.synthesizeSpeech({
-                text: finalSpokenText,
-                voice: 'Despina',
-              });
-              if (synthRes?.ok && synthRes.audioBase64) {
-                spokenAudioBase64 = synthRes.audioBase64;
-              }
-            } catch (e) {
-              console.warn('[Synthesize spoken action failed]:', e);
-            }
+          } catch (kErr) {
+            console.warn('[Kokoro synthesis error]:', kErr);
           }
         }
 
-        if (spokenAudioBase64 && controller.isTurnActive(turnId)) {
-          await playAssistantSpeech(spokenAudioBase64, finalSpokenText, turnId);
-        } else {
-          controller.finishSpeaking(turnId);
-        }
-      } else {
-        // Normal conversational turn
-        const engine = localStorage.getItem('island_voice_engine') || 'gemini';
-        const kokoroVoice = localStorage.getItem('island_kokoro_voice') || 'af_heart';
-        const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
-
-        let turnAudioBase64 = null;
-        if (engine === 'kokoro') {
-          if (window.island?.kokoro?.synthesize) {
-            try {
-              const kRes = await window.island.kokoro.synthesize({
-                text: finalSpokenText,
-                voice: kokoroVoice,
-                speed: 1.0,
-              });
-              if (kRes?.ok && kRes.audioBase64) {
-                turnAudioBase64 = kRes.audioBase64;
-              }
-            } catch (err) {
-              console.warn('[Kokoro synthesis error in turn]:', err);
+        // STRICT SAFETY: Never call Gemini TTS unless user explicitly turned on cloud fallback
+        if (!spokenAudioBase64 && allowCloudFallback && window.island?.gemini?.synthesizeSpeech) {
+          try {
+            const synthRes = await window.island.gemini.synthesizeSpeech({
+              text: finalSpokenText,
+              voice: 'Despina',
+            });
+            if (synthRes?.ok && synthRes.audioBase64) {
+              spokenAudioBase64 = synthRes.audioBase64;
             }
+          } catch (e) {
+            console.warn('[Cloud fallback synthesis failed]:', e);
           }
-          // Only fall back to Gemini audio if explicitly enabled by user
-          if (!turnAudioBase64 && allowCloudFallback && res.audioBase64) {
-            turnAudioBase64 = res.audioBase64;
-          }
-        } else if (engine === 'gemini') {
-          turnAudioBase64 = res.audioBase64;
         }
-
-        if (turnAudioBase64 && controller.isTurnActive(turnId)) {
-          await playAssistantSpeech(turnAudioBase64, finalSpokenText, turnId);
-        } else {
-          setTranscript((prev) => [
-            ...prev,
-            { role: 'assistant', text: finalTranscriptText },
-          ]);
-          historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
-          controller.finishSpeaking(turnId);
+      } else if (ttsEngine === 'gemini') {
+        spokenAudioBase64 = geminiAudioBase64;
+        if (!spokenAudioBase64 && window.island?.gemini?.synthesizeSpeech) {
+          try {
+            const synthRes = await window.island.gemini.synthesizeSpeech({
+              text: finalSpokenText,
+              voice: 'Despina',
+            });
+            if (synthRes?.ok && synthRes.audioBase64) {
+              spokenAudioBase64 = synthRes.audioBase64;
+            }
+          } catch (e) {
+            console.warn('[Synthesize spoken action failed]:', e);
+          }
         }
       }
+
+      if (spokenAudioBase64 && controller.isTurnActive(turnId)) {
+        await playAssistantSpeech(spokenAudioBase64, finalSpokenText, turnId);
+      } else {
+        controller.finishSpeaking(turnId);
+      }
     } catch (err) {
-      console.warn('[Gemini voice submit error]', err);
-      controller.handleTurnFailure(turnId, err.message || 'Error processing speech with Gemini.');
+      console.warn('[Voice Turn Error]', err);
+      controller.handleTurnFailure(turnId, err.message || 'Error processing speech turn.');
     }
   }, [controller, playAssistantSpeech]);
 
@@ -606,6 +658,20 @@ export function useRealtimeVoice(options = {}) {
     });
   }, [startSession, stopSession]);
 
+  // User-triggered dismissal of cooldown
+  const dismissCooldown = useCallback(() => {
+    controller.dismissCooldown();
+    setStatus('listening');
+    setCooldownSeconds(0);
+  }, [controller]);
+
+  // User-triggered dismissal of error state
+  const clearError = useCallback(() => {
+    controller.clearError();
+    setStatus('listening');
+    setErrorMessage(null);
+  }, [controller]);
+
   // Clean up on unmount
   useEffect(() => {
     return cleanup;
@@ -627,5 +693,7 @@ export function useRealtimeVoice(options = {}) {
     stopSession,
     interrupt,
     toggleMute,
+    dismissCooldown,
+    clearError,
   };
 }

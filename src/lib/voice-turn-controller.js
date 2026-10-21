@@ -259,7 +259,7 @@ export class VoiceTurnController {
   /**
    * Turn failed or was rejected.
    */
-  handleTurnFailure(turnId, error, { retryDelaySeconds = 0 } = {}) {
+  handleTurnFailure(turnId, error, { retryDelaySeconds = 0, isDailyQuota = false } = {}) {
     if (turnId !== undefined && turnId !== this.turnId) {
       return false; // Discard stale error
     }
@@ -268,8 +268,17 @@ export class VoiceTurnController {
     this.isSpeaking = false;
     this.accumulatedChunks = [];
 
-    if (retryDelaySeconds > 0) {
-      this.enterCooldown(retryDelaySeconds, error);
+    if (isDailyQuota || retryDelaySeconds > 90) {
+      // Daily quota exhaustion: do NOT trap user in a multi-hour countdown
+      this.clearCooldownTimer();
+      this.setState('error', {
+        error: typeof error === 'string' ? error : 'Daily API quota exhausted. Please switch provider in Settings or try again later.',
+        turnId,
+        isDailyQuota: true,
+      });
+    } else if (retryDelaySeconds > 0) {
+      // Short temporary burst rate limit: backoff capped to max 60s
+      this.enterCooldown(Math.min(60, retryDelaySeconds), error);
     } else {
       this.setState('error', { error, turnId });
     }
@@ -277,7 +286,7 @@ export class VoiceTurnController {
   }
 
   /**
-   * Enter model 429 rate-limit cooldown.
+   * Enter temporary model 429 rate-limit backoff (strictly capped at 60s).
    */
   enterCooldown(seconds, reason = 'Rate limit cooldown') {
     this.clearSilenceTimer();
@@ -288,7 +297,8 @@ export class VoiceTurnController {
     this.accumulatedChunks = [];
     this.preSpeechRingBuffer = [];
 
-    this.cooldownSeconds = Math.max(1, Math.ceil(seconds));
+    // Strictly enforce maximum backoff of 60 seconds
+    this.cooldownSeconds = Math.max(1, Math.min(60, Math.ceil(seconds)));
     this.cooldownEndMs = Date.now() + this.cooldownSeconds * 1000;
 
     this.setState('cooldown', {
@@ -310,6 +320,23 @@ export class VoiceTurnController {
         this.setState('listening', { reason: 'Cooldown completed' });
       }
     }, 1000);
+  }
+
+  /**
+   * User-triggered dismissal of temporary cooldown.
+   */
+  dismissCooldown() {
+    this.clearCooldownTimer();
+    this.setState('listening', { reason: 'Cooldown dismissed by user' });
+  }
+
+  /**
+   * User-triggered dismissal of error state.
+   */
+  clearError() {
+    if (this.state === 'error') {
+      this.setState('listening', { reason: 'Error cleared by user' });
+    }
   }
 
   /**
