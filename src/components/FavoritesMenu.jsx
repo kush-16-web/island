@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAllFavorites, removeFavorite, SUPPORTED_PROVIDERS } from '../lib/favorites';
+import { getAllFavorites, removeFavorite, updateFavorite, SUPPORTED_PROVIDERS } from '../lib/favorites';
+import { enrichTrackMetadata } from '../lib/art-resolver';
 import { Icon } from './icons';
 import { Empty } from './bits';
 
@@ -7,9 +8,10 @@ import { Empty } from './bits';
  * FavoritesMenu: Native Island favorites library interface.
  * Matches Image 1 & 2:
  * - Clean spacious header: "Favorites", "Your music, across connected sources"
- * - Provider filter pills: All, Spotify, YouTube Music, Apple Music
+ * - Dynamic provider filter pills: Only shows sources that actually exist in the user's favorites
+ * - Automatic HD artwork and metadata enrichment for tracks missing covers
  * - Song rows: Artwork, Title, "Artist · Provider", Play button, Heart button
- * - Sleek custom modern scrollbar with zero clipping
+ * - Sleek custom modern scrollbar with zero clipping or Windows native arrows
  */
 export default function FavoritesMenu({
   onPlayTrack,
@@ -29,12 +31,49 @@ export default function FavoritesMenu({
     return () => window.removeEventListener('island:favorites-changed', handleUpdate);
   }, []);
 
+  // Background enrichment: automatically fetch official HD cover art and metadata for tracks missing art
+  useEffect(() => {
+    let isMounted = true;
+    const itemsMissingArt = favorites.filter((f) => !f.artwork);
+    if (itemsMissingArt.length > 0) {
+      itemsMissingArt.forEach(async (item) => {
+        try {
+          const enriched = await enrichTrackMetadata(item.title, item.artist);
+          if (isMounted && enriched.artwork) {
+            updateFavorite(item.id, {
+              artwork: enriched.artwork,
+              artist: enriched.artist || item.artist,
+              album: enriched.album || item.album,
+              provider: item.provider && item.provider !== 'generic'
+                ? item.provider
+                : (enriched.provider || item.provider),
+            });
+            setFavorites(getAllFavorites());
+          }
+        } catch {}
+      });
+    }
+    return () => { isMounted = false; };
+  }, [favorites.length]);
+
   const getProviderLabel = (provider) => {
     if (provider === SUPPORTED_PROVIDERS.SPOTIFY) return 'Spotify';
     if (provider === SUPPORTED_PROVIDERS.YOUTUBE) return 'YouTube Music';
     if (provider === SUPPORTED_PROVIDERS.APPLE) return 'Apple Music';
-    return provider ? (provider.charAt(0).toUpperCase() + provider.slice(1)) : 'Local';
+    return provider ? (provider.charAt(0).toUpperCase() + provider.slice(1)) : '';
   };
+
+  // Compute available providers among saved songs dynamically (No hardcoded phantom chips)
+  const availableProviders = useMemo(() => {
+    const set = new Set();
+    for (const f of favorites) {
+      const p = (f.provider || '').toLowerCase();
+      if (p && p !== 'generic' && p !== 'unknown' && p !== 'local') {
+        set.add(p);
+      }
+    }
+    return Array.from(set);
+  }, [favorites]);
 
   // Filter and search
   const filteredList = useMemo(() => {
@@ -98,7 +137,7 @@ export default function FavoritesMenu({
         </div>
       </div>
 
-      {/* Provider Filter Chips */}
+      {/* Dynamic Filter Chips (Only show sources present in favorites) */}
       <div className="fav-menu__toolbar">
         <div className="fav-menu__chips">
           <button
@@ -108,27 +147,19 @@ export default function FavoritesMenu({
           >
             All
           </button>
-          <button
-            type="button"
-            className={`fav-chip ${filterProvider === 'spotify' ? 'is-active' : ''}`}
-            onClick={() => setFilterProvider('spotify')}
-          >
-            Spotify
-          </button>
-          <button
-            type="button"
-            className={`fav-chip ${filterProvider === 'youtube' ? 'is-active' : ''}`}
-            onClick={() => setFilterProvider('youtube')}
-          >
-            YouTube Music
-          </button>
-          <button
-            type="button"
-            className={`fav-chip ${filterProvider === 'apple' ? 'is-active' : ''}`}
-            onClick={() => setFilterProvider('apple')}
-          >
-            Apple Music
-          </button>
+          {availableProviders.map((p) => {
+            const label = getProviderLabel(p);
+            return (
+              <button
+                key={p}
+                type="button"
+                className={`fav-chip ${filterProvider === p ? 'is-active' : ''}`}
+                onClick={() => setFilterProvider(p)}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {favorites.length > 5 && (
@@ -165,15 +196,15 @@ export default function FavoritesMenu({
           />
         ) : filteredList.length === 0 ? (
           <div className="fav-menu__no-results">
-            <span>No songs found for this provider or search.</span>
+            <span>No songs found for this filter or search.</span>
           </div>
         ) : (
           <div className="fav-menu__list">
             {filteredList.map((item) => {
               const providerLabel = getProviderLabel(item.provider);
               const subtext = item.artist
-                ? `${item.artist}${item.provider && item.provider !== 'generic' ? ` · ${providerLabel}` : ''}`
-                : providerLabel;
+                ? `${item.artist}${providerLabel ? ` · ${providerLabel}` : ''}`
+                : (providerLabel || 'Track');
 
               return (
                 <div

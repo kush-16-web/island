@@ -68,3 +68,55 @@ export function upgradeProviderArtUrl(url) {
 
   return url;
 }
+
+/**
+ * Enrich missing artwork, artist, and provider for a track.
+ * Queries iTunes song directory first for official HD artwork (600x600),
+ * and falls back to YouTube search if iTunes doesn't have it.
+ * @param {string} title
+ * @param {string} artist
+ * @returns {Promise<{ artwork: string|null, artist: string|null, album: string|null, provider: string|null }>}
+ */
+export async function enrichTrackMetadata(title, artist = '') {
+  if (!title) return { artwork: null, artist: null, album: null, provider: null };
+
+  const query = `${title} ${artist}`.trim();
+
+  // 1. Query iTunes API (Fast, public, provides crystal-clear 600x600 HD album covers)
+  try {
+    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const item = data.results[0];
+        const rawArt = item.artworkUrl100 || '';
+        const hdArt = rawArt.replace(/\/\d+x\d+bb\./, '/600x600bb.');
+        return {
+          artwork: hdArt || rawArt || null,
+          artist: item.artistName || artist || null,
+          album: item.collectionName || null,
+          provider: 'apple',
+        };
+      }
+    }
+  } catch {}
+
+  // 2. Query YouTube resolution via Electron bridge if available
+  if (typeof window !== 'undefined' && window.island?.media?.resolveYouTubeId) {
+    try {
+      const ytId = await window.island.media.resolveYouTubeId(query);
+      if (ytId) {
+        return {
+          artwork: `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`,
+          artist: artist || null,
+          album: null,
+          provider: 'youtube',
+        };
+      }
+    } catch {}
+  }
+
+  return { artwork: null, artist: null, album: null, provider: null };
+}

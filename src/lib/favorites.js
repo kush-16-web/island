@@ -283,3 +283,23 @@ export function removeFavorite(idOrTrack, storage = null) {
   setAllFavorites(nextList, storage);
   return true;
 }
+
+/**
+ * Update an existing favorite's attributes (e.g. enriched artwork or provider).
+ */
+export function updateFavorite(id, patch, storage = null) {
+  const list = getAllFavorites(storage);
+  let updated = false;
+  const nextList = list.map((item) => {
+    if (item.id === id) {
+      updated = true;
+      return { ...item, ...patch };
+    }
+    return item;
+  });
+  if (updated) {
+    setAllFavorites(nextList, storage);
+  }
+  return updated;
+}
+
