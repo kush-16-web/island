@@ -11,6 +11,7 @@ const initial = {
   hotkey: 'Ctrl+Alt+Space',
   toast: null,
   rings: [],
+  systemAccent: null,
 };
 
 function reducer(state, action) {
@@ -33,6 +34,8 @@ function reducer(state, action) {
       return { ...state, rings: [...state.rings, action.payload] };
     case 'ring-dismiss':
       return { ...state, rings: state.rings.filter((r) => r.key !== action.key) };
+    case 'system-accent':
+      return { ...state, systemAccent: action.payload };
     default:
       return state;
   }
@@ -54,6 +57,7 @@ export function useIsland() {
           platform: s.platform,
           port: s.port,
           hotkey: s.hotkey,
+          systemAccent: s.systemAccent || null,
         },
       });
     });
@@ -65,6 +69,7 @@ export function useIsland() {
       island.on('ring', (payload) =>
         dispatch({ type: 'ring', payload: { ...payload, key: `${payload.item.id}-${Date.now()}` } }),
       ),
+      island.on('system:accent-color', (payload) => dispatch({ type: 'system-accent', payload })),
     ];
     return () => {
       alive = false;

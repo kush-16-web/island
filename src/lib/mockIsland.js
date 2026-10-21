@@ -95,6 +95,7 @@ export function createMockIsland() {
       platform: 'web preview',
       port: 47823,
       hotkey: 'Ctrl+Alt+Space',
+      systemAccent: '#38bdf8',
     }),
     setIgnoreMouse() {},
     setFocusable() {},

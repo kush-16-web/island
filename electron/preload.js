@@ -18,6 +18,7 @@ const CHANNELS = new Set([
   'video:ambient-update',
   'voice:toggle',
   'voice:state',
+  'system:accent-color',
 ]);
 
 contextBridge.exposeInMainWorld('island', {
@@ -55,6 +56,7 @@ contextBridge.exposeInMainWorld('island', {
   setDockMode: (mode) => ipcRenderer.invoke('settings:set-dock-mode', mode),
   getSnapThreshold: () => ipcRenderer.invoke('settings:get-snap-threshold'),
   setSnapThreshold: (dist) => ipcRenderer.invoke('settings:set-snap-threshold', dist),
+  getSystemAccentColor: () => ipcRenderer.invoke('system:get-accent-color'),
 
   // Gemini Voice Service
   gemini: {

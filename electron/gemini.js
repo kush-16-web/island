@@ -328,7 +328,7 @@ class GeminiVoiceService {
     history = [],
     petName = 'Cat',
     userName = 'Friend',
-    voice = 'Puck',
+    voice = 'Despina',
   }) {
     if (!this.hasKey()) {
       return {
@@ -425,7 +425,7 @@ Never output markdown symbols like asterisks, bullet points, or emojis, since yo
             speechConfig: {
               voiceConfig: {
                 prebuiltVoiceConfig: {
-                  voiceName: voice || 'Puck',
+                  voiceName: voice || 'Despina',
                 },
               },
             },
@@ -473,7 +473,7 @@ Never output markdown symbols like asterisks, bullet points, or emojis, since yo
     }
   }
 
-  async synthesizeSpeech({ text, voice = 'Puck' }) {
+  async synthesizeSpeech({ text, voice = 'Despina' }) {
     if (!this.hasKey()) {
       return { ok: false, error: 'GEMINI_API_KEY is not configured in .env.' };
     }
@@ -489,7 +489,7 @@ Never output markdown symbols like asterisks, bullet points, or emojis, since yo
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: voice || 'Puck',
+                voiceName: voice || 'Despina',
               },
             },
           },

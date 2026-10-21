@@ -4,7 +4,19 @@ const crypto = require('crypto');
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
-const { app, BrowserWindow, Menu, Tray, desktopCapturer, globalShortcut, ipcMain, nativeImage, screen, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, desktopCapturer, globalShortcut, ipcMain, nativeImage, screen, session, shell, systemPreferences } = require('electron');
+
+function getSystemAccentColor() {
+  if (process.platform !== 'win32' || !systemPreferences || !systemPreferences.getAccentColor) return null;
+  try {
+    const raw = systemPreferences.getAccentColor();
+    if (!raw || typeof raw !== 'string') return null;
+    const hex = raw.length >= 6 ? raw.slice(0, 6) : raw;
+    return `#${hex}`;
+  } catch {
+    return null;
+  }
+}
 
 // High-performance GPU compositing & tile memory management
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -685,6 +697,7 @@ function wireIpc() {
     platform: process.platform,
     port: notifyPort,
     hotkey: HUB_SHORTCUT_LABEL,
+    systemAccent: getSystemAccentColor(),
   }));
 
   handle('scheduler:add-alarm', (input) => guard(() => ({ item: scheduler.addAlarm(input) })));
@@ -977,6 +990,9 @@ function wireIpc() {
   listen('pet:set-voice-mood', (voiceState) => {
     send('voice:state', voiceState);
   });
+
+  // Windows system accent color
+  handle('system:get-accent-color', () => getSystemAccentColor());
 }
 
 function wireFullscreen() {
@@ -1072,6 +1088,21 @@ if (!app.requestSingleInstanceLock()) {
         placeWindow();
         placePetWindow();
       });
+    }
+
+    if (process.platform === 'win32' && systemPreferences && systemPreferences.on) {
+      try {
+        systemPreferences.on('accent-color-changed', (_event, newColor) => {
+          const hex = (newColor && typeof newColor === 'string')
+            ? `#${newColor.slice(0, 6)}`
+            : getSystemAccentColor();
+          if (hex) {
+            send('system:accent-color', hex);
+          }
+        });
+      } catch (err) {
+        console.warn('[accent] listener error:', err.message);
+      }
     }
   });
 
