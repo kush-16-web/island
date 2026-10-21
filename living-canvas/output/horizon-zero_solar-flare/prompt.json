@@ -3,99 +3,17 @@
     "title": "Solar Flare",
     "artist": "Horizon Zero",
     "lyrics": "Break the gravitational pull, ascend through the stratosphere into blinding radiant light, unfolding paper wings into the morning sun.",
-    "expectedTheme": "Euphoric / Ascension / Solar / Catharsis"
+    "archetype": "Euphoric / Ascension / Solar / Catharsis"
   },
   "prompts": {
-    "positivePrompt": "masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst, central metaphor: Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn, supporting subtle elements: geometric paper crane in flight, radial sunray arcs, fine harmonic frequency lines, composition: Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #fafaf9 background, #1c1917 fluid ink, accented by #ea580c, emotional atmosphere: Electric catharsis and spiritual transcendence breaking free from earthbound gravity, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling",
-    "negativePrompt": "3D glossy CGI, lens flare, oversaturated gradient, generic sun emoji, cartoon wings, photorealistic hands, messy scribbles, watermark, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts"
-  },
-  "comfyWorkflow": {
-    "prompt": {
-      "3": {
-        "class_type": "KSampler",
-        "inputs": {
-          "cfg": 7,
-          "denoise": 1,
-          "latent_image": [
-            "5",
-            0
-          ],
-          "model": [
-            "4",
-            0
-          ],
-          "negative": [
-            "7",
-            0
-          ],
-          "positive": [
-            "6",
-            0
-          ],
-          "sampler_name": "euler_ancestral",
-          "scheduler": "karras",
-          "seed": 983769023,
-          "steps": 28
-        }
-      },
-      "4": {
-        "class_type": "CheckpointLoaderSimple",
-        "inputs": {
-          "ckpt_name": "v1-5-pruned-emaonly.safetensors"
-        }
-      },
-      "5": {
-        "class_type": "EmptyLatentImage",
-        "inputs": {
-          "batch_size": 1,
-          "height": 1152,
-          "width": 832
-        }
-      },
-      "6": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {
-          "clip": [
-            "4",
-            1
-          ],
-          "text": "masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst, central metaphor: Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn, supporting subtle elements: geometric paper crane in flight, radial sunray arcs, fine harmonic frequency lines, composition: Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #fafaf9 background, #1c1917 fluid ink, accented by #ea580c, emotional atmosphere: Electric catharsis and spiritual transcendence breaking free from earthbound gravity, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling"
-        }
-      },
-      "7": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {
-          "clip": [
-            "4",
-            1
-          ],
-          "text": "3D glossy CGI, lens flare, oversaturated gradient, generic sun emoji, cartoon wings, photorealistic hands, messy scribbles, watermark, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts"
-        }
-      },
-      "8": {
-        "class_type": "VAEDecode",
-        "inputs": {
-          "samples": [
-            "3",
-            0
-          ],
-          "vae": [
-            "4",
-            2
-          ]
-        }
-      },
-      "9": {
-        "class_type": "SaveImage",
-        "inputs": {
-          "filename_prefix": "LivingCanvas",
-          "images": [
-            "8",
-            0
-          ]
-        }
-      }
+    "positivePrompt": "(expressive single continuous-line ink drawing of single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst:1.25), symbolic metamorphosis of Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn, integrating subtle motifs of (geometric paper crane in flight, radial sunray arcs, fine harmonic frequency lines:1.1), composition: Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy, expansive empty negative space, meditative uncluttered layout, editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture, strict limited color palette, #1c1917 ink on solid #fafaf9 background, subtle wash of #ea580c, high contrast minimalism, no extraneous colors, evoking Electric catharsis and spiritual transcendence breaking free from earthbound gravity",
+    "negativePrompt": "3D glossy CGI, lens flare, oversaturated gradient, generic sun emoji, cartoon wings, photorealistic hands, messy scribbles, watermark, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, shading, gradients, generic silhouette, stock clipart, meaningless fractals, mandalas, repetitive floral wallpaper, broken scratchy lines, multiple overlapping chaotic sketches, messy crosshatching, doodles, garish oversaturated neon colors, rainbow gradient, muddy colors, chromatic aberration, letters, words, typography, logo, watermark, signature, border frame, cropped edges, deformed anatomy, extra limbs, mutated hands, multiple subjects, busy background clutter",
+    "visualAnchors": {
+      "primary": "(expressive single continuous-line ink drawing of single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst:1.25)",
+      "metaphor": "symbolic metamorphosis of Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn",
+      "medium": "editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture",
+      "palette": "strict limited color palette, #1c1917 ink on solid #fafaf9 background, subtle wash of #ea580c, high contrast minimalism, no extraneous colors"
     }
   },
-  "createdAt": "2026-10-21T05:42:17.445Z"
+  "createdAt": "2026-10-21T06:19:49.147Z"
 }

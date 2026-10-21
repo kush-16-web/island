@@ -1,0 +1,30 @@
+{
+  "slug": "debussy_clair-de-lune",
+  "song": {
+    "title": "Clair de Lune",
+    "artist": "Debussy",
+    "lyrics": "Quiet moonlight bathing still waters"
+  },
+  "createdAt": "2026-10-21T06:14:19.395Z",
+  "generator": {
+    "mode": "mock-svg-renderer",
+    "format": "svg",
+    "source": "interpreter",
+    "model": "rule-based-art-director",
+    "fallbackReason": null
+  },
+  "files": {
+    "concept": "concept.json",
+    "prompt": "prompt.json",
+    "artwork": "artwork.svg"
+  },
+  "hardware": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+    "cpuCores": 8,
+    "totalRamMB": 5965,
+    "freeRamMB": 455,
+    "nodeVersion": "v22.12.0"
+  }
+}

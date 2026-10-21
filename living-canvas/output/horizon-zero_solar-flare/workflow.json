@@ -1,0 +1,89 @@
+{
+  "client_id": "island-living-canvas",
+  "prompt": {
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "cfg": 7,
+        "denoise": 1,
+        "latent_image": [
+          "5",
+          0
+        ],
+        "model": [
+          "4",
+          0
+        ],
+        "negative": [
+          "7",
+          0
+        ],
+        "positive": [
+          "6",
+          0
+        ],
+        "sampler_name": "euler_ancestral",
+        "scheduler": "karras",
+        "seed": 498603599,
+        "steps": 30
+      }
+    },
+    "4": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd_xl_base_1.0.safetensors"
+      }
+    },
+    "5": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "batch_size": 1,
+        "height": 1216,
+        "width": 832
+      }
+    },
+    "6": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "4",
+          1
+        ],
+        "text": "(expressive single continuous-line ink drawing of single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst:1.25), symbolic metamorphosis of Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn, integrating subtle motifs of (geometric paper crane in flight, radial sunray arcs, fine harmonic frequency lines:1.1), composition: Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy, expansive empty negative space, meditative uncluttered layout, editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture, strict limited color palette, #1c1917 ink on solid #fafaf9 background, subtle wash of #ea580c, high contrast minimalism, no extraneous colors, evoking Electric catharsis and spiritual transcendence breaking free from earthbound gravity"
+      }
+    },
+    "7": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "4",
+          1
+        ],
+        "text": "3D glossy CGI, lens flare, oversaturated gradient, generic sun emoji, cartoon wings, photorealistic hands, messy scribbles, watermark, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, shading, gradients, generic silhouette, stock clipart, meaningless fractals, mandalas, repetitive floral wallpaper, broken scratchy lines, multiple overlapping chaotic sketches, messy crosshatching, doodles, garish oversaturated neon colors, rainbow gradient, muddy colors, chromatic aberration, letters, words, typography, logo, watermark, signature, border frame, cropped edges, deformed anatomy, extra limbs, mutated hands, multiple subjects, busy background clutter"
+      }
+    },
+    "8": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "3",
+          0
+        ],
+        "vae": [
+          "4",
+          2
+        ]
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "LivingCanvas_Pass2",
+        "images": [
+          "8",
+          0
+        ]
+      }
+    }
+  }
+}

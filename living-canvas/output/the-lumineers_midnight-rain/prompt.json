@@ -3,99 +3,17 @@
     "title": "Midnight Rain",
     "artist": "The Lumineers",
     "lyrics": "Rain pouring down on cold asphalt, standing under the lone streetlight watching reflections shatter as cars pass by in the quiet dark.",
-    "expectedTheme": "Melancholic / Solitude / Rain / Midnight"
+    "archetype": "Melancholic / Solitude / Rain / Midnight"
   },
   "prompts": {
-    "positivePrompt": "masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings, central metaphor: A descending tear that unfurls into pavement water ripples, absorbing city lamplight, supporting subtle elements: inverted umbrella catching fallen stars, subtle vertical rain striations, single amber streetlamp glow, composition: Off-center vertical placement in the lower-left third; 65% serene negative space in the upper-right hemisphere allowing breathing room, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #0d131a background, #cbd5e1 fluid ink, accented by #d97706, emotional atmosphere: Solitary grief transitioning into silent nocturnal acceptance amidst city rain, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling",
-    "negativePrompt": "photorealism, 3D render, glossy textures, neon lights, generic umbrella silhouette, stock raindrops, text, signature, watermark, clutter, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts"
-  },
-  "comfyWorkflow": {
-    "prompt": {
-      "3": {
-        "class_type": "KSampler",
-        "inputs": {
-          "cfg": 7,
-          "denoise": 1,
-          "latent_image": [
-            "5",
-            0
-          ],
-          "model": [
-            "4",
-            0
-          ],
-          "negative": [
-            "7",
-            0
-          ],
-          "positive": [
-            "6",
-            0
-          ],
-          "sampler_name": "euler_ancestral",
-          "scheduler": "karras",
-          "seed": 85753589,
-          "steps": 28
-        }
-      },
-      "4": {
-        "class_type": "CheckpointLoaderSimple",
-        "inputs": {
-          "ckpt_name": "v1-5-pruned-emaonly.safetensors"
-        }
-      },
-      "5": {
-        "class_type": "EmptyLatentImage",
-        "inputs": {
-          "batch_size": 1,
-          "height": 1152,
-          "width": 832
-        }
-      },
-      "6": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {
-          "clip": [
-            "4",
-            1
-          ],
-          "text": "masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings, central metaphor: A descending tear that unfurls into pavement water ripples, absorbing city lamplight, supporting subtle elements: inverted umbrella catching fallen stars, subtle vertical rain striations, single amber streetlamp glow, composition: Off-center vertical placement in the lower-left third; 65% serene negative space in the upper-right hemisphere allowing breathing room, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #0d131a background, #cbd5e1 fluid ink, accented by #d97706, emotional atmosphere: Solitary grief transitioning into silent nocturnal acceptance amidst city rain, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling"
-        }
-      },
-      "7": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {
-          "clip": [
-            "4",
-            1
-          ],
-          "text": "photorealism, 3D render, glossy textures, neon lights, generic umbrella silhouette, stock raindrops, text, signature, watermark, clutter, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts"
-        }
-      },
-      "8": {
-        "class_type": "VAEDecode",
-        "inputs": {
-          "samples": [
-            "3",
-            0
-          ],
-          "vae": [
-            "4",
-            2
-          ]
-        }
-      },
-      "9": {
-        "class_type": "SaveImage",
-        "inputs": {
-          "filename_prefix": "LivingCanvas",
-          "images": [
-            "8",
-            0
-          ]
-        }
-      }
+    "positivePrompt": "(expressive single continuous-line ink drawing of continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings:1.25), symbolic metamorphosis of descending tear that unfurls into pavement water ripples, absorbing city lamplight, integrating subtle motifs of (inverted umbrella catching fallen stars, subtle vertical rain striations, single amber streetlamp glow:1.1), composition: Off-center vertical placement in the lower-left third; 65% serene negative space in the upper-right hemisphere allowing breathing room, expansive empty negative space, meditative uncluttered layout, editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture, strict limited color palette, #cbd5e1 ink on solid #0d131a background, subtle wash of #d97706, high contrast minimalism, no extraneous colors, evoking Solitary grief transitioning into silent nocturnal acceptance amidst city rain",
+    "negativePrompt": "photorealism, 3D render, glossy textures, neon lights, generic umbrella silhouette, stock raindrops, text, signature, watermark, clutter, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, shading, gradients, generic silhouette, stock clipart, meaningless fractals, mandalas, repetitive floral wallpaper, broken scratchy lines, multiple overlapping chaotic sketches, messy crosshatching, doodles, garish oversaturated neon colors, rainbow gradient, muddy colors, chromatic aberration, letters, words, typography, logo, watermark, signature, border frame, cropped edges, deformed anatomy, extra limbs, mutated hands, multiple subjects, busy background clutter",
+    "visualAnchors": {
+      "primary": "(expressive single continuous-line ink drawing of continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings:1.25)",
+      "metaphor": "symbolic metamorphosis of descending tear that unfurls into pavement water ripples, absorbing city lamplight",
+      "medium": "editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture",
+      "palette": "strict limited color palette, #cbd5e1 ink on solid #0d131a background, subtle wash of #d97706, high contrast minimalism, no extraneous colors"
     }
   },
-  "createdAt": "2026-10-21T05:42:17.410Z"
+  "createdAt": "2026-10-21T06:19:49.122Z"
 }

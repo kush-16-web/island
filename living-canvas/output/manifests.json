@@ -5,20 +5,25 @@
       "title": "Midnight Rain",
       "artist": "The Lumineers",
       "lyrics": "Rain pouring down on cold asphalt, standing under the lone streetlight watching reflections shatter as cars pass by in the quiet dark.",
-      "expectedTheme": "Melancholic / Solitude / Rain / Midnight"
+      "archetype": "Melancholic / Solitude / Rain / Midnight"
     },
-    "createdAt": "2026-10-21T05:42:17.410Z",
+    "createdAt": "2026-10-21T06:19:49.122Z",
+    "status": "workflow_validated",
     "generator": {
-      "mode": "mock-svg-renderer",
-      "format": "svg",
+      "status": "workflow_validated",
+      "format": "workflow_json",
       "source": "interpreter",
       "model": "rule-based-art-director",
-      "fallbackReason": null
+      "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
+      "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
     },
+    "qualityScore": 92,
     "files": {
       "concept": "concept.json",
       "prompt": "prompt.json",
-      "artwork": "artwork.svg"
+      "workflow": "workflow.json",
+      "evaluation": "evaluation.json",
+      "artwork": null
     },
     "hardware": {
       "platform": "win32",
@@ -26,7 +31,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 486,
+      "freeRamMB": 442,
       "nodeVersion": "v22.12.0"
     }
   },
@@ -36,20 +41,25 @@
       "title": "Solar Flare",
       "artist": "Horizon Zero",
       "lyrics": "Break the gravitational pull, ascend through the stratosphere into blinding radiant light, unfolding paper wings into the morning sun.",
-      "expectedTheme": "Euphoric / Ascension / Solar / Catharsis"
+      "archetype": "Euphoric / Ascension / Solar / Catharsis"
     },
-    "createdAt": "2026-10-21T05:42:17.445Z",
+    "createdAt": "2026-10-21T06:19:49.147Z",
+    "status": "workflow_validated",
     "generator": {
-      "mode": "mock-svg-renderer",
-      "format": "svg",
+      "status": "workflow_validated",
+      "format": "workflow_json",
       "source": "interpreter",
       "model": "rule-based-art-director",
-      "fallbackReason": null
+      "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
+      "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
     },
+    "qualityScore": 82,
     "files": {
       "concept": "concept.json",
       "prompt": "prompt.json",
-      "artwork": "artwork.svg"
+      "workflow": "workflow.json",
+      "evaluation": "evaluation.json",
+      "artwork": null
     },
     "hardware": {
       "platform": "win32",
@@ -57,7 +67,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 486,
+      "freeRamMB": 442,
       "nodeVersion": "v22.12.0"
     }
   },
@@ -67,20 +77,25 @@
       "title": "Wooden Porch Echoes",
       "artist": "Iron & Pine",
       "lyrics": "Creaking floorboards and an old six-string with worn frets, family memories carved into the cedar post by the river roots.",
-      "expectedTheme": "Nostalgic / Acoustic / Memory / Hearth"
+      "archetype": "Nostalgic / Acoustic / Memory / Hearth"
     },
-    "createdAt": "2026-10-21T05:42:17.473Z",
+    "createdAt": "2026-10-21T06:19:49.174Z",
+    "status": "workflow_validated",
     "generator": {
-      "mode": "mock-svg-renderer",
-      "format": "svg",
+      "status": "workflow_validated",
+      "format": "workflow_json",
       "source": "interpreter",
       "model": "rule-based-art-director",
-      "fallbackReason": null
+      "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
+      "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
     },
+    "qualityScore": 100,
     "files": {
       "concept": "concept.json",
       "prompt": "prompt.json",
-      "artwork": "artwork.svg"
+      "workflow": "workflow.json",
+      "evaluation": "evaluation.json",
+      "artwork": null
     },
     "hardware": {
       "platform": "win32",
@@ -88,7 +103,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 486,
+      "freeRamMB": 442,
       "nodeVersion": "v22.12.0"
     }
   },
@@ -119,6 +134,70 @@
       "cpuCores": 8,
       "totalRamMB": 5965,
       "freeRamMB": 535,
+      "nodeVersion": "v22.12.0"
+    }
+  },
+  {
+    "slug": "debussy_clair-de-lune",
+    "song": {
+      "title": "Clair de Lune",
+      "artist": "Debussy",
+      "lyrics": "Quiet moonlight bathing still waters"
+    },
+    "createdAt": "2026-10-21T06:14:19.395Z",
+    "generator": {
+      "mode": "mock-svg-renderer",
+      "format": "svg",
+      "source": "interpreter",
+      "model": "rule-based-art-director",
+      "fallbackReason": null
+    },
+    "files": {
+      "concept": "concept.json",
+      "prompt": "prompt.json",
+      "artwork": "artwork.svg"
+    },
+    "hardware": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+      "cpuCores": 8,
+      "totalRamMB": 5965,
+      "freeRamMB": 455,
+      "nodeVersion": "v22.12.0"
+    }
+  },
+  {
+    "slug": "fjord-lights_silent-northern-aurora",
+    "song": {
+      "title": "Silent Northern Aurora",
+      "artist": "Fjord Lights"
+    },
+    "createdAt": "2026-10-21T06:19:33.107Z",
+    "status": "workflow_validated",
+    "generator": {
+      "status": "workflow_validated",
+      "format": "workflow_json",
+      "source": "interpreter",
+      "model": "rule-based-art-director",
+      "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
+      "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
+    },
+    "qualityScore": 82,
+    "files": {
+      "concept": "concept.json",
+      "prompt": "prompt.json",
+      "workflow": "workflow.json",
+      "evaluation": "evaluation.json",
+      "artwork": null
+    },
+    "hardware": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+      "cpuCores": 8,
+      "totalRamMB": 5965,
+      "freeRamMB": 385,
       "nodeVersion": "v22.12.0"
     }
   }

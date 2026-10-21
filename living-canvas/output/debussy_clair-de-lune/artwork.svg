@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1600" width="1200" height="1600">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&amp;family=Inter:wght@300;400;500;600&amp;display=swap');
+      .poster-bg { fill: #fafaf9; }
+      .art-frame { fill: none; stroke: #1c1917; stroke-width: 0.8; opacity: 0.18; }
+      .header-series { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 0.28em; fill: #1c1917; opacity: 0.55; text-transform: uppercase; }
+      .header-num { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; letter-spacing: 0.15em; fill: #ea580c; }
+      .poster-title { font-family: 'Cinzel', serif; font-size: 44px; font-weight: 600; letter-spacing: 0.08em; fill: #1c1917; }
+      .poster-artist { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 400; letter-spacing: 0.18em; fill: #ea580c; text-transform: uppercase; }
+      .meta-label { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.22em; fill: #1c1917; opacity: 0.45; text-transform: uppercase; }
+      .meta-text { font-family: 'Inter', sans-serif; font-size: 13.5px; font-weight: 300; line-height: 1.5; fill: #1c1917; opacity: 0.82; }
+      .tag { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; fill: #1c1917; opacity: 0.65; }
+    </style>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="1200" height="1600" class="poster-bg" />
+
+  <!-- Outer Architectural Framing Border -->
+  <rect x="60" y="60" width="1080" height="1480" class="art-frame" />
+  <rect x="76" y="76" width="1048" height="1448" class="art-frame" stroke-dasharray="4 8" />
+
+  <!-- Header Exhibition Banner -->
+  <g transform="translate(110, 120)">
+    <text y="0" class="header-series">Island Living Canvas — Pass 01</text>
+    <text x="980" y="0" text-anchor="end" class="header-num">PLATE № 43</text>
+    <line x1="0" y1="20" x2="980" y2="20" stroke="#1c1917" stroke-width="0.8" opacity="0.2" />
+  </g>
+
+  <!-- Artwork Artwork Viewport (Center) -->
+  <g id="continuous-line-artwork">
+    
+      <!-- Accent Glow Orb -->
+      <circle cx="680" cy="460" r="140" fill="#ea580c" opacity="0.16" filter="blur(60px)" />
+      
+      <!-- Continuous Single Ink Line: Solitary Contour into Ripples -->
+      <path d="M 460 280 
+               C 470 240, 520 230, 550 260 
+               C 580 290, 560 360, 520 400 
+               C 480 440, 430 460, 420 540 
+               C 410 620, 490 680, 530 730 
+               C 570 780, 560 840, 510 880 
+               C 450 930, 360 920, 330 870 
+               C 300 810, 340 760, 420 750 
+               C 530 740, 680 770, 740 830 
+               C 800 890, 770 980, 670 1020 
+               C 550 1060, 390 1050, 320 990 
+               C 240 920, 270 810, 380 780 
+               C 520 740, 740 790, 840 880 
+               C 920 960, 890 1080, 750 1140 
+               C 590 1200, 380 1180, 270 1100" 
+            fill="none" 
+            stroke="#1c1917" 
+            stroke-width="3.5" 
+            stroke-linecap="round" 
+            stroke-linejoin="round" />
+
+      <!-- Minimal Accent Symbol: Concentric Droplet -->
+      <circle cx="550" cy="260" r="6" fill="#ea580c" />
+      <path d="M 550 266 Q 550 310 520 350" fill="none" stroke="#ea580c" stroke-width="2" stroke-dasharray="4 6" opacity="0.7" />
+    
+  </g>
+
+  <!-- Typography & Editorial Storytelling (Bottom Tier) -->
+  <g transform="translate(110, 1280)">
+    <!-- Dividing Axis -->
+    <line x1="0" y1="0" x2="980" y2="0" stroke="#1c1917" stroke-width="1" opacity="0.25" />
+    
+    <!-- Title & Artist -->
+    <text x="0" y="46" class="poster-title">Clair de Lune</text>
+    <text x="0" y="78" class="poster-artist">Debussy</text>
+
+    <!-- Narrative Metaphor -->
+    <text x="0" y="125" class="meta-label">Central Visual Metaphor</text>
+    <text x="0" y="148" class="meta-text" width="620">"Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn"</text>
+
+    <!-- Emotional Core -->
+    <text x="0" y="195" class="meta-label">Emotional Atmosphere</text>
+    <text x="0" y="218" class="meta-text" width="620">Electric catharsis and spiritual transcendence breaking free from earthbound gravity</text>
+
+    <!-- Color Palette Chips & Specs (Right Column) -->
+    <g transform="translate(740, 26)">
+      <text x="0" y="18" class="meta-label">Palette &amp; Medium</text>
+      
+      <!-- Swatches -->
+      <g transform="translate(0, 32)">
+        <rect x="0" y="0" width="32" height="32" rx="4" fill="#fafaf9" stroke="#1c1917" stroke-width="0.8" />
+        <rect x="42" y="0" width="32" height="32" rx="4" fill="#1c1917" />
+        <rect x="84" y="0" width="32" height="32" rx="4" fill="#ea580c" />
+        <rect x="126" y="0" width="32" height="32" rx="4" fill="#facc15" />
+      </g>
+      
+      <text x="0" y="92" class="tag">Medium: Sumi-e Continuous Ink Line</text>
+      <text x="0" y="112" class="tag">Format: Vector Monotype Print</text>
+      <text x="0" y="132" class="tag">Substrate: Heavy Rag Cotton (Mock Mode)</text>
+    </g>
+  </g>
+</svg>

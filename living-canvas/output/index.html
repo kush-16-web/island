@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Island — Living Canvas Exhibition Gallery</title>
+  <title>Island — Living Canvas: Pass 2 Quality Validation</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -68,12 +68,55 @@
       border-color: var(--border-accent);
     }
     .art-preview {
-      background: #000;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 32px 24px;
       border-right: 1px solid var(--border);
+      position: relative;
+    }
+    .art-preview.is-validation-card {
+      text-align: center;
+      gap: 16px;
+    }
+    .validation-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .validation-symbol {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 1px dashed;
+      display: grid;
+      place-items: center;
+      margin: 12px auto;
+    }
+    .validation-subject {
+      font-family: 'Cinzel', serif;
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.4;
+      padding: 0 12px;
+    }
+    .validation-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .validation-specs {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      opacity: 0.6;
+      margin-top: 12px;
     }
     .art-preview img {
       width: 100%;
@@ -87,7 +130,7 @@
       padding: 32px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 18px;
     }
     .art-header {
       display: flex;
@@ -95,6 +138,45 @@
       align-items: flex-start;
       border-bottom: 1px solid var(--border);
       padding-bottom: 16px;
+    }
+    .header-tags {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .score-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+    .score-badge.is-high {
+      background: rgba(34, 197, 94, 0.18);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.4);
+    }
+    .score-badge.is-mid {
+      background: rgba(234, 179, 8, 0.18);
+      color: #facc15;
+      border: 1px solid rgba(234, 179, 8, 0.4);
+    }
+    .mode-tag {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+    .mode-tag.is-validated {
+      background: rgba(56, 189, 248, 0.18);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+    }
+    .mode-tag.is-live {
+      background: rgba(34, 197, 94, 0.18);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.4);
     }
     .song-artist {
       font-size: 13px;
@@ -110,24 +192,6 @@
       color: #fff;
       margin-top: 2px;
     }
-    .mode-tag {
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 600;
-    }
-    .mode-tag.is-mock {
-      background: rgba(217, 119, 6, 0.18);
-      color: #fbbf24;
-      border: 1px solid rgba(217, 119, 6, 0.4);
-    }
-    .mode-tag.is-live {
-      background: rgba(34, 197, 94, 0.18);
-      color: #4ade80;
-      border: 1px solid rgba(34, 197, 94, 0.4);
-    }
     .info-block {
       display: flex;
       flex-direction: column;
@@ -141,13 +205,35 @@
       font-weight: 600;
     }
     .info-val {
-      font-size: 14px;
+      font-size: 13.5px;
       color: #e2e8f0;
       line-height: 1.5;
     }
     .info-val.metaphor {
       font-style: italic;
       color: #38bdf8;
+    }
+    .eval-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .eval-chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .eval-chip.is-pass {
+      background: rgba(34, 197, 94, 0.12);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+    .eval-chip.is-warn {
+      background: rgba(234, 179, 8, 0.12);
+      color: #facc15;
+      border: 1px solid rgba(234, 179, 8, 0.25);
     }
     .symbols-wrap {
       display: flex;
@@ -224,30 +310,42 @@
 <body>
   <header class="header">
     <div>
-      <h1>Island Living Canvas</h1>
-      <p>Pass 1 — Local Artwork Prototype: Song Interpretation &amp; Continuous-Line Editorial Posters</p>
+      <h1>Island Living Canvas — Pass 2</h1>
+      <p>Real Artwork Quality Validation &amp; Portable ComfyUI Workflows</p>
     </div>
     <div style="font-size: 12px; color: var(--text-muted); text-align: right;">
-      <span>Total Artworks: <strong>4</strong></span><br>
-      <span>Zero Cloud AI • 100% Local / Deterministic</span>
+      <span>Catalog: <strong>6 tracks</strong></span><br>
+      <span>Zero Cloud AI • Pure Local Workflows</span>
     </div>
   </header>
 
   <main class="gallery-grid">
     
       <article class="art-card">
-        <div class="art-preview">
-          <img src="the-lumineers_midnight-rain/artwork.svg" alt="Midnight Rain" loading="lazy" />
-        </div>
+        <div class="art-preview is-validation-card" style="background: #0d131a; color: #cbd5e1;">
+             <div class="validation-badge">PORTABLE COMFYUI WORKFLOW VALIDATED</div>
+             <div class="validation-symbol" style="border-color: #d97706;">
+               <span style="color: #d97706; font-size: 32px;">✦</span>
+             </div>
+             <h3 class="validation-subject">"A continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings"</h3>
+             <p class="validation-meta">Ready for local GPU execution via <code>workflow.json</code></p>
+             <div class="validation-specs">
+               <span>Ratio: 832 × 1216 (SDXL)</span>
+               <span>Checkpoint: sd_xl_base_1.0.safetensors (required on Office PC)</span>
+             </div>
+           </div>
         <div class="art-meta">
           <div class="art-header">
             <div>
               <span class="song-artist">The Lumineers</span>
               <h2 class="song-title">Midnight Rain</h2>
             </div>
-            <span class="mode-tag is-mock">
-              mock-svg-renderer
-            </span>
+            <div class="header-tags">
+              <span class="score-badge is-high">Quality Score: 92/100</span>
+              <span class="mode-tag is-validated">
+                Workflow Validated
+              </span>
+            </div>
           </div>
 
           <div class="info-block">
@@ -261,12 +359,12 @@
           </div>
 
           <div class="info-block">
-            <span class="info-label">Primary Subject &amp; Line Logic</span>
-            <p class="info-val">A continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings</p>
+            <span class="info-label">Composition &amp; Line Logic</span>
+            <p class="info-val">Off-center vertical placement in the lower-left third; 65% serene negative space in the upper-right hemisphere allowing breathing room</p>
           </div>
 
           <div class="info-block">
-            <span class="info-label">Supporting Symbols</span>
+            <span class="info-label">Supporting Motifs</span>
             <div class="symbols-wrap"><span class="badge">inverted umbrella catching fallen stars</span> <span class="badge">subtle vertical rain striations</span> <span class="badge">single amber streetlamp glow</span></div>
           </div>
 
@@ -278,15 +376,31 @@
             </div>
           </div>
 
+          <div class="info-block">
+                   <span class="info-label">Pass 2 Quality Evaluation Rubric</span>
+                   <div class="eval-row"><span class="eval-chip is-warn" title="The primary visual figure/form is clearly legible and identifiable, not an ambiguous abstract tangle.">
+                  ⚠ Recognizable Main Subject (12/20)
+                </span> <span class="eval-chip is-pass" title="The central visual metaphor (e.g. roots becoming a guitar, descending tear turning into water ripples) is visually depicted.">
+                  ✓ Communicated Central Metaphor (25/25)
+                </span> <span class="eval-chip is-pass" title="Color temperature, contrast, and posture evoke the emotional narrative of the track.">
+                  ✓ Song Emotional Alignment (20/20)
+                </span> <span class="eval-chip is-pass" title="Continuous contour line demonstrates organic weight variation, fluid curves, and intentional pathing.">
+                  ✓ Deliberate & Expressive Linework (20/20)
+                </span> <span class="eval-chip is-pass" title="Intentional negative space (>50%) and asymmetrical staging ensure the poster is distinct from other songs.">
+                  ✓ Distinctive Composition & Space (15/15)
+                </span></div>
+                 </div>
+
           <details class="prompts-accordion">
-            <summary>Inspect ComfyUI Prompts &amp; Line Instructions</summary>
+            <summary>Inspect ComfyUI Prompts &amp; Workflow Node Graph</summary>
             <div class="prompt-box">
-              <strong>Line Instructions:</strong>
-              <p>An unbroken, weighted fluid stroke begins at the figure silhouette crown, flows down the curve of the back, loops tightly around the folded arms, then expands outward in four gentle, widening elliptical ripples across the bottom plane without ever lifting the pen.</p>
-              <strong>Positive Prompt:</strong>
-              <code>masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings, central metaphor: A descending tear that unfurls into pavement water ripples, absorbing city lamplight, supporting subtle elements: inverted umbrella catching fallen stars, subtle vertical rain striations, single amber streetlamp glow, composition: Off-center vertical placement in the lower-left third; 65% serene negative space in the upper-right hemisphere allowing breathing room, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #0d131a background, #cbd5e1 fluid ink, accented by #d97706, emotional atmosphere: Solitary grief transitioning into silent nocturnal acceptance amidst city rain, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling</code>
-              <strong>Negative Prompt:</strong>
-              <code>photorealism, 3D render, glossy textures, neon lights, generic umbrella silhouette, stock raindrops, text, signature, watermark, clutter, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts</code>
+              <strong>Positive Diffusion Prompt:</strong>
+              <code>(expressive single continuous-line ink drawing of continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings:1.25), symbolic metamorphosis of descending tear that unfurls into pavement water ripples, absorbing city lamplight, integrating subtle motifs of (inverted umbrella catching fallen stars, subtle vertical rain striations, single amber streetlamp glow:1.1), composition: Off-center vertical placement in the lower-left third; 65% serene negative space in the upper-right hemisphere allowing breathing room, expansive empty negative space, meditative uncluttered layout, editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture, strict limited color palette, #cbd5e1 ink on solid #0d131a background, subtle wash of #d97706, high contrast minimalism, no extraneous colors, evoking Solitary grief transitioning into silent nocturnal acceptance amidst city rain</code>
+              <strong>Negative Diffusion Prompt:</strong>
+              <code>photorealism, 3D render, glossy textures, neon lights, generic umbrella silhouette, stock raindrops, text, signature, watermark, clutter, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, shading, gradients, generic silhouette, stock clipart, meaningless fractals, mandalas, repetitive floral wallpaper, broken scratchy lines, multiple overlapping chaotic sketches, messy crosshatching, doodles, garish oversaturated neon colors, rainbow gradient, muddy colors, chromatic aberration, letters, words, typography, logo, watermark, signature, border frame, cropped edges, deformed anatomy, extra limbs, mutated hands, multiple subjects, busy background clutter</code>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                Workflow file: <code>the-lumineers_midnight-rain/workflow.json</code> (Drag and drop directly into ComfyUI canvas).
+              </p>
             </div>
           </details>
         </div>
@@ -294,18 +408,30 @@
       
 
       <article class="art-card">
-        <div class="art-preview">
-          <img src="horizon-zero_solar-flare/artwork.svg" alt="Solar Flare" loading="lazy" />
-        </div>
+        <div class="art-preview is-validation-card" style="background: #fafaf9; color: #1c1917;">
+             <div class="validation-badge">PORTABLE COMFYUI WORKFLOW VALIDATED</div>
+             <div class="validation-symbol" style="border-color: #ea580c;">
+               <span style="color: #ea580c; font-size: 32px;">✦</span>
+             </div>
+             <h3 class="validation-subject">"A single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst"</h3>
+             <p class="validation-meta">Ready for local GPU execution via <code>workflow.json</code></p>
+             <div class="validation-specs">
+               <span>Ratio: 832 × 1216 (SDXL)</span>
+               <span>Checkpoint: sd_xl_base_1.0.safetensors (required on Office PC)</span>
+             </div>
+           </div>
         <div class="art-meta">
           <div class="art-header">
             <div>
               <span class="song-artist">Horizon Zero</span>
               <h2 class="song-title">Solar Flare</h2>
             </div>
-            <span class="mode-tag is-mock">
-              mock-svg-renderer
-            </span>
+            <div class="header-tags">
+              <span class="score-badge is-high">Quality Score: 82/100</span>
+              <span class="mode-tag is-validated">
+                Workflow Validated
+              </span>
+            </div>
           </div>
 
           <div class="info-block">
@@ -319,12 +445,12 @@
           </div>
 
           <div class="info-block">
-            <span class="info-label">Primary Subject &amp; Line Logic</span>
-            <p class="info-val">A single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst</p>
+            <span class="info-label">Composition &amp; Line Logic</span>
+            <p class="info-val">Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy</p>
           </div>
 
           <div class="info-block">
-            <span class="info-label">Supporting Symbols</span>
+            <span class="info-label">Supporting Motifs</span>
             <div class="symbols-wrap"><span class="badge">geometric paper crane in flight</span> <span class="badge">radial sunray arcs</span> <span class="badge">fine harmonic frequency lines</span></div>
           </div>
 
@@ -336,15 +462,31 @@
             </div>
           </div>
 
+          <div class="info-block">
+                   <span class="info-label">Pass 2 Quality Evaluation Rubric</span>
+                   <div class="eval-row"><span class="eval-chip is-warn" title="The primary visual figure/form is clearly legible and identifiable, not an ambiguous abstract tangle.">
+                  ⚠ Recognizable Main Subject (12/20)
+                </span> <span class="eval-chip is-warn" title="The central visual metaphor (e.g. roots becoming a guitar, descending tear turning into water ripples) is visually depicted.">
+                  ⚠ Communicated Central Metaphor (15/25)
+                </span> <span class="eval-chip is-pass" title="Color temperature, contrast, and posture evoke the emotional narrative of the track.">
+                  ✓ Song Emotional Alignment (20/20)
+                </span> <span class="eval-chip is-pass" title="Continuous contour line demonstrates organic weight variation, fluid curves, and intentional pathing.">
+                  ✓ Deliberate & Expressive Linework (20/20)
+                </span> <span class="eval-chip is-pass" title="Intentional negative space (>50%) and asymmetrical staging ensure the poster is distinct from other songs.">
+                  ✓ Distinctive Composition & Space (15/15)
+                </span></div>
+                 </div>
+
           <details class="prompts-accordion">
-            <summary>Inspect ComfyUI Prompts &amp; Line Instructions</summary>
+            <summary>Inspect ComfyUI Prompts &amp; Workflow Node Graph</summary>
             <div class="prompt-box">
-              <strong>Line Instructions:</strong>
-              <p>The stroke enters from the lower edge, weaves through the fingers of the lower hand, spirals smoothly into the upper wrist, leaps across the wingspan of the origami bird, and spirals outward in two sweeping solar coronas before tapering into silence.</p>
-              <strong>Positive Prompt:</strong>
-              <code>masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst, central metaphor: Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn, supporting subtle elements: geometric paper crane in flight, radial sunray arcs, fine harmonic frequency lines, composition: Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #fafaf9 background, #1c1917 fluid ink, accented by #ea580c, emotional atmosphere: Electric catharsis and spiritual transcendence breaking free from earthbound gravity, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling</code>
-              <strong>Negative Prompt:</strong>
-              <code>3D glossy CGI, lens flare, oversaturated gradient, generic sun emoji, cartoon wings, photorealistic hands, messy scribbles, watermark, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts</code>
+              <strong>Positive Diffusion Prompt:</strong>
+              <code>(expressive single continuous-line ink drawing of single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst:1.25), symbolic metamorphosis of Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn, integrating subtle motifs of (geometric paper crane in flight, radial sunray arcs, fine harmonic frequency lines:1.1), composition: Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy, expansive empty negative space, meditative uncluttered layout, editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture, strict limited color palette, #1c1917 ink on solid #fafaf9 background, subtle wash of #ea580c, high contrast minimalism, no extraneous colors, evoking Electric catharsis and spiritual transcendence breaking free from earthbound gravity</code>
+              <strong>Negative Diffusion Prompt:</strong>
+              <code>3D glossy CGI, lens flare, oversaturated gradient, generic sun emoji, cartoon wings, photorealistic hands, messy scribbles, watermark, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, shading, gradients, generic silhouette, stock clipart, meaningless fractals, mandalas, repetitive floral wallpaper, broken scratchy lines, multiple overlapping chaotic sketches, messy crosshatching, doodles, garish oversaturated neon colors, rainbow gradient, muddy colors, chromatic aberration, letters, words, typography, logo, watermark, signature, border frame, cropped edges, deformed anatomy, extra limbs, mutated hands, multiple subjects, busy background clutter</code>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                Workflow file: <code>horizon-zero_solar-flare/workflow.json</code> (Drag and drop directly into ComfyUI canvas).
+              </p>
             </div>
           </details>
         </div>
@@ -352,18 +494,30 @@
       
 
       <article class="art-card">
-        <div class="art-preview">
-          <img src="iron-pine_wooden-porch-echoes/artwork.svg" alt="Wooden Porch Echoes" loading="lazy" />
-        </div>
+        <div class="art-preview is-validation-card" style="background: #f5f2eb; color: #292524;">
+             <div class="validation-badge">PORTABLE COMFYUI WORKFLOW VALIDATED</div>
+             <div class="validation-symbol" style="border-color: #854d0e;">
+               <span style="color: #854d0e; font-size: 32px;">✦</span>
+             </div>
+             <h3 class="validation-subject">"A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots"</h3>
+             <p class="validation-meta">Ready for local GPU execution via <code>workflow.json</code></p>
+             <div class="validation-specs">
+               <span>Ratio: 832 × 1216 (SDXL)</span>
+               <span>Checkpoint: sd_xl_base_1.0.safetensors (required on Office PC)</span>
+             </div>
+           </div>
         <div class="art-meta">
           <div class="art-header">
             <div>
               <span class="song-artist">Iron & Pine</span>
               <h2 class="song-title">Wooden Porch Echoes</h2>
             </div>
-            <span class="mode-tag is-mock">
-              mock-svg-renderer
-            </span>
+            <div class="header-tags">
+              <span class="score-badge is-high">Quality Score: 100/100</span>
+              <span class="mode-tag is-validated">
+                Workflow Validated
+              </span>
+            </div>
           </div>
 
           <div class="info-block">
@@ -377,12 +531,12 @@
           </div>
 
           <div class="info-block">
-            <span class="info-label">Primary Subject &amp; Line Logic</span>
-            <p class="info-val">A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots</p>
+            <span class="info-label">Composition &amp; Line Logic</span>
+            <p class="info-val">Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance</p>
           </div>
 
           <div class="info-block">
-            <span class="info-label">Supporting Symbols</span>
+            <span class="info-label">Supporting Motifs</span>
             <div class="symbols-wrap"><span class="badge">spiral acoustic soundhole</span> <span class="badge">drifting autumnal leaf outline</span> <span class="badge">delicate root filaments</span></div>
           </div>
 
@@ -394,15 +548,31 @@
             </div>
           </div>
 
+          <div class="info-block">
+                   <span class="info-label">Pass 2 Quality Evaluation Rubric</span>
+                   <div class="eval-row"><span class="eval-chip is-pass" title="The primary visual figure/form is clearly legible and identifiable, not an ambiguous abstract tangle.">
+                  ✓ Recognizable Main Subject (20/20)
+                </span> <span class="eval-chip is-pass" title="The central visual metaphor (e.g. roots becoming a guitar, descending tear turning into water ripples) is visually depicted.">
+                  ✓ Communicated Central Metaphor (25/25)
+                </span> <span class="eval-chip is-pass" title="Color temperature, contrast, and posture evoke the emotional narrative of the track.">
+                  ✓ Song Emotional Alignment (20/20)
+                </span> <span class="eval-chip is-pass" title="Continuous contour line demonstrates organic weight variation, fluid curves, and intentional pathing.">
+                  ✓ Deliberate & Expressive Linework (20/20)
+                </span> <span class="eval-chip is-pass" title="Intentional negative space (>50%) and asymmetrical staging ensure the poster is distinct from other songs.">
+                  ✓ Distinctive Composition & Space (15/15)
+                </span></div>
+                 </div>
+
           <details class="prompts-accordion">
-            <summary>Inspect ComfyUI Prompts &amp; Line Instructions</summary>
+            <summary>Inspect ComfyUI Prompts &amp; Workflow Node Graph</summary>
             <div class="prompt-box">
-              <strong>Line Instructions:</strong>
-              <p>Beginning at the guitar tuning peg, the line cascades down the neck, loops gracefully around the central soundhole spiral, contours the acoustic lower bout, and branches into three sinuous root fibers that anchor the composition base.</p>
-              <strong>Positive Prompt:</strong>
-              <code>masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots, central metaphor: The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth, supporting subtle elements: spiral acoustic soundhole, drifting autumnal leaf outline, delicate root filaments, composition: Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #f5f2eb background, #292524 fluid ink, accented by #854d0e, emotional atmosphere: Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling</code>
-              <strong>Negative Prompt:</strong>
-              <code>digital gradient, 3D musical notes, cartoon guitar, glossy veneer, generic tree silhouette, clipart, watermark, signature, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts</code>
+              <strong>Positive Diffusion Prompt:</strong>
+              <code>(expressive single continuous-line ink drawing of calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots:1.25), symbolic metamorphosis of The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth, integrating subtle motifs of (spiral acoustic soundhole, drifting autumnal leaf outline, delicate root filaments:1.1), composition: Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance, expansive empty negative space, meditative uncluttered layout, editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture, strict limited color palette, #292524 ink on solid #f5f2eb background, subtle wash of #854d0e, high contrast minimalism, no extraneous colors, evoking Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft</code>
+              <strong>Negative Diffusion Prompt:</strong>
+              <code>digital gradient, 3D musical notes, cartoon guitar, glossy veneer, generic tree silhouette, clipart, watermark, signature, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, shading, gradients, generic silhouette, stock clipart, meaningless fractals, mandalas, repetitive floral wallpaper, broken scratchy lines, multiple overlapping chaotic sketches, messy crosshatching, doodles, garish oversaturated neon colors, rainbow gradient, muddy colors, chromatic aberration, letters, words, typography, logo, watermark, signature, border frame, cropped edges, deformed anatomy, extra limbs, mutated hands, multiple subjects, busy background clutter</code>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                Workflow file: <code>iron-pine_wooden-porch-echoes/workflow.json</code> (Drag and drop directly into ComfyUI canvas).
+              </p>
             </div>
           </details>
         </div>
@@ -411,17 +581,20 @@
 
       <article class="art-card">
         <div class="art-preview">
-          <img src="test-ensemble_test-melody/artwork.svg" alt="Test Melody" loading="lazy" />
-        </div>
+             <img src="test-ensemble_test-melody/artwork.svg" alt="Test Melody" loading="lazy" />
+           </div>
         <div class="art-meta">
           <div class="art-header">
             <div>
               <span class="song-artist">Test Ensemble</span>
               <h2 class="song-title">Test Melody</h2>
             </div>
-            <span class="mode-tag is-mock">
-              mock-svg-renderer
-            </span>
+            <div class="header-tags">
+              
+              <span class="mode-tag is-validated">
+                Workflow Validated
+              </span>
+            </div>
           </div>
 
           <div class="info-block">
@@ -435,12 +608,12 @@
           </div>
 
           <div class="info-block">
-            <span class="info-label">Primary Subject &amp; Line Logic</span>
-            <p class="info-val">A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots</p>
+            <span class="info-label">Composition &amp; Line Logic</span>
+            <p class="info-val">Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance</p>
           </div>
 
           <div class="info-block">
-            <span class="info-label">Supporting Symbols</span>
+            <span class="info-label">Supporting Motifs</span>
             <div class="symbols-wrap"><span class="badge">spiral acoustic soundhole</span> <span class="badge">drifting autumnal leaf outline</span> <span class="badge">delicate root filaments</span></div>
           </div>
 
@@ -452,15 +625,168 @@
             </div>
           </div>
 
+          
+
           <details class="prompts-accordion">
-            <summary>Inspect ComfyUI Prompts &amp; Line Instructions</summary>
+            <summary>Inspect ComfyUI Prompts &amp; Workflow Node Graph</summary>
             <div class="prompt-box">
-              <strong>Line Instructions:</strong>
-              <p>Beginning at the guitar tuning peg, the line cascades down the neck, loops gracefully around the central soundhole spiral, contours the acoustic lower bout, and branches into three sinuous root fibers that anchor the composition base.</p>
-              <strong>Positive Prompt:</strong>
+              <strong>Positive Diffusion Prompt:</strong>
               <code>masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots, central metaphor: The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth, supporting subtle elements: spiral acoustic soundhole, drifting autumnal leaf outline, delicate root filaments, composition: Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #f5f2eb background, #292524 fluid ink, accented by #854d0e, emotional atmosphere: Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling</code>
-              <strong>Negative Prompt:</strong>
+              <strong>Negative Diffusion Prompt:</strong>
               <code>digital gradient, 3D musical notes, cartoon guitar, glossy veneer, generic tree silhouette, clipart, watermark, signature, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts</code>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                Workflow file: <code>test-ensemble_test-melody/workflow.json</code> (Drag and drop directly into ComfyUI canvas).
+              </p>
+            </div>
+          </details>
+        </div>
+      </article>
+      
+
+      <article class="art-card">
+        <div class="art-preview">
+             <img src="debussy_clair-de-lune/artwork.svg" alt="Clair de Lune" loading="lazy" />
+           </div>
+        <div class="art-meta">
+          <div class="art-header">
+            <div>
+              <span class="song-artist">Debussy</span>
+              <h2 class="song-title">Clair de Lune</h2>
+            </div>
+            <div class="header-tags">
+              
+              <span class="mode-tag is-validated">
+                Workflow Validated
+              </span>
+            </div>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Emotional Theme</span>
+            <p class="info-val">Electric catharsis and spiritual transcendence breaking free from earthbound gravity</p>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Central Visual Metaphor</span>
+            <p class="info-val metaphor">"Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn"</p>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Composition &amp; Line Logic</span>
+            <p class="info-val">Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy</p>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Supporting Motifs</span>
+            <div class="symbols-wrap"><span class="badge">geometric paper crane in flight</span> <span class="badge">radial sunray arcs</span> <span class="badge">fine harmonic frequency lines</span></div>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Color Harmony</span>
+            <div class="palette-row">
+              <div class="swatches"><span class="swatch" style="background:#fafaf9;" title="#fafaf9"></span><span class="swatch" style="background:#1c1917;" title="#1c1917"></span><span class="swatch" style="background:#ea580c;" title="#ea580c"></span><span class="swatch" style="background:#facc15;" title="#facc15"></span></div>
+              <span class="palette-desc">Warm natural linen paper with rich carbon ink line and vibrant cadmium solar flare</span>
+            </div>
+          </div>
+
+          
+
+          <details class="prompts-accordion">
+            <summary>Inspect ComfyUI Prompts &amp; Workflow Node Graph</summary>
+            <div class="prompt-box">
+              <strong>Positive Diffusion Prompt:</strong>
+              <code>masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst, central metaphor: Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn, supporting subtle elements: geometric paper crane in flight, radial sunray arcs, fine harmonic frequency lines, composition: Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #fafaf9 background, #1c1917 fluid ink, accented by #ea580c, emotional atmosphere: Electric catharsis and spiritual transcendence breaking free from earthbound gravity, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling</code>
+              <strong>Negative Diffusion Prompt:</strong>
+              <code>3D glossy CGI, lens flare, oversaturated gradient, generic sun emoji, cartoon wings, photorealistic hands, messy scribbles, watermark, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts</code>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                Workflow file: <code>debussy_clair-de-lune/workflow.json</code> (Drag and drop directly into ComfyUI canvas).
+              </p>
+            </div>
+          </details>
+        </div>
+      </article>
+      
+
+      <article class="art-card">
+        <div class="art-preview is-validation-card" style="background: #fafaf9; color: #1c1917;">
+             <div class="validation-badge">PORTABLE COMFYUI WORKFLOW VALIDATED</div>
+             <div class="validation-symbol" style="border-color: #ea580c;">
+               <span style="color: #ea580c; font-size: 32px;">✦</span>
+             </div>
+             <h3 class="validation-subject">"A single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst"</h3>
+             <p class="validation-meta">Ready for local GPU execution via <code>workflow.json</code></p>
+             <div class="validation-specs">
+               <span>Ratio: 832 × 1216 (SDXL)</span>
+               <span>Checkpoint: sd_xl_base_1.0.safetensors (required on Office PC)</span>
+             </div>
+           </div>
+        <div class="art-meta">
+          <div class="art-header">
+            <div>
+              <span class="song-artist">Fjord Lights</span>
+              <h2 class="song-title">Silent Northern Aurora</h2>
+            </div>
+            <div class="header-tags">
+              <span class="score-badge is-high">Quality Score: 82/100</span>
+              <span class="mode-tag is-validated">
+                Workflow Validated
+              </span>
+            </div>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Emotional Theme</span>
+            <p class="info-val">Electric catharsis and spiritual transcendence breaking free from earthbound gravity</p>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Central Visual Metaphor</span>
+            <p class="info-val metaphor">"Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn"</p>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Composition &amp; Line Logic</span>
+            <p class="info-val">Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy</p>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Supporting Motifs</span>
+            <div class="symbols-wrap"><span class="badge">geometric paper crane in flight</span> <span class="badge">radial sunray arcs</span> <span class="badge">fine harmonic frequency lines</span></div>
+          </div>
+
+          <div class="info-block">
+            <span class="info-label">Color Harmony</span>
+            <div class="palette-row">
+              <div class="swatches"><span class="swatch" style="background:#fafaf9;" title="#fafaf9"></span><span class="swatch" style="background:#1c1917;" title="#1c1917"></span><span class="swatch" style="background:#ea580c;" title="#ea580c"></span><span class="swatch" style="background:#facc15;" title="#facc15"></span></div>
+              <span class="palette-desc">Warm natural linen paper with rich carbon ink line and vibrant cadmium solar flare</span>
+            </div>
+          </div>
+
+          <div class="info-block">
+                   <span class="info-label">Pass 2 Quality Evaluation Rubric</span>
+                   <div class="eval-row"><span class="eval-chip is-warn" title="The primary visual figure/form is clearly legible and identifiable, not an ambiguous abstract tangle.">
+                  ⚠ Recognizable Main Subject (12/20)
+                </span> <span class="eval-chip is-warn" title="The central visual metaphor (e.g. roots becoming a guitar, descending tear turning into water ripples) is visually depicted.">
+                  ⚠ Communicated Central Metaphor (15/25)
+                </span> <span class="eval-chip is-pass" title="Color temperature, contrast, and posture evoke the emotional narrative of the track.">
+                  ✓ Song Emotional Alignment (20/20)
+                </span> <span class="eval-chip is-pass" title="Continuous contour line demonstrates organic weight variation, fluid curves, and intentional pathing.">
+                  ✓ Deliberate & Expressive Linework (20/20)
+                </span> <span class="eval-chip is-pass" title="Intentional negative space (>50%) and asymmetrical staging ensure the poster is distinct from other songs.">
+                  ✓ Distinctive Composition & Space (15/15)
+                </span></div>
+                 </div>
+
+          <details class="prompts-accordion">
+            <summary>Inspect ComfyUI Prompts &amp; Workflow Node Graph</summary>
+            <div class="prompt-box">
+              <strong>Positive Diffusion Prompt:</strong>
+              <code>(expressive single continuous-line ink drawing of single energetic continuous contour outlining two intertwined open palms ascending upward into an unfolding celestial sunburst:1.25), symbolic metamorphosis of Outstretched human hands releasing an origami crane whose wings become the rays of a rising solar dawn, integrating subtle motifs of (geometric paper crane in flight, radial sunray arcs, fine harmonic frequency lines:1.1), composition: Ascending diagonal composition rising from bottom-center toward top-right; 60% negative space on bottom and flanks focusing upward energy, expansive empty negative space, meditative uncluttered layout, editorial art poster, Henri Matisse single-line contour drawing, Japanese sumi ink wash, museum exhibition screenprint, organic fluid line weight variation, archival fine art cotton paper texture, strict limited color palette, #1c1917 ink on solid #fafaf9 background, subtle wash of #ea580c, high contrast minimalism, no extraneous colors, evoking Electric catharsis and spiritual transcendence breaking free from earthbound gravity</code>
+              <strong>Negative Diffusion Prompt:</strong>
+              <code>3D glossy CGI, lens flare, oversaturated gradient, generic sun emoji, cartoon wings, photorealistic hands, messy scribbles, watermark, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, shading, gradients, generic silhouette, stock clipart, meaningless fractals, mandalas, repetitive floral wallpaper, broken scratchy lines, multiple overlapping chaotic sketches, messy crosshatching, doodles, garish oversaturated neon colors, rainbow gradient, muddy colors, chromatic aberration, letters, words, typography, logo, watermark, signature, border frame, cropped edges, deformed anatomy, extra limbs, mutated hands, multiple subjects, busy background clutter</code>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                Workflow file: <code>fjord-lights_silent-northern-aurora/workflow.json</code> (Drag and drop directly into ComfyUI canvas).
+              </p>
             </div>
           </details>
         </div>

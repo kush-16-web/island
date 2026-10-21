@@ -28,9 +28,9 @@ function ensureDir(dirPath) {
 }
 
 /**
- * Saves a living canvas result to disk
+ * Saves a living canvas result or validation artifact to disk.
  */
-function saveResult(songMeta, concept, artworkResult, envInfo = {}) {
+function saveResult(songMeta, concept, generationResult, envInfo = {}) {
   const slug = createSongSlug(songMeta.title, songMeta.artist);
   const targetDir = path.join(config.outputDir, slug);
   ensureDir(targetDir);
@@ -41,40 +41,57 @@ function saveResult(songMeta, concept, artworkResult, envInfo = {}) {
   const conceptFile = path.join(targetDir, 'concept.json');
   fs.writeFileSync(conceptFile, JSON.stringify(concept, null, 2), 'utf8');
 
-  // 2. Save Prompt and Workflow
+  // 2. Save Prompt Specs
   const promptPayload = {
     song: songMeta,
-    prompts: artworkResult.prompts,
-    comfyWorkflow: artworkResult.comfyWorkflow,
+    prompts: generationResult.prompts,
     createdAt: timestamp,
   };
   const promptFile = path.join(targetDir, 'prompt.json');
   fs.writeFileSync(promptFile, JSON.stringify(promptPayload, null, 2), 'utf8');
 
-  // 3. Save Artwork File
-  let artworkFilename = 'artwork.svg';
-  if (artworkResult.format === 'svg' && artworkResult.content) {
-    fs.writeFileSync(path.join(targetDir, artworkFilename), artworkResult.content, 'utf8');
-  } else if (artworkResult.buffer) {
-    artworkFilename = 'artwork.png';
-    fs.writeFileSync(path.join(targetDir, artworkFilename), artworkResult.buffer);
+  // 3. Save Standalone Portable ComfyUI Workflow JSON
+  const workflowFile = path.join(targetDir, 'workflow.json');
+  if (generationResult.workflow) {
+    fs.writeFileSync(workflowFile, JSON.stringify(generationResult.workflow, null, 2), 'utf8');
   }
 
-  // 4. Save Run Manifest
+  // 4. Save Quality Evaluation Report
+  if (generationResult.qualityReport) {
+    const evalFile = path.join(targetDir, 'evaluation.json');
+    fs.writeFileSync(evalFile, JSON.stringify(generationResult.qualityReport, null, 2), 'utf8');
+  }
+
+  // 5. Save Artwork File (Only if genuine raster PNG buffer was generated)
+  let artworkFilename = null;
+  if (generationResult.format === 'png' && generationResult.buffer) {
+    artworkFilename = 'artwork.png';
+    fs.writeFileSync(path.join(targetDir, artworkFilename), generationResult.buffer);
+  } else if (generationResult.placeholderContent) {
+    artworkFilename = 'placeholder.svg';
+    fs.writeFileSync(path.join(targetDir, artworkFilename), generationResult.placeholderContent, 'utf8');
+  }
+
+  // 6. Save Run Manifest
   const manifest = {
     slug,
     song: songMeta,
     createdAt: timestamp,
+    status: generationResult.status || 'workflow_validated',
     generator: {
-      mode: artworkResult.mode,
-      format: artworkResult.format,
+      status: generationResult.status || 'workflow_validated',
+      format: generationResult.format || 'workflow_json',
       source: concept.source || 'interpreter',
       model: concept.model || 'rule-based-art-director',
-      fallbackReason: artworkResult.fallbackReason || null,
+      checkpoint: generationResult.checkpoint || 'none',
+      notes: generationResult.notes || null,
     },
+    qualityScore: generationResult.qualityReport?.totalScore || null,
     files: {
       concept: 'concept.json',
       prompt: 'prompt.json',
+      workflow: 'workflow.json',
+      evaluation: generationResult.qualityReport ? 'evaluation.json' : null,
       artwork: artworkFilename,
     },
     hardware: envInfo.hardware || null,
@@ -83,7 +100,7 @@ function saveResult(songMeta, concept, artworkResult, envInfo = {}) {
   const manifestFile = path.join(targetDir, 'manifest.json');
   fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2), 'utf8');
 
-  // 5. Update Master Manifests Catalog
+  // 7. Update Master Manifests Catalog
   updateMasterManifest(manifest);
 
   return {
@@ -109,7 +126,6 @@ function updateMasterManifest(newManifest) {
     }
   }
 
-  // Replace existing entry with same slug or push new
   const idx = list.findIndex((m) => m.slug === newManifest.slug);
   if (idx >= 0) {
     list[idx] = newManifest;

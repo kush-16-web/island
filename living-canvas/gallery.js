@@ -7,6 +7,7 @@ const { getAllManifests } = require('./store');
 
 /**
  * Builds a standalone exhibition HTML gallery to visually inspect generated artworks
+ * and validated ComfyUI workflows.
  */
 function buildExhibitionGallery() {
   const manifests = getAllManifests();
@@ -16,6 +17,7 @@ function buildExhibitionGallery() {
       const dir = path.join(config.outputDir, m.slug);
       let concept = {};
       let prompts = {};
+      let evaluation = null;
 
       try {
         concept = JSON.parse(fs.readFileSync(path.join(dir, 'concept.json'), 'utf8'));
@@ -29,35 +31,74 @@ function buildExhibitionGallery() {
         prompts = {};
       }
 
+      try {
+        evaluation = JSON.parse(fs.readFileSync(path.join(dir, 'evaluation.json'), 'utf8'));
+      } catch {
+        evaluation = null;
+      }
+
       const cp = concept.color_palette || {};
-      const artworkRel = `${m.slug}/${m.files.artwork}`;
+      const hasArtwork = Boolean(m.files?.artwork && fs.existsSync(path.join(dir, m.files.artwork)));
+      const artworkRel = hasArtwork ? `${m.slug}/${m.files.artwork}` : null;
+      const isRealAI = m.status === 'generated_ai_raster';
 
       const swatchesHtml = [cp.background, cp.line_color, cp.accent_color, cp.secondary_accent]
         .filter(Boolean)
-        .map(
-          (c) =>
-            `<span class="swatch" style="background:${c};" title="${c}"></span>`
-        )
+        .map((c) => `<span class="swatch" style="background:${c};" title="${c}"></span>`)
         .join('');
 
       const symbolsHtml = (concept.supporting_symbols || [])
         .map((s) => `<span class="badge">${s}</span>`)
         .join(' ');
 
+      // Evaluation criteria chips
+      const evalChipsHtml = evaluation?.criteria
+        ? evaluation.criteria
+            .map(
+              (c) =>
+                `<span class="eval-chip ${c.passed ? 'is-pass' : 'is-warn'}" title="${c.description}">
+                  ${c.passed ? '✓' : '⚠'} ${c.title} (${c.score}/${c.weight})
+                </span>`
+            )
+            .join(' ')
+        : '';
+
+      const previewHtml = hasArtwork
+        ? `<div class="art-preview">
+             <img src="${artworkRel}" alt="${m.song.title}" loading="lazy" />
+           </div>`
+        : `<div class="art-preview is-validation-card" style="background: ${cp.background || '#0f172a'}; color: ${cp.line_color || '#f8fafc'};">
+             <div class="validation-badge">PORTABLE COMFYUI WORKFLOW VALIDATED</div>
+             <div class="validation-symbol" style="border-color: ${cp.accent_color || '#38bdf8'};">
+               <span style="color: ${cp.accent_color || '#38bdf8'}; font-size: 32px;">✦</span>
+             </div>
+             <h3 class="validation-subject">"${concept.main_visual_subject || 'Continuous-Line Poster'}"</h3>
+             <p class="validation-meta">Ready for local GPU execution via <code>workflow.json</code></p>
+             <div class="validation-specs">
+               <span>Ratio: 832 × 1216 (SDXL)</span>
+               <span>Checkpoint: ${m.generator?.checkpoint || 'sd_xl_base_1.0'}</span>
+             </div>
+           </div>`;
+
       return `
       <article class="art-card">
-        <div class="art-preview">
-          <img src="${artworkRel}" alt="${m.song.title}" loading="lazy" />
-        </div>
+        ${previewHtml}
         <div class="art-meta">
           <div class="art-header">
             <div>
               <span class="song-artist">${m.song.artist}</span>
               <h2 class="song-title">${m.song.title}</h2>
             </div>
-            <span class="mode-tag ${m.generator.mode.includes('mock') ? 'is-mock' : 'is-live'}">
-              ${m.generator.mode}
-            </span>
+            <div class="header-tags">
+              ${
+                evaluation
+                  ? `<span class="score-badge ${evaluation.passed ? 'is-high' : 'is-mid'}">Quality Score: ${evaluation.totalScore}/100</span>`
+                  : ''
+              }
+              <span class="mode-tag ${isRealAI ? 'is-live' : 'is-validated'}">
+                ${isRealAI ? 'Real AI Generation' : 'Workflow Validated'}
+              </span>
+            </div>
           </div>
 
           <div class="info-block">
@@ -71,12 +112,12 @@ function buildExhibitionGallery() {
           </div>
 
           <div class="info-block">
-            <span class="info-label">Primary Subject &amp; Line Logic</span>
-            <p class="info-val">${concept.main_visual_subject || '—'}</p>
+            <span class="info-label">Composition &amp; Line Logic</span>
+            <p class="info-val">${concept.composition || '—'}</p>
           </div>
 
           <div class="info-block">
-            <span class="info-label">Supporting Symbols</span>
+            <span class="info-label">Supporting Motifs</span>
             <div class="symbols-wrap">${symbolsHtml}</div>
           </div>
 
@@ -88,15 +129,25 @@ function buildExhibitionGallery() {
             </div>
           </div>
 
+          ${
+            evaluation
+              ? `<div class="info-block">
+                   <span class="info-label">Pass 2 Quality Evaluation Rubric</span>
+                   <div class="eval-row">${evalChipsHtml}</div>
+                 </div>`
+              : ''
+          }
+
           <details class="prompts-accordion">
-            <summary>Inspect ComfyUI Prompts &amp; Line Instructions</summary>
+            <summary>Inspect ComfyUI Prompts &amp; Workflow Node Graph</summary>
             <div class="prompt-box">
-              <strong>Line Instructions:</strong>
-              <p>${concept.continuous_line_instructions || '—'}</p>
-              <strong>Positive Prompt:</strong>
+              <strong>Positive Diffusion Prompt:</strong>
               <code>${prompts.prompts?.positivePrompt || '—'}</code>
-              <strong>Negative Prompt:</strong>
+              <strong>Negative Diffusion Prompt:</strong>
               <code>${prompts.prompts?.negativePrompt || '—'}</code>
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                Workflow file: <code>${m.slug}/workflow.json</code> (Drag and drop directly into ComfyUI canvas).
+              </p>
             </div>
           </details>
         </div>
@@ -110,7 +161,7 @@ function buildExhibitionGallery() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Island — Living Canvas Exhibition Gallery</title>
+  <title>Island — Living Canvas: Pass 2 Quality Validation</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -175,12 +226,55 @@ function buildExhibitionGallery() {
       border-color: var(--border-accent);
     }
     .art-preview {
-      background: #000;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 32px 24px;
       border-right: 1px solid var(--border);
+      position: relative;
+    }
+    .art-preview.is-validation-card {
+      text-align: center;
+      gap: 16px;
+    }
+    .validation-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .validation-symbol {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 1px dashed;
+      display: grid;
+      place-items: center;
+      margin: 12px auto;
+    }
+    .validation-subject {
+      font-family: 'Cinzel', serif;
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.4;
+      padding: 0 12px;
+    }
+    .validation-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .validation-specs {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      opacity: 0.6;
+      margin-top: 12px;
     }
     .art-preview img {
       width: 100%;
@@ -194,7 +288,7 @@ function buildExhibitionGallery() {
       padding: 32px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 18px;
     }
     .art-header {
       display: flex;
@@ -202,6 +296,45 @@ function buildExhibitionGallery() {
       align-items: flex-start;
       border-bottom: 1px solid var(--border);
       padding-bottom: 16px;
+    }
+    .header-tags {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .score-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+    .score-badge.is-high {
+      background: rgba(34, 197, 94, 0.18);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.4);
+    }
+    .score-badge.is-mid {
+      background: rgba(234, 179, 8, 0.18);
+      color: #facc15;
+      border: 1px solid rgba(234, 179, 8, 0.4);
+    }
+    .mode-tag {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+    .mode-tag.is-validated {
+      background: rgba(56, 189, 248, 0.18);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+    }
+    .mode-tag.is-live {
+      background: rgba(34, 197, 94, 0.18);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.4);
     }
     .song-artist {
       font-size: 13px;
@@ -217,24 +350,6 @@ function buildExhibitionGallery() {
       color: #fff;
       margin-top: 2px;
     }
-    .mode-tag {
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 600;
-    }
-    .mode-tag.is-mock {
-      background: rgba(217, 119, 6, 0.18);
-      color: #fbbf24;
-      border: 1px solid rgba(217, 119, 6, 0.4);
-    }
-    .mode-tag.is-live {
-      background: rgba(34, 197, 94, 0.18);
-      color: #4ade80;
-      border: 1px solid rgba(34, 197, 94, 0.4);
-    }
     .info-block {
       display: flex;
       flex-direction: column;
@@ -248,13 +363,35 @@ function buildExhibitionGallery() {
       font-weight: 600;
     }
     .info-val {
-      font-size: 14px;
+      font-size: 13.5px;
       color: #e2e8f0;
       line-height: 1.5;
     }
     .info-val.metaphor {
       font-style: italic;
       color: #38bdf8;
+    }
+    .eval-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .eval-chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .eval-chip.is-pass {
+      background: rgba(34, 197, 94, 0.12);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+    .eval-chip.is-warn {
+      background: rgba(234, 179, 8, 0.12);
+      color: #facc15;
+      border: 1px solid rgba(234, 179, 8, 0.25);
     }
     .symbols-wrap {
       display: flex;
@@ -331,17 +468,17 @@ function buildExhibitionGallery() {
 <body>
   <header class="header">
     <div>
-      <h1>Island Living Canvas</h1>
-      <p>Pass 1 — Local Artwork Prototype: Song Interpretation &amp; Continuous-Line Editorial Posters</p>
+      <h1>Island Living Canvas — Pass 2</h1>
+      <p>Real Artwork Quality Validation &amp; Portable ComfyUI Workflows</p>
     </div>
     <div style="font-size: 12px; color: var(--text-muted); text-align: right;">
-      <span>Total Artworks: <strong>${manifests.length}</strong></span><br>
-      <span>Zero Cloud AI • 100% Local / Deterministic</span>
+      <span>Catalog: <strong>${manifests.length} tracks</strong></span><br>
+      <span>Zero Cloud AI • Pure Local Workflows</span>
     </div>
   </header>
 
   <main class="gallery-grid">
-    ${cardsHtml || '<p style="text-align:center; padding: 40px; color: var(--text-muted);">No artworks generated yet. Run: <code>node living-canvas/cli.js test</code></p>'}
+    ${cardsHtml || '<p style="text-align:center; padding: 40px; color: var(--text-muted);">No workflows validated yet. Run: <code>node living-canvas/cli.js validate</code></p>'}
   </main>
 </body>
 </html>`;

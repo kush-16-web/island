@@ -1,0 +1,34 @@
+{
+  "slug": "fjord-lights_silent-northern-aurora",
+  "song": {
+    "title": "Silent Northern Aurora",
+    "artist": "Fjord Lights"
+  },
+  "createdAt": "2026-10-21T06:19:33.107Z",
+  "status": "workflow_validated",
+  "generator": {
+    "status": "workflow_validated",
+    "format": "workflow_json",
+    "source": "interpreter",
+    "model": "rule-based-art-director",
+    "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
+    "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
+  },
+  "qualityScore": 82,
+  "files": {
+    "concept": "concept.json",
+    "prompt": "prompt.json",
+    "workflow": "workflow.json",
+    "evaluation": "evaluation.json",
+    "artwork": null
+  },
+  "hardware": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+    "cpuCores": 8,
+    "totalRamMB": 5965,
+    "freeRamMB": 385,
+    "nodeVersion": "v22.12.0"
+  }
+}
