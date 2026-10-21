@@ -373,6 +373,8 @@ export default function NowPlaying({
             lyricsData={lyricsData}
             loading={loading}
             activeLineIndex={activeLineIndex}
+            currentPositionMs={displayPosition}
+            playing={playing}
             accentColor={accentColor}
             onClick={() => handleSetViewMode('lyrics')}
           />

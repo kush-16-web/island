@@ -973,14 +973,17 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   will-change: transform;
 }
 .marquee-content.is-marquee {
-  animation: marqueeScroll var(--marquee-duration, 5.5s) cubic-bezier(0.45, 0, 0.55, 1) 1.5s infinite alternate;
+  animation: marqueeScrollForward var(--marquee-duration, 6.5s) cubic-bezier(0.25, 0.1, 0.25, 1) 1.8s infinite;
 }
-@keyframes marqueeScroll {
-  0%, 22% {
+@keyframes marqueeScrollForward {
+  0%, 20% {
     transform: translateX(0);
   }
-  78%, 100% {
+  68%, 86% {
     transform: translateX(var(--marquee-offset, -30px));
+  }
+  100% {
+    transform: translateX(0);
   }
 }
 
@@ -1166,6 +1169,19 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   color: rgba(255, 255, 255, 0.25);
   opacity: 0.22;
   filter: blur(0.6px);
+}
+.precision-lyric-container {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.precision-lyric-content {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
 }
 .mini-lyrics__expand-hint {
   position: absolute;

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Icon } from './icons';
-import MarqueeText from './MarqueeText';
+import PrecisionLyricLine from './PrecisionLyricLine';
 
 const LINE_HEIGHT = 28; // Standard vertical line pitch in pixels
 const VIEWPORT_HEIGHT = 112; // 4 lines visible in continuous reel
@@ -8,12 +8,14 @@ const VIEWPORT_HEIGHT = 112; // 4 lines visible in continuous reel
 /**
  * MiniLyrics: Borderless Apple Music / YouTube Music live scrolling lyrics reel.
  * Vertically translates lines with physical spring easing, pure white active typography,
- * and top/bottom gradient alpha dissolve.
+ * playback-accurate horizontal scrolling for long active lines, and top/bottom gradient alpha dissolve.
  */
 export default function MiniLyrics({
   lyricsData,
   loading,
   activeLineIndex,
+  currentPositionMs = 0,
+  playing = false,
   accentColor,
   onClick,
 }) {
@@ -75,9 +77,11 @@ export default function MiniLyrics({
 
             if (isActive) {
               return (
-                <MarqueeText
+                <PrecisionLyricLine
                   key={line.id || idx}
-                  text={line.text}
+                  line={line}
+                  currentPositionMs={currentPositionMs}
+                  playing={playing}
                   className={lineClass}
                   style={{ height: LINE_HEIGHT }}
                 />
