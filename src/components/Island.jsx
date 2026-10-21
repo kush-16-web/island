@@ -190,7 +190,7 @@ export default function Island() {
         return 340;
       case 'playing':
         if (isLyricsFull === 'favorites') return 380;
-        if (!media.active) return 190;
+        if (!media.active) return 240;
         if (isLyricsFull === 'cinema') return 315;
         if (isLyricsFull === 'lyrics' || isLyricsFull === true) return 340;
         return 276;

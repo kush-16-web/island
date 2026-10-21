@@ -235,37 +235,22 @@ export default function NowPlaying({
 
   if (!media.active) {
     return (
-      <div className="empty-with-actions" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <Empty
-          icon="♪"
-          title="Nothing playing"
-          hint="Start audio or video in Spotify, your browser, or any media player and it will show up here."
-        />
-        <button
-          type="button"
-          className="fav-browse-btn"
-          onClick={() => handleSetViewMode('favorites')}
-          title="Browse and play your saved favorites"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            marginTop: '-10px',
-            padding: '6px 14px',
-            borderRadius: '16px',
-            background: 'var(--fill-2)',
-            border: '1px solid var(--hair-2)',
-            color: 'var(--text)',
-            fontSize: '12px',
-            fontWeight: 580,
-            cursor: 'pointer',
-            transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-          }}
-        >
-          <Icon.Heart width={12} height={12} filled style={{ color: accentColor || 'var(--music-accent, #ff3b69)' }} />
-          <span>Browse Favorites</span>
-        </button>
-      </div>
+      <Empty
+        icon={Icon.Music}
+        title="Nothing playing"
+        hint="Start audio or video in Spotify, your browser, or any media player and it will show up here."
+        action={
+          <button
+            type="button"
+            className="fav-browse-btn"
+            onClick={() => handleSetViewMode('favorites')}
+            title="Browse and play your saved favorites"
+          >
+            <Icon.Heart width={12} height={12} filled style={{ color: accentColor || 'var(--music-accent, #ff3b69)' }} />
+            <span>Browse Favorites</span>
+          </button>
+        }
+      />
     );
   }
 

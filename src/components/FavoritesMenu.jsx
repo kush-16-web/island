@@ -190,7 +190,7 @@ export default function FavoritesMenu({
       <div className="fav-menu__list-container">
         {favorites.length === 0 ? (
           <Empty
-            icon="♥"
+            icon={Icon.Heart}
             title="No favorites yet"
             hint="Click the heart button on any playing track or ask your assistant 'Add this to my favorites' to save your music library here."
           />

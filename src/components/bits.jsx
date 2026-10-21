@@ -97,14 +97,24 @@ export function Switch({ checked, onChange, label }) {
   );
 }
 
-export function Empty({ icon: Glyph, title, hint }) {
+export function Empty({ icon: Glyph, title, hint, action, children }) {
   return (
     <div className="empty">
-      <span className="empty__icon">
-        <Glyph width={22} height={22} />
-      </span>
+      {Glyph && (
+        <span className="empty__icon">
+          {typeof Glyph === 'function' ? (
+            <Glyph width={20} height={20} />
+          ) : typeof Glyph === 'string' ? (
+            <span style={{ fontSize: '18px', lineHeight: 1 }}>{Glyph}</span>
+          ) : (
+            Glyph
+          )}
+        </span>
+      )}
       <div className="empty__title">{title}</div>
-      <div className="empty__hint">{hint}</div>
+      {hint && <div className="empty__hint">{hint}</div>}
+      {action && <div className="empty__action">{action}</div>}
+      {children}
     </div>
   );
 }
