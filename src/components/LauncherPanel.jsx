@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
 import { getAssistantName } from '../lib/assistant';
-import { formatClock, formatRemaining } from '../lib/format';
+import { formatRemaining } from '../lib/format';
 import { Icon } from './icons';
 import { Art, Equalizer } from './bits';
 
+/**
+ * LauncherPanel: Modern Asymmetric Bento Grid Dashboard for Island.
+ * Features uneven, modern proportions (inspired by Apple iOS widgets & Bento design):
+ * - Hero Music card (2 cols) with unclipped titles, album art, and quick controls
+ * - Tall Voice Companion card (1 col) with live waveform/status
+ * - Spacious Timers card (1 col) with unclipped chips (+5m, +15m, +25m)
+ * - Desktop Pet card (1 col) with companion stats
+ * - Inbox card (1 col) with unread badge
+ * - Settings & Engine full-width banner (2 cols)
+ */
 export default function LauncherPanel({
   s,
   now,
@@ -39,19 +49,24 @@ export default function LauncherPanel({
     }
   };
 
+  const handleMediaControl = (e, action) => {
+    e.stopPropagation();
+    actions?.mediaControl?.(action);
+  };
+
   return (
     <div className="launcher" style={{ '--accent': accentColor || 'var(--c-info)' }}>
       <div className="launcher__grid">
-        {/* Card 1: Music / Now Playing */}
+        {/* 1. Hero Music Card (Spans full width across 2 columns) */}
         <div
-          className={`launcher-card launcher-card--music${isPlaying ? ' is-playing' : ''}`}
+          className={`launcher-card launcher-card--hero launcher-card--music${isPlaying ? ' is-playing' : ''}`}
           onClick={() => setTab('playing')}
           role="button"
           tabIndex={0}
         >
           <div className="launcher-card__head">
             <span className="launcher-card__icon launcher-card__icon--music">
-              <Icon.Music width={16} height={16} />
+              <Icon.Music width={15} height={15} />
             </span>
             <span className="launcher-card__tag">
               {isPlaying ? 'Now Playing' : 'Music & Favorites'}
@@ -62,32 +77,76 @@ export default function LauncherPanel({
               </div>
             )}
           </div>
+
           <div className="launcher-card__content">
             {media.active ? (
-              <div className="launcher-music-row">
-                {media.art && (
-                  <Art
-                    src={media.art}
-                    seed={`${media.title}${media.artist}`}
-                    size={36}
-                    radius={8}
-                  />
-                )}
-                <div className="launcher-music-meta">
-                  <div className="launcher-music-title">{media.title || 'Untitled'}</div>
-                  <div className="launcher-music-sub">{media.artist || 'Unknown artist'}</div>
+              <div className="launcher-hero-music">
+                <div className="launcher-hero-left">
+                  {media.art ? (
+                    <Art
+                      src={media.art}
+                      seed={`${media.title}${media.artist}`}
+                      size={46}
+                      radius={10}
+                    />
+                  ) : (
+                    <div className="launcher-hero-art-fallback">
+                      <Icon.Music width={20} height={20} />
+                    </div>
+                  )}
+                  <div className="launcher-hero-meta">
+                    <div className="launcher-hero-title" title={media.title}>
+                      {media.title || 'Untitled Track'}
+                    </div>
+                    <div className="launcher-hero-sub" title={media.artist}>
+                      {media.artist || 'Unknown Artist'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Direct quick playback controls right on the hero card */}
+                <div className="launcher-hero-controls">
+                  <button
+                    type="button"
+                    className="launcher-control-btn"
+                    onClick={(e) => handleMediaControl(e, 'previous')}
+                    title="Previous"
+                    aria-label="Previous track"
+                  >
+                    <Icon.Prev width={14} height={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="launcher-control-btn launcher-control-btn--play"
+                    onClick={(e) => handleMediaControl(e, 'playpause')}
+                    title={isPlaying ? 'Pause' : 'Play'}
+                    aria-label={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? <Icon.Pause width={14} height={14} /> : <Icon.Play width={14} height={14} />}
+                  </button>
+                  <button
+                    type="button"
+                    className="launcher-control-btn"
+                    onClick={(e) => handleMediaControl(e, 'next')}
+                    title="Next"
+                    aria-label="Next track"
+                  >
+                    <Icon.Next width={14} height={14} />
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="launcher-music-empty">
-                <div className="launcher-card__title">Play Music</div>
-                <div className="launcher-card__sub">Browse saved favorites or ask {assistantName}</div>
+              <div className="launcher-hero-empty">
+                <div className="launcher-card__title">Play Music & Favorites</div>
+                <div className="launcher-card__sub">
+                  Browse saved tracks, queue playlists or ask {assistantName}
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Card 2: Voice Assistant */}
+        {/* 2. Voice Assistant Card (Column 1 - Tall & Expressive) */}
         <div
           className={`launcher-card launcher-card--voice${voice?.status !== 'idle' ? ' is-active' : ''}`}
           onClick={() => {
@@ -101,26 +160,32 @@ export default function LauncherPanel({
         >
           <div className="launcher-card__head">
             <span className="launcher-card__icon launcher-card__icon--voice">
-              <Icon.Sparkles width={16} height={16} />
+              <Icon.Sparkles width={15} height={15} />
             </span>
-            <span className="launcher-card__tag">{assistantName}</span>
+            <span className="launcher-card__tag">Companion</span>
             {voice?.status !== 'idle' && (
               <span className={`launcher-pulse is-${voice.status}`} />
             )}
           </div>
           <div className="launcher-card__content">
-            <div className="launcher-card__title">
-              {voice?.status === 'idle'
-                ? `Talk to ${assistantName}`
-                : voice?.status === 'speaking'
-                ? `${assistantName} is speaking`
-                : `${assistantName} is listening`}
+            <div className="launcher-card__title">Talk to {assistantName}</div>
+            <div className="launcher-card__sub">Voice control, music & questions</div>
+            <div className="launcher-voice-badge">
+              <span className={`launcher-status-dot is-${voice?.status || 'idle'}`} />
+              <span className="launcher-status-text">
+                {voice?.status === 'speaking'
+                  ? 'Speaking...'
+                  : voice?.status === 'listening'
+                  ? 'Listening...'
+                  : voice?.status === 'thinking'
+                  ? 'Thinking...'
+                  : 'Tap to speak'}
+              </span>
             </div>
-            <div className="launcher-card__sub">Voice commands, favorites & control</div>
           </div>
         </div>
 
-        {/* Card 3: Timers / Clock */}
+        {/* 3. Timers / Clock Card (Column 2 - Spacious, Zero Clipping) */}
         <div
           className="launcher-card launcher-card--clock"
           onClick={() => setTab('clock')}
@@ -129,50 +194,52 @@ export default function LauncherPanel({
         >
           <div className="launcher-card__head">
             <span className="launcher-card__icon launcher-card__icon--clock">
-              <Icon.Timer width={16} height={16} />
+              <Icon.Timer width={15} height={15} />
             </span>
             <span className="launcher-card__tag">
-              {nextTimer ? 'Active Timer' : 'Timers & Alarms'}
+              {nextTimer ? 'Timer Active' : 'Timers & Focus'}
             </span>
           </div>
           <div className="launcher-card__content">
             {nextTimer ? (
               <div className="launcher-timer-active">
-                <div className="launcher-card__title">
+                <div className="launcher-timer-digits">
                   {formatRemaining(Math.max(0, nextTimer.fireAt - now))}
                 </div>
-                <div className="launcher-card__sub">{nextTimer.label || 'Timer'}</div>
+                <div className="launcher-card__sub">{nextTimer.label || 'Active countdown'}</div>
               </div>
             ) : (
-              <div className="launcher-card__title">Quick Timer</div>
+              <div className="launcher-timer-idle">
+                <div className="launcher-card__title">Quick Timer</div>
+                <div className="launcher-timer-chips">
+                  <button
+                    type="button"
+                    className="launcher-chip"
+                    onClick={(e) => handleQuickTimer(e, 5, 'Quick 5m')}
+                  >
+                    +5m
+                  </button>
+                  <button
+                    type="button"
+                    className="launcher-chip"
+                    onClick={(e) => handleQuickTimer(e, 15, 'Focus 15m')}
+                  >
+                    +15m
+                  </button>
+                  <button
+                    type="button"
+                    className="launcher-chip"
+                    onClick={(e) => handleQuickTimer(e, 25, 'Pomodoro 25m')}
+                  >
+                    +25m
+                  </button>
+                </div>
+              </div>
             )}
-            <div className="launcher-timer-chips">
-              <button
-                type="button"
-                className="launcher-chip"
-                onClick={(e) => handleQuickTimer(e, 5, 'Quick 5m')}
-              >
-                +5m
-              </button>
-              <button
-                type="button"
-                className="launcher-chip"
-                onClick={(e) => handleQuickTimer(e, 15, 'Focus 15m')}
-              >
-                +15m
-              </button>
-              <button
-                type="button"
-                className="launcher-chip"
-                onClick={(e) => handleQuickTimer(e, 25, 'Pomodoro 25m')}
-              >
-                +25m
-              </button>
-            </div>
           </div>
         </div>
 
-        {/* Card 4: Pet Studio */}
+        {/* 4. Desktop Pet Card (Column 1) */}
         <div
           className="launcher-card launcher-card--pet"
           onClick={() => setTab('pet')}
@@ -181,17 +248,17 @@ export default function LauncherPanel({
         >
           <div className="launcher-card__head">
             <span className="launcher-card__icon launcher-card__icon--pet">
-              <Icon.Paw width={16} height={16} />
+              <Icon.Paw width={15} height={15} />
             </span>
-            <span className="launcher-card__tag">{petName}</span>
+            <span className="launcher-card__tag">Desktop Pet</span>
           </div>
           <div className="launcher-card__content">
-            <div className="launcher-card__title">Desktop Pet</div>
-            <div className="launcher-card__sub">Companion stats, feed & dress up</div>
+            <div className="launcher-card__title">{petName}</div>
+            <div className="launcher-card__sub">Feed, dress up & companion studio</div>
           </div>
         </div>
 
-        {/* Card 5: Inbox */}
+        {/* 5. Notifications / Inbox Card (Column 2) */}
         <div
           className="launcher-card launcher-card--inbox"
           onClick={() => setTab('inbox')}
@@ -200,35 +267,39 @@ export default function LauncherPanel({
         >
           <div className="launcher-card__head">
             <span className="launcher-card__icon launcher-card__icon--inbox">
-              <Icon.Inbox width={16} height={16} />
+              <Icon.Inbox width={15} height={15} />
             </span>
             <span className="launcher-card__tag">Inbox</span>
             {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
           </div>
           <div className="launcher-card__content">
             <div className="launcher-card__title">
-              {unreadCount > 0 ? `${unreadCount} unread note${unreadCount > 1 ? 's' : ''}` : 'All caught up'}
+              {unreadCount > 0 ? `${unreadCount} Unread Note${unreadCount > 1 ? 's' : ''}` : 'All caught up'}
             </div>
-            <div className="launcher-card__sub">Recent notifications & reminders</div>
+            <div className="launcher-card__sub">Recent alerts & clipboard history</div>
           </div>
         </div>
 
-        {/* Card 6: Settings */}
+        {/* 6. Settings Banner (Spans full width across 2 columns) */}
         <div
-          className="launcher-card launcher-card--settings"
+          className="launcher-card launcher-card--settings launcher-card--full"
           onClick={() => setTab('settings')}
           role="button"
           tabIndex={0}
         >
-          <div className="launcher-card__head">
-            <span className="launcher-card__icon launcher-card__icon--settings">
-              <Icon.Settings width={16} height={16} />
+          <div className="launcher-settings-row">
+            <div className="launcher-settings-left">
+              <span className="launcher-card__icon launcher-card__icon--settings">
+                <Icon.Settings width={15} height={15} />
+              </span>
+              <div className="launcher-settings-text">
+                <div className="launcher-card__title">Settings & Preferences</div>
+                <div className="launcher-card__sub">Voice engine, dock position & shortcuts</div>
+              </div>
+            </div>
+            <span className="launcher-settings-arrow">
+              <Icon.Chevron width={14} height={14} />
             </span>
-            <span className="launcher-card__tag">Preferences</span>
-          </div>
-          <div className="launcher-card__content">
-            <div className="launcher-card__title">Settings</div>
-            <div className="launcher-card__sub">Voice engine, dock position & appearance</div>
           </div>
         </div>
       </div>

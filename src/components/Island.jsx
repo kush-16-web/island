@@ -15,7 +15,7 @@ import { useVideoAmbient, isVideoMedia } from '../hooks/useVideoAmbient';
 import { useRealtimeVoice } from '../hooks/useRealtimeVoice';
 
 const HUB_W = 468;
-const HUB_H = { playing: 282, clock: 384, inbox: 340, pet: 410, settings: 340, voice: 340 };
+const HUB_H = { playing: 282, clock: 384, inbox: 340, pet: 410, settings: 340, voice: 340, launcher: 388 };
 const SIZE = {
   idle: { w: 142, h: 36 },
   voice: { w: 220, h: 40 },
@@ -185,7 +185,7 @@ export default function Island() {
   const getDynamicHubHeight = () => {
     switch (tab) {
       case 'launcher':
-        return 320;
+        return 388;
       case 'voice':
         return 340;
       case 'playing':

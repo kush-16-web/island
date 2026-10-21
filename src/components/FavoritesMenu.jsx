@@ -5,8 +5,11 @@ import { Empty } from './bits';
 
 /**
  * FavoritesMenu: Native Island favorites library interface.
- * Matches Island's existing glassmorphism surfaces, typography, dynamic album color,
- * and compact interaction patterns.
+ * Matches Image 1 & 2:
+ * - Clean spacious header: "Favorites", "Your music, across connected sources"
+ * - Provider filter pills: All, Spotify, YouTube Music, Apple Music
+ * - Song rows: Artwork, Title, "Artist · Provider", Play button, Heart button
+ * - Sleek custom modern scrollbar with zero clipping
  */
 export default function FavoritesMenu({
   onPlayTrack,
@@ -26,22 +29,20 @@ export default function FavoritesMenu({
     return () => window.removeEventListener('island:favorites-changed', handleUpdate);
   }, []);
 
-  // Compute available providers among saved songs
-  const availableProviders = useMemo(() => {
-    const set = new Set();
-    for (const f of favorites) {
-      if (f.provider && f.provider !== SUPPORTED_PROVIDERS.GENERIC) {
-        set.add(f.provider);
-      }
-    }
-    return Array.from(set);
-  }, [favorites]);
+  const getProviderLabel = (provider) => {
+    if (provider === SUPPORTED_PROVIDERS.SPOTIFY) return 'Spotify';
+    if (provider === SUPPORTED_PROVIDERS.YOUTUBE) return 'YouTube Music';
+    if (provider === SUPPORTED_PROVIDERS.APPLE) return 'Apple Music';
+    return provider ? (provider.charAt(0).toUpperCase() + provider.slice(1)) : 'Local';
+  };
 
   // Filter and search
   const filteredList = useMemo(() => {
     return favorites.filter((item) => {
-      if (filterProvider !== 'all' && item.provider !== filterProvider) {
-        return false;
+      if (filterProvider !== 'all') {
+        const itemP = (item.provider || '').toLowerCase();
+        const targetP = filterProvider.toLowerCase();
+        if (itemP !== targetP) return false;
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -74,62 +75,63 @@ export default function FavoritesMenu({
       {/* Header */}
       <div className="fav-menu__header">
         <div className="fav-menu__title-group">
-          <div className="fav-menu__icon">
-            <Icon.HeartSolid width={15} height={15} />
-          </div>
-          <span className="fav-menu__title">Favorites</span>
-          <span className="fav-menu__badge">{favorites.length}</span>
+          <h2 className="fav-menu__title">Favorites</h2>
+          <p className="fav-menu__sub">Your music, across connected sources</p>
         </div>
 
-        {onClose && (
-          <button
-            type="button"
-            className="icon-btn icon-btn--sm"
-            onClick={onClose}
-            title="Return to Now Playing"
-            aria-label="Close Favorites"
-          >
-            <Icon.Close width={14} height={14} />
-          </button>
-        )}
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="fav-menu__toolbar">
-        {availableProviders.length > 0 && (
-          <div className="fav-menu__chips">
+        <div className="fav-menu__top-actions">
+          {onClose ? (
             <button
               type="button"
-              className={`fav-chip ${filterProvider === 'all' ? 'is-active' : ''}`}
-              onClick={() => setFilterProvider('all')}
+              className="icon-btn icon-btn--sm fav-menu__close-btn"
+              onClick={onClose}
+              title="Return to Now Playing"
+              aria-label="Close Favorites"
             >
-              All ({favorites.length})
+              <Icon.Close width={14} height={14} />
             </button>
-            {availableProviders.map((p) => {
-              const label =
-                p === SUPPORTED_PROVIDERS.SPOTIFY
-                  ? 'Spotify'
-                  : p === SUPPORTED_PROVIDERS.YOUTUBE
-                  ? 'YouTube'
-                  : p === SUPPORTED_PROVIDERS.APPLE
-                  ? 'Apple Music'
-                  : p;
-              const count = favorites.filter((f) => f.provider === p).length;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  className={`fav-chip ${filterProvider === p ? 'is-active' : ''}`}
-                  onClick={() => setFilterProvider(p)}
-                >
-                  {label} ({count})
-                </button>
-              );
-            })}
-          </div>
-        )}
+          ) : (
+            <div className="fav-menu__top-icon" title="Favorites">
+              <Icon.Heart width={18} height={18} />
+            </div>
+          )}
+        </div>
+      </div>
 
-        {favorites.length > 4 && (
+      {/* Provider Filter Chips */}
+      <div className="fav-menu__toolbar">
+        <div className="fav-menu__chips">
+          <button
+            type="button"
+            className={`fav-chip ${filterProvider === 'all' ? 'is-active' : ''}`}
+            onClick={() => setFilterProvider('all')}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={`fav-chip ${filterProvider === 'spotify' ? 'is-active' : ''}`}
+            onClick={() => setFilterProvider('spotify')}
+          >
+            Spotify
+          </button>
+          <button
+            type="button"
+            className={`fav-chip ${filterProvider === 'youtube' ? 'is-active' : ''}`}
+            onClick={() => setFilterProvider('youtube')}
+          >
+            YouTube Music
+          </button>
+          <button
+            type="button"
+            className={`fav-chip ${filterProvider === 'apple' ? 'is-active' : ''}`}
+            onClick={() => setFilterProvider('apple')}
+          >
+            Apple Music
+          </button>
+        </div>
+
+        {favorites.length > 5 && (
           <div className="fav-menu__search-box">
             <Icon.Search width={12} height={12} className="fav-menu__search-icon" />
             <input
@@ -153,7 +155,7 @@ export default function FavoritesMenu({
         )}
       </div>
 
-      {/* Content List */}
+      {/* Content List with sleek custom scrollbar */}
       <div className="fav-menu__list-container">
         {favorites.length === 0 ? (
           <Empty
@@ -163,68 +165,75 @@ export default function FavoritesMenu({
           />
         ) : filteredList.length === 0 ? (
           <div className="fav-menu__no-results">
-            <span>No songs match your search or filter.</span>
+            <span>No songs found for this provider or search.</span>
           </div>
         ) : (
           <div className="fav-menu__list">
-            {filteredList.map((item) => (
-              <div
-                key={item.id}
-                className="fav-item"
-                onClick={() => handlePlay(item)}
-                title={`Play ${item.title}`}
-                role="button"
-                tabIndex={0}
-              >
-                {/* Artwork Thumbnail */}
-                <div className="fav-item__art-wrapper">
-                  {item.artwork ? (
-                    <img src={item.artwork} alt={item.title} className="fav-item__art" />
-                  ) : (
-                    <div className="fav-item__art-fallback">
-                      <Icon.Music width={16} height={16} />
-                    </div>
-                  )}
-                  <div className="fav-item__play-overlay">
-                    <Icon.Play width={14} height={14} />
-                  </div>
-                </div>
+            {filteredList.map((item) => {
+              const providerLabel = getProviderLabel(item.provider);
+              const subtext = item.artist
+                ? `${item.artist}${item.provider && item.provider !== 'generic' ? ` · ${providerLabel}` : ''}`
+                : providerLabel;
 
-                {/* Metadata */}
-                <div className="fav-item__meta">
-                  <div className="fav-item__title" title={item.title}>
-                    {item.title}
-                  </div>
-                  <div className="fav-item__artist" title={item.artist}>
-                    {item.artist || 'Unknown artist'}
-                  </div>
-                </div>
-
-                {/* Provider Pill */}
-                {item.provider && item.provider !== 'generic' && (
-                  <span className={`fav-item__provider fav-item__provider--${item.provider}`}>
-                    {item.provider === 'spotify'
-                      ? 'Spotify'
-                      : item.provider === 'youtube'
-                      ? 'YouTube'
-                      : item.provider === 'apple'
-                      ? 'Apple'
-                      : item.provider}
-                  </span>
-                )}
-
-                {/* Remove Button */}
-                <button
-                  type="button"
-                  className="fav-item__heart-btn"
-                  onClick={(e) => handleRemove(e, item)}
-                  title="Remove from favorites"
-                  aria-label="Remove from favorites"
+              return (
+                <div
+                  key={item.id}
+                  className="fav-item"
+                  onClick={() => handlePlay(item)}
+                  title={`Play ${item.title}`}
+                  role="button"
+                  tabIndex={0}
                 >
-                  <Icon.HeartSolid width={14} height={14} />
-                </button>
-              </div>
-            ))}
+                  {/* Artwork Thumbnail */}
+                  <div className="fav-item__art-wrapper">
+                    {item.artwork ? (
+                      <img src={item.artwork} alt={item.title} className="fav-item__art" />
+                    ) : (
+                      <div className="fav-item__art-fallback">
+                        <Icon.Music width={18} height={18} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Metadata */}
+                  <div className="fav-item__meta">
+                    <div className="fav-item__title" title={item.title}>
+                      {item.title}
+                    </div>
+                    <div className="fav-item__artist" title={subtext}>
+                      {subtext}
+                    </div>
+                  </div>
+
+                  {/* Right Actions: Play + Heart */}
+                  <div className="fav-item__actions">
+                    <button
+                      type="button"
+                      className="fav-item__play-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePlay(item);
+                      }}
+                      title={`Play ${item.title}`}
+                      aria-label={`Play ${item.title}`}
+                    >
+                      <Icon.Play width={13} height={13} />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="fav-item__heart-btn"
+                      onClick={(e) => handleRemove(e, item)}
+                      title="Remove from favorites"
+                      aria-label="Remove from favorites"
+                      style={{ '--heart-color': '#ff3b69' }}
+                    >
+                      <Icon.HeartSolid width={15} height={15} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

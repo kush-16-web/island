@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Equalizer } from './bits';
+import {
+  extractYouTubeIdFromMedia,
+  getYouTubePosterCandidates,
+  upgradeProviderArtUrl,
+} from '../lib/art-resolver';
 
 export default function VideoPiP({
   media,
@@ -12,9 +17,57 @@ export default function VideoPiP({
   const iframeRef = useRef(null);
   const videoRef = useRef(null);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [activeYtId, setActiveYtId] = useState(() => (
+    youtubeId || media?.youtubeId || extractYouTubeIdFromMedia(media) || null
+  ));
+
+  // High-resolution poster candidates and fallback index
+  const [candidateIndex, setCandidateIndex] = useState(0);
 
   const playing = media?.status === 'playing';
   const hasArt = Boolean(media?.art);
+
+  // Sync / resolve YouTube ID dynamically if not supplied
+  useEffect(() => {
+    const directId = youtubeId || media?.youtubeId || extractYouTubeIdFromMedia(media);
+    if (directId) {
+      setActiveYtId(directId);
+      setCandidateIndex(0);
+      return;
+    }
+
+    if (window.island?.media?.resolveYouTubeId && media?.title) {
+      window.island.media.resolveYouTubeId(media.title).then((resolved) => {
+        if (resolved) {
+          setActiveYtId(resolved);
+          setCandidateIndex(0);
+        }
+      });
+    }
+  }, [youtubeId, media?.youtubeId, media?.title, media?.art]);
+
+  // Construct candidates list in order of priority (Highest resolution first)
+  const posterCandidates = [];
+  if (activeYtId) {
+    posterCandidates.push(...getYouTubePosterCandidates(activeYtId));
+  }
+  if (media?.art) {
+    const upgraded = upgradeProviderArtUrl(media.art);
+    if (!posterCandidates.includes(upgraded)) {
+      posterCandidates.push(upgraded);
+    }
+    if (!posterCandidates.includes(media.art)) {
+      posterCandidates.push(media.art);
+    }
+  }
+
+  const currentPosterUrl = posterCandidates[candidateIndex] || media?.art || '';
+
+  const handlePosterError = () => {
+    if (candidateIndex < posterCandidates.length - 1) {
+      setCandidateIndex((prev) => prev + 1);
+    }
+  };
 
   // DRM platforms (Netflix, Disney+, Prime Video) where video capture is DRM-blacked out
   const isDrmPlatform = Boolean(
@@ -34,7 +87,7 @@ export default function VideoPiP({
 
   // Synchronize YouTube embed play / pause state with SMTC
   useEffect(() => {
-    if (!iframeRef.current?.contentWindow || !youtubeId) return;
+    if (!iframeRef.current?.contentWindow || !activeYtId) return;
     const cmd = playing ? 'playVideo' : 'pauseVideo';
     try {
       iframeRef.current.contentWindow.postMessage(
@@ -42,14 +95,13 @@ export default function VideoPiP({
         '*'
       );
     } catch {}
-  }, [playing, youtubeId]);
+  }, [playing, activeYtId]);
 
   // Synchronize YouTube embed seek position when seeking in SMTC
   const lastSyncSec = useRef(Math.floor((displayPosition || 0) / 1000));
   useEffect(() => {
-    if (!iframeRef.current?.contentWindow || !youtubeId) return;
+    if (!iframeRef.current?.contentWindow || !activeYtId) return;
     const currentSec = Math.floor((displayPosition || 0) / 1000);
-    // Sync if time difference exceeds 4 seconds (e.g. user jumped/seeked)
     if (Math.abs(currentSec - lastSyncSec.current) >= 4) {
       lastSyncSec.current = currentSec;
       try {
@@ -59,7 +111,7 @@ export default function VideoPiP({
         );
       } catch {}
     }
-  }, [displayPosition, youtubeId]);
+  }, [displayPosition, activeYtId]);
 
   const startSec = Math.max(0, Math.floor((displayPosition || 0) / 1000));
 
@@ -67,10 +119,10 @@ export default function VideoPiP({
     <div className="cinema-screen">
       <div className="cinema-screen__stage">
         {/* 1. Pure YouTube Embedded Video Player (No desktop bleed, no browser UI) */}
-        {!isDrmPlatform && youtubeId && (
+        {!isDrmPlatform && activeYtId && (
           <iframe
             ref={iframeRef}
-            src={`https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&enablejsapi=1&start=${startSec}`}
+            src={`https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&enablejsapi=1&start=${startSec}`}
             className={`cinema-screen__iframe${iframeLoaded ? ' is-ready' : ''}`}
             title="Cinema Video Stream"
             allow="autoplay; encrypted-media; picture-in-picture"
@@ -79,7 +131,7 @@ export default function VideoPiP({
         )}
 
         {/* 2. Local Video Window Capture (for VLC / MPV dedicated players) */}
-        {!isDrmPlatform && !youtubeId && streamActive && stream && (
+        {!isDrmPlatform && !activeYtId && streamActive && stream && (
           <video
             ref={videoRef}
             className="cinema-screen__video is-active"
@@ -89,17 +141,30 @@ export default function VideoPiP({
           />
         )}
 
-        {/* 3. Cinematic Backdrop Poster (for Netflix/DRM, loading states, or theater standby) */}
-        {(isDrmPlatform || (!youtubeId && !streamActive) || (!iframeLoaded && youtubeId)) && (
+        {/* 3. Cinematic High-Resolution Backdrop Poster */}
+        {(isDrmPlatform || (!activeYtId && !streamActive) || (!iframeLoaded && activeYtId)) && (
           <div className="cinema-screen__backdrop">
-            {hasArt ? (
-              <img src={media.art} alt="" className="cinema-screen__poster-img" />
+            {currentPosterUrl ? (
+              <img
+                src={currentPosterUrl}
+                alt=""
+                className="cinema-screen__poster-img"
+                onError={handlePosterError}
+              />
+            ) : hasArt ? (
+              <img
+                src={media.art}
+                alt=""
+                className="cinema-screen__poster-img"
+              />
             ) : (
               <div className="cinema-screen__glow-gradient" />
             )}
+
+            {/* Ambient Backdrop Depth Overlay */}
             <div className="cinema-screen__poster-overlay">
               <div className="cinema-screen__center-eq">
-                <Equalizer color={accentColor || 'var(--accent)'} playing={playing} />
+                <Equalizer color={accentColor || 'var(--accent, #38bdf8)'} playing={playing} />
               </div>
             </div>
           </div>
