@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { VoiceTurnController } from '../lib/voice-turn-controller';
+import { processTurnIntent } from '../lib/voice-intent';
 
 /**
  * Helper to encode float32 PCM samples into standard 16-bit mono WAV ArrayBuffer
@@ -68,7 +69,7 @@ function base64ToArrayBuffer(base64) {
  * - Automatic microphone gating while assistant is speaking (zero self-recording)
  * - Model 429 rate-limit cooldown with live countdown timer
  */
-export function useRealtimeVoice() {
+export function useRealtimeVoice(options = {}) {
   const [provider, setProvider] = useState(() => localStorage.getItem('island_voice_provider') || 'gemini');
   const [status, setStatus] = useState('idle'); // 'idle' | 'connecting' | 'listening' | 'processing' | 'speaking' | 'cooldown' | 'error'
   const [errorMessage, setErrorMessage] = useState(null);
@@ -85,6 +86,14 @@ export function useRealtimeVoice() {
       return 1400;
     }
   });
+
+  // Keep live references to active media state & control actions for safe music command execution
+  const mediaRef = useRef(options.media);
+  const onControlRef = useRef(options.onControl);
+  useEffect(() => {
+    mediaRef.current = options.media;
+    onControlRef.current = options.onControl;
+  }, [options.media, options.onControl]);
 
   // Audio nodes and references
   const micStreamRef = useRef(null);
@@ -328,16 +337,56 @@ export function useRealtimeVoice() {
       ]);
       historyRef.current.push({ role: 'user', text: `Voice message to ${petName}` });
 
-      // Play generated speech audio
-      if (res.audioBase64) {
-        await playAssistantSpeech(res.audioBase64, res.text, turnId);
-      } else {
-        // Text-only fallback if audio failed
+      // Execute allowlisted music actions embedded in LLM response
+      const turnResult = processTurnIntent(res.text, {
+        media: mediaRef.current || { active: false },
+        onControl: onControlRef.current || ((act) => window.island?.media?.control?.(act)),
+      });
+
+      const finalSpokenText = turnResult.spokenText;
+      const finalTranscriptText = turnResult.transcriptText;
+
+      if (turnResult.executed) {
+        // Truth-grounded action execution: add verified result to transcript
         setTranscript((prev) => [
           ...prev,
-          { role: 'assistant', text: res.text },
+          { role: 'assistant', text: finalTranscriptText },
         ]);
-        controller.finishSpeaking(turnId);
+        historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
+
+        // Synthesize spoken confirmation for the verified outcome
+        let spokenAudioBase64 = null;
+        if (window.island?.gemini?.synthesizeSpeech) {
+          try {
+            const synthRes = await window.island.gemini.synthesizeSpeech({
+              text: finalSpokenText,
+              voice: 'Despina',
+            });
+            if (synthRes.ok && synthRes.audioBase64) {
+              spokenAudioBase64 = synthRes.audioBase64;
+            }
+          } catch (e) {
+            console.warn('[Synthesize spoken action failed]', e);
+          }
+        }
+
+        if (spokenAudioBase64 && controller.isTurnActive(turnId)) {
+          await playAssistantSpeech(spokenAudioBase64, finalSpokenText, turnId);
+        } else {
+          controller.finishSpeaking(turnId);
+        }
+      } else {
+        // Normal conversational turn
+        if (res.audioBase64) {
+          await playAssistantSpeech(res.audioBase64, finalSpokenText, turnId);
+        } else {
+          setTranscript((prev) => [
+            ...prev,
+            { role: 'assistant', text: finalTranscriptText },
+          ]);
+          historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
+          controller.finishSpeaking(turnId);
+        }
       }
     } catch (err) {
       console.warn('[Gemini voice submit error]', err);

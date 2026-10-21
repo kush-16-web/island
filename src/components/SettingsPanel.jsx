@@ -4,6 +4,7 @@ import { SPRING } from '../lib/motion';
 import { Switch } from './bits';
 import { Icon } from './icons';
 import WindowsVoicePreview from './WindowsVoicePreview';
+import KokoroPreview from './KokoroPreview';
 
 /**
  * SettingsPanel: Apple-inspired desktop preferences for Dynamic Island.
@@ -33,6 +34,7 @@ export default function SettingsPanel({ accentColor }) {
     }
   });
   const [showVoiceDiscovery, setShowVoiceDiscovery] = useState(false);
+  const [showKokoroPreview, setShowKokoroPreview] = useState(false);
   const [vadSilenceMs, setVadSilenceMs] = useState(() => {
     try {
       return Number(localStorage.getItem('island_vad_silence_ms')) || 1400;
@@ -451,6 +453,29 @@ export default function SettingsPanel({ accentColor }) {
         {showVoiceDiscovery && (
           <div style={{ marginTop: 12 }}>
             <WindowsVoicePreview onClose={() => setShowVoiceDiscovery(false)} />
+          </div>
+        )}
+      </div>
+
+      {/* Kokoro Local TTS Prototype */}
+      <div className="settings-group">
+        <div className="settings-row">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Kokoro Local TTS Prototype (CPU)</span>
+            <span className="settings-row__sub">Isolated ONNX local speech synthesis test (af_heart, benchmarks, offline)</span>
+          </div>
+          <button
+            type="button"
+            className="settings-chip is-active"
+            style={{ background: '#ec4899', color: '#fff', borderColor: '#ec4899' }}
+            onClick={() => setShowKokoroPreview((prev) => !prev)}
+          >
+            {showKokoroPreview ? 'Close Prototype' : 'Open Prototype'}
+          </button>
+        </div>
+        {showKokoroPreview && (
+          <div style={{ marginTop: 12 }}>
+            <KokoroPreview onClose={() => setShowKokoroPreview(false)} />
           </div>
         )}
       </div>

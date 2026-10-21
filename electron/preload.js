@@ -65,6 +65,16 @@ contextBridge.exposeInMainWorld('island', {
     getStatus: () => ipcRenderer.invoke('gemini:get-status'),
   },
 
+  // Kokoro Local TTS Prototype Service (CPU ONNX)
+  kokoro: {
+    getStatus: () => ipcRenderer.invoke('kokoro:get-status'),
+    loadModel: (options) => ipcRenderer.invoke('kokoro:load-model', options),
+    installModel: () => ipcRenderer.invoke('kokoro:install-model'),
+    synthesize: (params) => ipcRenderer.invoke('kokoro:synthesize', params),
+    cancel: () => ipcRenderer.invoke('kokoro:cancel'),
+    dispose: () => ipcRenderer.invoke('kokoro:dispose'),
+  },
+
   // OpenAI Realtime voice broker (ephemeral token)
   realtime: {
     createSession: (options) => ipcRenderer.invoke('realtime:create-session', options),

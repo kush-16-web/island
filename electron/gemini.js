@@ -361,7 +361,24 @@ class GeminiVoiceService {
       const systemPrompt = `You are "${petName}", an intelligent, witty, warm and concise desktop companion living inside Island for your human friend "${userName}".
 Keep your answers very concise (1 to 2 sentences maximum, never lengthy paragraphs or lists) so it sounds like real spoken dialogue.
 You naturally understand and respond in English, Hindi, and Hinglish. Match the language and tone used by the user.
-Never output markdown symbols like asterisks, bullet points, or emojis, since your text will be read aloud as speech.`;
+Never output markdown symbols like asterisks, bullet points, or emojis, since your text will be read aloud as speech.
+
+You can also control Island's music playback and favorites. When the user requests a music command, append a single action tag at the end of your response:
+[[ACTION:{"action":"<action_name>","query":"<track name or artist if applicable>"}]]
+
+Supported music actions:
+- play_track (query: track name or artist)
+- play_favorite (query: track name or artist specifically from user's favorites)
+- play_random_favorite (no query)
+- pause
+- resume
+- next_track
+- previous_track
+- get_current_track
+- add_current_to_favorites
+- remove_current_from_favorites
+
+For normal conversation, NEVER include an [[ACTION:...]] tag.`;
 
       const contents = [];
 
@@ -433,7 +450,25 @@ Never output markdown symbols like asterisks, bullet points, or emojis, since yo
       const replyText = chatRes.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
         || `Meow! I'm here beside you, ${userName}!`;
 
-      // 3. Synthesize speech using gemini-3.8-flash-tts
+      // Check if response contains an action tag.
+      // If an action is requested, we do NOT synthesize assumed audio yet;
+      // the client must execute the real action first, so spoken confirmation is 100% grounded in truth.
+      const hasAction = /\[\[ACTION:\s*\{[\s\S]*?\}\s*\]\]/i.test(replyText);
+      if (hasAction) {
+        return {
+          ok: true,
+          text: replyText,
+          hasAction: true,
+          audioBase64: null,
+          mimeType: 'audio/wav',
+          provider: 'gemini',
+          chatUsage: chatRes.usage || null,
+          ttsUsage: null,
+          ttsError: null,
+        };
+      }
+
+      // 3. Synthesize speech using gemini-3.8-flash-tts for conversational turns
       const ttsRes = await this._postJson(
         '/v1beta/models/gemini-3.8-flash-tts:generateContent',
         {

@@ -50,25 +50,41 @@ export default function WindowsVoicePreview({ onClose }) {
     };
   }, []);
 
+  const activeUtteranceRef = useRef(null);
+
   const handleSpeak = () => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
 
     if (!previewText.trim()) return;
 
-    const utterance = new SpeechSynthesisUtterance(previewText);
-    const chosen = voices.find((v) => v.voiceURI === selectedVoiceURI);
-    if (chosen) {
-      utterance.voice = chosen;
-    }
-    utterance.rate = rate;
-    utterance.pitch = pitch;
+    // Small delay avoids Chromium race condition where cancel() kills immediately subsequent speak()
+    setTimeout(() => {
+      if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
-    utterance.onstart = () => setIsPlaying(true);
-    utterance.onend = () => setIsPlaying(false);
-    utterance.onerror = () => setIsPlaying(false);
+      const utterance = new SpeechSynthesisUtterance(previewText);
+      activeUtteranceRef.current = utterance; // Prevent GC in Chromium
+      const chosen = voices.find((v) => v.voiceURI === selectedVoiceURI);
+      if (chosen) {
+        utterance.voice = chosen;
+      }
+      utterance.rate = rate;
+      utterance.pitch = pitch;
 
-    window.speechSynthesis.speak(utterance);
+      utterance.onstart = () => setIsPlaying(true);
+      utterance.onend = () => {
+        setIsPlaying(false);
+        activeUtteranceRef.current = null;
+      };
+      utterance.onerror = (e) => {
+        console.warn('[Windows TTS Error]', e);
+        setIsPlaying(false);
+        activeUtteranceRef.current = null;
+      };
+
+      window.speechSynthesis.speak(utterance);
+    }, 60);
   };
 
   const handleStop = () => {

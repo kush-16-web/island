@@ -141,7 +141,7 @@ const measureTextWidth = (text, font = '500 12.5px Geist, -apple-system, sans-se
 
 export default function Island() {
   const { state: s, actions } = useIsland();
-  const voice = useRealtimeVoice();
+  const voice = useRealtimeVoice({ media: s.media, onControl: actions.mediaControl });
   const now = useNow(1000);
   const [hubOpen, setHubOpen] = useState(false);
   const [tab, setTab] = useState('playing');

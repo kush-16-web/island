@@ -43,6 +43,8 @@ if ($Mode -eq 'control') {
     if ($session) {
         switch ($Action) {
             'playpause' { [void](Await ($session.TryTogglePlayPauseAsync()) ([bool])) }
+            'play'      { [void](Await ($session.TryPlayAsync()) ([bool])) }
+            'pause'     { [void](Await ($session.TryPauseAsync()) ([bool])) }
             'next'      { [void](Await ($session.TrySkipNextAsync()) ([bool])) }
             'previous'  { [void](Await ($session.TrySkipPreviousAsync()) ([bool])) }
             'seek'      {

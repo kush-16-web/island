@@ -9,7 +9,7 @@ const path = require('path');
 const https = require('https');
 const { createLineSplitter, parseMediaLine, toMediaState, validArt } = require('./media-parse');
 
-const ACTIONS = new Set(['playpause', 'next', 'previous']);
+const ACTIONS = new Set(['playpause', 'play', 'pause', 'next', 'previous']);
 const RESTART_DELAY_MS = 5000;
 
 class MediaWatcher extends EventEmitter {

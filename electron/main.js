@@ -30,8 +30,10 @@ const { MediaWatcher } = require('./media');
 const { FullscreenWatcher } = require('./fullscreen');
 const { RealtimeSessionBroker } = require('./realtime');
 const { GeminiVoiceService } = require('./gemini');
+const { KokoroLocalService } = require('./kokoro-tts');
 
 let geminiVoiceService = null;
+let kokoroLocalService = null;
 
 const DEV_URL = process.env.ISLAND_DEV_URL || '';
 const WIN_W = 720;
@@ -978,6 +980,37 @@ function wireIpc() {
   handle('gemini:get-status', () => {
     if (!geminiVoiceService) geminiVoiceService = new GeminiVoiceService();
     return { hasKey: geminiVoiceService.hasKey(), provider: 'gemini' };
+  });
+
+  // Kokoro Local TTS Service (Isolated prototype)
+  handle('kokoro:get-status', () => {
+    if (!kokoroLocalService) kokoroLocalService = new KokoroLocalService();
+    return kokoroLocalService.getStatus();
+  });
+
+  handle('kokoro:load-model', () => {
+    if (!kokoroLocalService) kokoroLocalService = new KokoroLocalService();
+    return kokoroLocalService.loadModel();
+  });
+
+  handle('kokoro:install-model', () => {
+    if (!kokoroLocalService) kokoroLocalService = new KokoroLocalService();
+    return kokoroLocalService.installModel();
+  });
+
+  handle('kokoro:synthesize', (params) => {
+    if (!kokoroLocalService) kokoroLocalService = new KokoroLocalService();
+    return kokoroLocalService.synthesize(params || {});
+  });
+
+  handle('kokoro:cancel', () => {
+    if (!kokoroLocalService) return { ok: true, cancelled: false };
+    return kokoroLocalService.cancel();
+  });
+
+  handle('kokoro:dispose', () => {
+    if (!kokoroLocalService) return { ok: true, disposed: false };
+    return kokoroLocalService.dispose();
   });
 
   // OpenAI Realtime voice broker (development session creation)
