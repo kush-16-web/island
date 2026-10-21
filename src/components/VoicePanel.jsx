@@ -1,12 +1,176 @@
 import React, { useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from './icons';
 
 /**
- * VoicePanel: High-craft Apple-level glassmorphic Voice Assistant interface.
- * Implements real-time audio-reactive waveforms (soft blue for listening,
- * pulsing for thinking, emerald green for speaking), live speech transcription,
- * identity styling with pet avatar, and instant interrupt/mute controls.
+ * LivingWaveform: Lightweight Canvas-based continuous audio visualizer.
+ * Renders layered, organic sine waves with tapered bell envelopes.
+ * Reacts to actual microphone amplitude when listening, and actual assistant audio when speaking.
+ * Uses a restrained harmonic wave for thinking, and a calm flatline for muted state.
+ * Inherits dynamic theme colors via CSS variable --voice-accent.
+ */
+function LivingWaveform({ status, audioLevel, isMuted }) {
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+  const stateRef = useRef({
+    smoothedAmp: 2.5,
+    phase: 0,
+    status,
+    audioLevel: 0,
+    isMuted,
+  });
+
+  // Keep state updated in ref without causing re-mounts of the canvas loop
+  useEffect(() => {
+    stateRef.current.status = status;
+    stateRef.current.audioLevel = audioLevel || 0;
+    stateRef.current.isMuted = isMuted;
+  }, [status, audioLevel, isMuted]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+
+    let destroyed = false;
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+
+    const render = () => {
+      if (destroyed) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+
+      if (w === 0 || h === 0) {
+        animRef.current = requestAnimationFrame(render);
+        return;
+      }
+
+      const pixelW = Math.floor(w * dpr);
+      const pixelH = Math.floor(h * dpr);
+
+      if (canvas.width !== pixelW || canvas.height !== pixelH) {
+        canvas.width = pixelW;
+        canvas.height = pixelH;
+      }
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, h);
+
+      const { status: curStatus, audioLevel: curAudio, isMuted: curMuted } = stateRef.current;
+      const midY = h / 2;
+
+      // Determine target amplitude and phase speed based on actual state and real audio
+      let targetAmp = 2.5;
+      let phaseSpeed = 0.032;
+
+      if (curMuted) {
+        targetAmp = 0.5;
+        phaseSpeed = 0.005;
+      } else if (curStatus === 'thinking') {
+        // Restrained, distinctive continuous harmonic motion without pretending to be mic audio
+        targetAmp = 6.5;
+        phaseSpeed = 0.03;
+      } else if (curStatus === 'speaking') {
+        // Expressive assistant speech driven by real output audio amplitude
+        const voiceBoost = Math.min(1, Math.max(0, curAudio));
+        targetAmp = 4 + voiceBoost * 20;
+        phaseSpeed = 0.045 + voiceBoost * 0.055;
+      } else if (curStatus === 'listening') {
+        // Organic living wave responsive to real microphone input
+        const micBoost = Math.min(1, Math.max(0, curAudio));
+        targetAmp = 2.8 + micBoost * 22;
+        phaseSpeed = 0.032 + micBoost * 0.05;
+      } else if (curStatus === 'connecting') {
+        targetAmp = 2;
+        phaseSpeed = 0.02;
+      } else if (curStatus === 'error') {
+        targetAmp = 0.8;
+        phaseSpeed = 0.01;
+      }
+
+      if (prefersReducedMotion) {
+        phaseSpeed = 0;
+      }
+
+      // Smooth amplitude lerp for organic physics
+      stateRef.current.smoothedAmp += (targetAmp - stateRef.current.smoothedAmp) * 0.14;
+      stateRef.current.phase += phaseSpeed;
+
+      const amp = stateRef.current.smoothedAmp;
+      const ph = stateRef.current.phase;
+
+      // Resolve Island dynamic accent color
+      const computedAccent =
+        getComputedStyle(canvas).getPropertyValue('--voice-accent').trim() || '#38bdf8';
+
+      // Draw 3 layered continuous curves
+      // 1. Ambient depth wave
+      drawWaveCurve(ctx, w, midY, amp * 0.45, 1.5, ph * 0.6 + 2.1, computedAccent, 0.22, 1.2);
+      // 2. Harmonic counter-undulation
+      drawWaveCurve(ctx, w, midY, amp * 0.72, 2.7, -ph * 0.75 + 1.2, computedAccent, 0.48, 1.5);
+      // 3. Primary living curve
+      drawWaveCurve(ctx, w, midY, amp, 2.2, ph, computedAccent, 0.92, 2.0);
+
+      ctx.restore();
+
+      animRef.current = requestAnimationFrame(render);
+    };
+
+    animRef.current = requestAnimationFrame(render);
+
+    return () => {
+      destroyed = true;
+      if (animRef.current) {
+        cancelAnimationFrame(animRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div className="voice-living-visualizer" aria-label={`Living waveform (${status})`}>
+      <canvas ref={canvasRef} className="voice-living-waveform" />
+    </div>
+  );
+}
+
+function drawWaveCurve(ctx, w, midY, amplitude, freqMultiplier, phase, color, alpha, lineWidth) {
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const freq = (freqMultiplier * Math.PI) / w;
+  const step = 3;
+
+  for (let x = 0; x <= w; x += step) {
+    const normX = x / w;
+    // Bell envelope: smooth taper to zero deviation at both boundaries
+    const envelope = Math.pow(Math.sin(Math.PI * normX), 1.6);
+    const y = midY + envelope * amplitude * Math.sin(x * freq + phase);
+
+    if (x === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+
+  ctx.stroke();
+}
+
+/**
+ * VoicePanel: Refined Voice Session Interface.
+ * - Inherits Island's dynamic accent colors naturally without hardcoded voice palettes.
+ * - Living continuous audio waveform (Canvas) replacing equalizer bars and generic loaders.
+ * - Floating conversation transcript inspired by synchronized lyrics (no cards, no bubbles, no borders).
+ * - Understated identity and single clear voice status.
+ * - Preserved voice controls (Mute, Interrupt, End Session, Shortcuts).
  */
 export default function VoicePanel({
   voice,
@@ -17,9 +181,8 @@ export default function VoicePanel({
     status,
     errorMessage,
     isMuted,
-    transcript,
-    audioLevel,
-    waveformData,
+    transcript = [],
+    audioLevel = 0,
     startSession,
     stopSession,
     interrupt,
@@ -29,52 +192,66 @@ export default function VoicePanel({
   const petName = localStorage.getItem('island_pet_name') || 'Mochi';
   const userName = localStorage.getItem('island_user_name') || 'Friend';
   const scrollRef = useRef(null);
+  const userScrolledUpRef = useRef(false);
 
-  // Auto-scroll transcript to bottom
+  // Determine single clear status (Section 4)
+  let currentStatus = 'listening';
+  let statusLabel = 'Listening';
+
+  if (status === 'error') {
+    currentStatus = 'error';
+    statusLabel = 'Error';
+  } else if (isMuted) {
+    currentStatus = 'muted';
+    statusLabel = 'Muted';
+  } else if (status === 'connecting') {
+    currentStatus = 'connecting';
+    statusLabel = 'Connecting';
+  } else if (status === 'thinking') {
+    currentStatus = 'thinking';
+    statusLabel = 'Thinking';
+  } else if (status === 'speaking') {
+    currentStatus = 'speaking';
+    statusLabel = 'Speaking';
+  }
+
+  // Handle manual scroll detection: pause auto-follow if user scrolls up, resume when returning near bottom
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 36;
+    userScrolledUpRef.current = !isAtBottom;
+  };
+
+  // Auto-scroll transcript to bottom unless user has manually scrolled up
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (!userScrolledUpRef.current && scrollRef.current) {
+      const el = scrollRef.current;
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: 'smooth',
+      });
     }
   }, [transcript]);
 
-  // Determine state color & label
-  let statusColor = '#38bdf8'; // Soft sky blue (listening)
-  let statusLabel = 'Listening...';
-
-  if (status === 'connecting') {
-    statusColor = '#a855f7';
-    statusLabel = 'Connecting...';
-  } else if (status === 'thinking') {
-    statusColor = '#f59e0b';
-    statusLabel = 'Thinking...';
-  } else if (status === 'speaking') {
-    statusColor = '#10b981'; // Vivid emerald green (speaking)
-    statusLabel = `${petName} is speaking...`;
-  } else if (status === 'error') {
-    statusColor = '#ef4444';
-    statusLabel = 'Connection Error';
-  } else if (isMuted) {
-    statusColor = '#f97316';
-    statusLabel = 'Microphone Muted';
-  }
+  // Dynamic theme accent color (Section 1)
+  const dynamicAccent = accentColor || 'var(--music-accent, var(--accent, #38bdf8))';
 
   return (
-    <div className="voice-panel" style={{ '--voice-color': statusColor }}>
-      {/* Top Header */}
+    <div className="voice-panel" style={{ '--voice-accent': dynamicAccent }}>
+      {/* 1. Understated Top Header (Section 4) */}
       <div className="voice-panel__header">
         <div className="voice-panel__identity">
-          <div className="voice-panel__avatar">
+          <div className="voice-panel__avatar" aria-hidden="true">
             <Icon.Paw width={14} height={14} />
           </div>
           <div className="voice-panel__meta">
             <div className="voice-panel__name">{petName}</div>
-            <div className="voice-panel__user">Talking with {userName}</div>
+            <div className="voice-panel__status-row">
+              <span className={`voice-panel__status-dot is-${currentStatus}`} />
+              <span className="voice-panel__status-text">{statusLabel}</span>
+            </div>
           </div>
-        </div>
-
-        <div className="voice-panel__status-pill">
-          <span className={`voice-panel__status-dot is-${status}`} />
-          <span className="voice-panel__status-text">{statusLabel}</span>
         </div>
 
         <button
@@ -91,19 +268,15 @@ export default function VoicePanel({
         </button>
       </div>
 
-      {/* Error State Card or Active Visualizer */}
+      {/* 2. Error State Card OR Living Waveform + Floating Transcript */}
       {status === 'error' ? (
         <div className="voice-panel__error-card">
           <div className="voice-panel__error-icon">
-            <Icon.Alert width={26} height={26} />
+            <Icon.Alert width={24} height={24} />
           </div>
-          <div className="voice-panel__error-title">
-            {voice.provider === 'gemini' ? 'Gemini Voice Issue' : 'Voice Connection Issue'}
-          </div>
+          <div className="voice-panel__error-title">Voice Connection Issue</div>
           <div className="voice-panel__error-desc">
-            {errorMessage || (voice.provider === 'gemini'
-              ? 'Unable to communicate with Google Gemini Voice.'
-              : 'Unable to establish real-time voice connection.')}
+            {errorMessage || 'Unable to establish real-time voice connection with Gemini.'}
           </div>
           {errorMessage?.includes('.env') && (
             <div className="voice-panel__env-hint">
@@ -113,65 +286,50 @@ export default function VoicePanel({
         </div>
       ) : (
         <>
-          {/* Center Audio-Reactive Waveform Visualizer */}
-          <div className="voice-panel__visualizer">
-            {status === 'thinking' ? (
-              <div className="voice-thinking-sweep" aria-label="Gemini thinking">
-                <div className="voice-thinking-sweep__beam" />
-                <div className="voice-thinking-sweep__glow" />
-              </div>
-            ) : (
-              <div className={`voice-waveform is-${status}`}>
-                {Array.from({ length: 16 }).map((_, i) => {
-                  const rawVal = waveformData ? waveformData[i] || 0.1 : 0.1;
-                  const barScale = Math.max(0.12, Math.min(1.0, rawVal * 1.6 + audioLevel * 0.9));
+          {/* Living Audio Waveform (Section 2) */}
+          <LivingWaveform
+            status={currentStatus}
+            audioLevel={audioLevel}
+            isMuted={isMuted}
+          />
 
-                  return (
-                    <span
-                      key={i}
-                      className="voice-waveform__bar"
-                      style={{
-                        height: `${Math.round(barScale * 44)}px`,
-                        transition: 'height 0.05s ease-out',
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="voice-panel__subtext">
-              {status === 'listening' && <span>Speak naturally in English, Hindi, or Hinglish</span>}
-              {status === 'speaking' && <span>Tap Interrupt or speak anytime to jump in</span>}
-              {status === 'thinking' && <span>Gemini is thinking...</span>}
-              {status === 'connecting' && <span>Connecting to Gemini Voice...</span>}
-            </div>
-          </div>
-
-          {/* Live Transcription Box */}
-          <div className="voice-panel__transcript-box" ref={scrollRef}>
+          {/* Floating Conversation Transcript (Section 3 - Lyric-style floating text) */}
+          <div
+            className="voice-transcript scroll-transcript"
+            ref={scrollRef}
+            onScroll={handleScroll}
+            tabIndex={0}
+            aria-label="Voice conversation transcript"
+          >
+            <div className="voice-transcript__spacer-top" />
             {transcript.length === 0 ? (
-              <div className="voice-panel__transcript-empty">
-                <span>Ask anything: "What's the weather today?", "Play some Lo-Fi", "Tell me a joke in Hindi"...</span>
+              <div className="voice-transcript__empty">
+                <span>Ask anything or speak naturally with {petName}...</span>
               </div>
             ) : (
-              transcript.map((item, index) => (
-                <div
-                  key={index}
-                  className={`voice-bubble voice-bubble--${item.role}${item.isLive ? ' is-live' : ''}`}
-                >
-                  <div className="voice-bubble__sender">
-                    {item.role === 'user' ? userName : petName}
+              transcript.map((item, index) => {
+                const isAssistant = item.role === 'assistant';
+                const isLatest = index === transcript.length - 1;
+
+                return (
+                  <div
+                    key={item.id || `${index}-${item.role}`}
+                    className={`voice-turn voice-turn--${item.role}${item.isLive ? ' is-live' : ''}${isLatest ? ' is-latest' : ''}`}
+                  >
+                    <div className="voice-turn__speaker">
+                      {isAssistant ? petName : userName}
+                    </div>
+                    <div className="voice-turn__text">{item.text}</div>
                   </div>
-                  <div className="voice-bubble__text">{item.text}</div>
-                </div>
-              ))
+                );
+              })
             )}
+            <div className="voice-transcript__spacer-bottom" />
           </div>
         </>
       )}
 
-      {/* Bottom Controls */}
+      {/* 3. Bottom Controls (Section 5) */}
       <div className="voice-panel__controls">
         {status !== 'error' && (
           <button
@@ -181,7 +339,7 @@ export default function VoicePanel({
             title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
             aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
           >
-            {isMuted ? <Icon.MicOff width={16} height={16} /> : <Icon.Mic width={16} height={16} />}
+            {isMuted ? <Icon.MicOff width={15} height={15} /> : <Icon.Mic width={15} height={15} />}
             <span>{isMuted ? 'Unmute' : 'Mute'}</span>
           </button>
         )}
