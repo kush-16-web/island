@@ -1147,27 +1147,21 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   max-height: 170px;
   overflow: visible;
 }
-@keyframes songArtDraw {
-  0% {
-    stroke-dashoffset: 1400;
-    opacity: 0.2;
-  }
-  100% {
-    stroke-dashoffset: 0;
-    opacity: 1;
-  }
+.song-art-layer {
+  transition: opacity 0.3s ease;
 }
-.song-art__line {
-  stroke-dasharray: 1400;
-  animation: songArtDraw 2.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.song-art__stylus {
+  pointer-events: none;
+  transition: transform 0.04s linear;
 }
-.song-art__node {
-  animation: songArtNodePulse 3s ease-in-out infinite;
+.song-art__permanent-node {
+  animation: permanentNodeFadeIn 0.35s ease forwards;
 }
-@keyframes songArtNodePulse {
-  0%, 100% { transform: scale(1); opacity: 0.85; }
-  50% { transform: scale(1.3); opacity: 1; }
+@keyframes permanentNodeFadeIn {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
 }
+
 .song-art__footer {
   position: relative;
   z-index: 2;
@@ -1199,6 +1193,37 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+}
+.song-art__footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.song-art__source-tag {
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.02em;
+}
+.song-art__replay-btn {
+  font-size: 8.5px;
+  font-weight: 600;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.song-art__replay-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
 }
 .song-art__symbols {
   display: flex;
@@ -4206,7 +4231,7 @@ button:hover .lucide-icon--bell {
   background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid color-mix(in srgb, var(--accent, rgba(255, 255, 255, 0.12)) 22%, rgba(255, 255, 255, 0.06));
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
@@ -4214,9 +4239,9 @@ button:hover .lucide-icon--bell {
 }
 .launcher-card:hover {
   background: rgba(255, 255, 255, 0.07);
-  border-color: color-mix(in srgb, var(--accent, rgba(255, 255, 255, 0.25)) 38%, rgba(255, 255, 255, 0.12));
+  border-color: rgba(255, 255, 255, 0.18);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28), 0 0 16px color-mix(in srgb, var(--accent, transparent) 14%, transparent);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 .launcher-card:active {
   transform: scale(0.985);
