@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1600" width="1200" height="1600">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&amp;family=Inter:wght@300;400;500;600&amp;display=swap');
+      .poster-bg { fill: #f5f2eb; }
+      .art-frame { fill: none; stroke: #292524; stroke-width: 0.8; opacity: 0.18; }
+      .header-series { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 0.28em; fill: #292524; opacity: 0.55; text-transform: uppercase; }
+      .header-num { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; letter-spacing: 0.15em; fill: #854d0e; }
+      .poster-title { font-family: 'Cinzel', serif; font-size: 44px; font-weight: 600; letter-spacing: 0.08em; fill: #292524; }
+      .poster-artist { font-family: 'Inter', sans-serif; font-size: 18px; font-weight: 400; letter-spacing: 0.18em; fill: #854d0e; text-transform: uppercase; }
+      .meta-label { font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.22em; fill: #292524; opacity: 0.45; text-transform: uppercase; }
+      .meta-text { font-family: 'Inter', sans-serif; font-size: 13.5px; font-weight: 300; line-height: 1.5; fill: #292524; opacity: 0.82; }
+      .tag { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; fill: #292524; opacity: 0.65; }
+    </style>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="1200" height="1600" class="poster-bg" />
+
+  <!-- Outer Architectural Framing Border -->
+  <rect x="60" y="60" width="1080" height="1480" class="art-frame" />
+  <rect x="76" y="76" width="1048" height="1448" class="art-frame" stroke-dasharray="4 8" />
+
+  <!-- Header Exhibition Banner -->
+  <g transform="translate(110, 120)">
+    <text y="0" class="header-series">Island Living Canvas — Pass 01</text>
+    <text x="980" y="0" text-anchor="end" class="header-num">PLATE № 11</text>
+    <line x1="0" y1="20" x2="980" y2="20" stroke="#292524" stroke-width="0.8" opacity="0.2" />
+  </g>
+
+  <!-- Artwork Artwork Viewport (Center) -->
+  <g id="continuous-line-artwork">
+    
+      <!-- Accent Solar Corona -->
+      <circle cx="620" cy="500" r="220" fill="#854d0e" opacity="0.18" />
+      <circle cx="620" cy="500" r="120" fill="none" stroke="#854d0e" stroke-width="1.5" stroke-dasharray="6 8" opacity="0.6" />
+
+      <!-- Continuous Single Ink Line: Ascending Wings & Horizon -->
+      <path d="M 280 1120 
+               C 320 980, 420 860, 480 780 
+               C 520 720, 530 640, 500 580 
+               C 470 510, 520 460, 580 470 
+               C 640 480, 660 550, 620 620 
+               C 580 690, 610 770, 700 780 
+               C 800 790, 880 720, 910 610 
+               C 930 520, 880 430, 790 390 
+               C 700 350, 610 390, 590 480 
+               C 570 560, 650 630, 740 640 
+               C 850 650, 930 570, 960 460 
+               C 980 370, 920 290, 820 280 
+               C 720 270, 640 330, 620 420" 
+            fill="none" 
+            stroke="#292524" 
+            stroke-width="3.8" 
+            stroke-linecap="round" 
+            stroke-linejoin="round" />
+
+      <!-- Secondary Accent: Origami Crest -->
+      <polygon points="620,420 660,370 600,380" fill="#44403c" opacity="0.9" />
+    
+  </g>
+
+  <!-- Typography & Editorial Storytelling (Bottom Tier) -->
+  <g transform="translate(110, 1280)">
+    <!-- Dividing Axis -->
+    <line x1="0" y1="0" x2="980" y2="0" stroke="#292524" stroke-width="1" opacity="0.25" />
+    
+    <!-- Title & Artist -->
+    <text x="0" y="46" class="poster-title">Test Melody</text>
+    <text x="0" y="78" class="poster-artist">Test Ensemble</text>
+
+    <!-- Narrative Metaphor -->
+    <text x="0" y="125" class="meta-label">Central Visual Metaphor</text>
+    <text x="0" y="148" class="meta-text" width="620">"The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth"</text>
+
+    <!-- Emotional Core -->
+    <text x="0" y="195" class="meta-label">Emotional Atmosphere</text>
+    <text x="0" y="218" class="meta-text" width="620">Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft</text>
+
+    <!-- Color Palette Chips & Specs (Right Column) -->
+    <g transform="translate(740, 26)">
+      <text x="0" y="18" class="meta-label">Palette &amp; Medium</text>
+      
+      <!-- Swatches -->
+      <g transform="translate(0, 32)">
+        <rect x="0" y="0" width="32" height="32" rx="4" fill="#f5f2eb" stroke="#292524" stroke-width="0.8" />
+        <rect x="42" y="0" width="32" height="32" rx="4" fill="#292524" />
+        <rect x="84" y="0" width="32" height="32" rx="4" fill="#854d0e" />
+        <rect x="126" y="0" width="32" height="32" rx="4" fill="#44403c" />
+      </g>
+      
+      <text x="0" y="92" class="tag">Medium: Sumi-e Continuous Ink Line</text>
+      <text x="0" y="112" class="tag">Format: Vector Monotype Print</text>
+      <text x="0" y="132" class="tag">Substrate: Heavy Rag Cotton (Mock Mode)</text>
+    </g>
+  </g>
+</svg>

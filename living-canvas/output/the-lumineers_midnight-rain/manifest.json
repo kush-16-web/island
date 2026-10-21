@@ -1,0 +1,31 @@
+{
+  "slug": "the-lumineers_midnight-rain",
+  "song": {
+    "title": "Midnight Rain",
+    "artist": "The Lumineers",
+    "lyrics": "Rain pouring down on cold asphalt, standing under the lone streetlight watching reflections shatter as cars pass by in the quiet dark.",
+    "expectedTheme": "Melancholic / Solitude / Rain / Midnight"
+  },
+  "createdAt": "2026-10-21T05:42:17.410Z",
+  "generator": {
+    "mode": "mock-svg-renderer",
+    "format": "svg",
+    "source": "interpreter",
+    "model": "rule-based-art-director",
+    "fallbackReason": null
+  },
+  "files": {
+    "concept": "concept.json",
+    "prompt": "prompt.json",
+    "artwork": "artwork.svg"
+  },
+  "hardware": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+    "cpuCores": 8,
+    "totalRamMB": 5965,
+    "freeRamMB": 486,
+    "nodeVersion": "v22.12.0"
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "song": {
+    "title": "Wooden Porch Echoes",
+    "artist": "Iron & Pine",
+    "lyrics": "Creaking floorboards and an old six-string with worn frets, family memories carved into the cedar post by the river roots.",
+    "expectedTheme": "Nostalgic / Acoustic / Memory / Hearth"
+  },
+  "prompts": {
+    "positivePrompt": "masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots, central metaphor: The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth, supporting subtle elements: spiral acoustic soundhole, drifting autumnal leaf outline, delicate root filaments, composition: Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #f5f2eb background, #292524 fluid ink, accented by #854d0e, emotional atmosphere: Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling",
+    "negativePrompt": "digital gradient, 3D musical notes, cartoon guitar, glossy veneer, generic tree silhouette, clipart, watermark, signature, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts"
+  },
+  "comfyWorkflow": {
+    "prompt": {
+      "3": {
+        "class_type": "KSampler",
+        "inputs": {
+          "cfg": 7,
+          "denoise": 1,
+          "latent_image": [
+            "5",
+            0
+          ],
+          "model": [
+            "4",
+            0
+          ],
+          "negative": [
+            "7",
+            0
+          ],
+          "positive": [
+            "6",
+            0
+          ],
+          "sampler_name": "euler_ancestral",
+          "scheduler": "karras",
+          "seed": 931517958,
+          "steps": 28
+        }
+      },
+      "4": {
+        "class_type": "CheckpointLoaderSimple",
+        "inputs": {
+          "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+        }
+      },
+      "5": {
+        "class_type": "EmptyLatentImage",
+        "inputs": {
+          "batch_size": 1,
+          "height": 1152,
+          "width": 832
+        }
+      },
+      "6": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "clip": [
+            "4",
+            1
+          ],
+          "text": "masterpiece fine-art editorial poster, expressive single continuous-line ink drawing, unbroken fluid contour drawing, organic variable line weight with subtle ink bleed, subject: A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots, central metaphor: The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth, supporting subtle elements: spiral acoustic soundhole, drifting autumnal leaf outline, delicate root filaments, composition: Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance, vast intentional negative space, uncrowded, meditative, breathing space, restricted color palette: #f5f2eb background, #292524 fluid ink, accented by #854d0e, emotional atmosphere: Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft, museum gallery lithograph, heavy archival cotton paper texture, elegant visual storytelling"
+        }
+      },
+      "7": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "clip": [
+            "4",
+            1
+          ],
+          "text": "digital gradient, 3D musical notes, cartoon guitar, glossy veneer, generic tree silhouette, clipart, watermark, signature, photorealism, 3d render, CGI, octane render, airbrushed, plastic gloss, generic silhouette, stock clipart, meaningless fractal, mandala, repetitive floral pattern, broken lines, multiple overlapping chaotic sketches, messy crosshatching, garish saturated neon colors, rainbow gradient, muddy colors, letters, typography, watermark, text, signature, low resolution, blurry, artifacts"
+        }
+      },
+      "8": {
+        "class_type": "VAEDecode",
+        "inputs": {
+          "samples": [
+            "3",
+            0
+          ],
+          "vae": [
+            "4",
+            2
+          ]
+        }
+      },
+      "9": {
+        "class_type": "SaveImage",
+        "inputs": {
+          "filename_prefix": "LivingCanvas",
+          "images": [
+            "8",
+            0
+          ]
+        }
+      }
+    }
+  },
+  "createdAt": "2026-10-21T05:42:17.473Z"
+}

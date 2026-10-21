@@ -1,0 +1,20 @@
+{
+  "emotional_theme": "Generational memory, quiet reverence for time, and the tactile comfort of acoustic woodcraft",
+  "central_metaphor": "The grain of an ancient acoustic guitar soundboard branching into living willow roots that cradle an old family hearth",
+  "main_visual_subject": "A calligraphic continuous line tracing the waist and bout of a hollow wooden instrument whose grain lines seamlessly grow into deep earthen roots",
+  "supporting_symbols": [
+    "spiral acoustic soundhole",
+    "drifting autumnal leaf outline",
+    "delicate root filaments"
+  ],
+  "composition": "Centrally anchored balanced vertical totem with 55% quiet negative space surrounding the perimeter; evokes classical museum lithograph balance",
+  "color_palette": {
+    "background": "#f5f2eb",
+    "line_color": "#292524",
+    "accent_color": "#854d0e",
+    "secondary_accent": "#44403c",
+    "mood_description": "Weathered archival cotton paper, aged walnut bistre ink, and warm raw umber earth tones"
+  },
+  "continuous_line_instructions": "Beginning at the guitar tuning peg, the line cascades down the neck, loops gracefully around the central soundhole spiral, contours the acoustic lower bout, and branches into three sinuous root fibers that anchor the composition base.",
+  "negative_prompt": "digital gradient, 3D musical notes, cartoon guitar, glossy veneer, generic tree silhouette, clipart, watermark, signature"
+}

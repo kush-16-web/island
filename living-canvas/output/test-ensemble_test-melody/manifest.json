@@ -1,0 +1,30 @@
+{
+  "slug": "test-ensemble_test-melody",
+  "song": {
+    "title": "Test Melody",
+    "artist": "Test Ensemble",
+    "lyrics": "A quiet echo in the empty hall"
+  },
+  "createdAt": "2026-10-21T05:43:06.534Z",
+  "generator": {
+    "mode": "mock-svg-renderer",
+    "format": "svg",
+    "source": "interpreter",
+    "model": "rule-based-art-director",
+    "fallbackReason": null
+  },
+  "files": {
+    "concept": "concept.json",
+    "prompt": "prompt.json",
+    "artwork": "artwork.svg"
+  },
+  "hardware": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+    "cpuCores": 8,
+    "totalRamMB": 5965,
+    "freeRamMB": 535,
+    "nodeVersion": "v22.12.0"
+  }
+}

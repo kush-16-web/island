@@ -1,0 +1,125 @@
+[
+  {
+    "slug": "the-lumineers_midnight-rain",
+    "song": {
+      "title": "Midnight Rain",
+      "artist": "The Lumineers",
+      "lyrics": "Rain pouring down on cold asphalt, standing under the lone streetlight watching reflections shatter as cars pass by in the quiet dark.",
+      "expectedTheme": "Melancholic / Solitude / Rain / Midnight"
+    },
+    "createdAt": "2026-10-21T05:42:17.410Z",
+    "generator": {
+      "mode": "mock-svg-renderer",
+      "format": "svg",
+      "source": "interpreter",
+      "model": "rule-based-art-director",
+      "fallbackReason": null
+    },
+    "files": {
+      "concept": "concept.json",
+      "prompt": "prompt.json",
+      "artwork": "artwork.svg"
+    },
+    "hardware": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+      "cpuCores": 8,
+      "totalRamMB": 5965,
+      "freeRamMB": 486,
+      "nodeVersion": "v22.12.0"
+    }
+  },
+  {
+    "slug": "horizon-zero_solar-flare",
+    "song": {
+      "title": "Solar Flare",
+      "artist": "Horizon Zero",
+      "lyrics": "Break the gravitational pull, ascend through the stratosphere into blinding radiant light, unfolding paper wings into the morning sun.",
+      "expectedTheme": "Euphoric / Ascension / Solar / Catharsis"
+    },
+    "createdAt": "2026-10-21T05:42:17.445Z",
+    "generator": {
+      "mode": "mock-svg-renderer",
+      "format": "svg",
+      "source": "interpreter",
+      "model": "rule-based-art-director",
+      "fallbackReason": null
+    },
+    "files": {
+      "concept": "concept.json",
+      "prompt": "prompt.json",
+      "artwork": "artwork.svg"
+    },
+    "hardware": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+      "cpuCores": 8,
+      "totalRamMB": 5965,
+      "freeRamMB": 486,
+      "nodeVersion": "v22.12.0"
+    }
+  },
+  {
+    "slug": "iron-pine_wooden-porch-echoes",
+    "song": {
+      "title": "Wooden Porch Echoes",
+      "artist": "Iron & Pine",
+      "lyrics": "Creaking floorboards and an old six-string with worn frets, family memories carved into the cedar post by the river roots.",
+      "expectedTheme": "Nostalgic / Acoustic / Memory / Hearth"
+    },
+    "createdAt": "2026-10-21T05:42:17.473Z",
+    "generator": {
+      "mode": "mock-svg-renderer",
+      "format": "svg",
+      "source": "interpreter",
+      "model": "rule-based-art-director",
+      "fallbackReason": null
+    },
+    "files": {
+      "concept": "concept.json",
+      "prompt": "prompt.json",
+      "artwork": "artwork.svg"
+    },
+    "hardware": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+      "cpuCores": 8,
+      "totalRamMB": 5965,
+      "freeRamMB": 486,
+      "nodeVersion": "v22.12.0"
+    }
+  },
+  {
+    "slug": "test-ensemble_test-melody",
+    "song": {
+      "title": "Test Melody",
+      "artist": "Test Ensemble",
+      "lyrics": "A quiet echo in the empty hall"
+    },
+    "createdAt": "2026-10-21T05:43:06.534Z",
+    "generator": {
+      "mode": "mock-svg-renderer",
+      "format": "svg",
+      "source": "interpreter",
+      "model": "rule-based-art-director",
+      "fallbackReason": null
+    },
+    "files": {
+      "concept": "concept.json",
+      "prompt": "prompt.json",
+      "artwork": "artwork.svg"
+    },
+    "hardware": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+      "cpuCores": 8,
+      "totalRamMB": 5965,
+      "freeRamMB": 535,
+      "nodeVersion": "v22.12.0"
+    }
+  }
+]

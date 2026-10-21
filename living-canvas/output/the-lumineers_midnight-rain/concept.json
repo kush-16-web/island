@@ -1,0 +1,20 @@
+{
+  "emotional_theme": "Solitary grief transitioning into silent nocturnal acceptance amidst city rain",
+  "central_metaphor": "A descending tear that unfurls into pavement water ripples, absorbing city lamplight",
+  "main_visual_subject": "A continuous sumi-ink stroke tracing the bowed posture of a solitary trench-coated listener whose spine dissolves into concentric water rings",
+  "supporting_symbols": [
+    "inverted umbrella catching fallen stars",
+    "subtle vertical rain striations",
+    "single amber streetlamp glow"
+  ],
+  "composition": "Off-center vertical placement in the lower-left third; 65% serene negative space in the upper-right hemisphere allowing breathing room",
+  "color_palette": {
+    "background": "#0d131a",
+    "line_color": "#cbd5e1",
+    "accent_color": "#d97706",
+    "secondary_accent": "#334155",
+    "mood_description": "Deep midnight slate with cool mist line work and solitary warm amber lamplight"
+  },
+  "continuous_line_instructions": "An unbroken, weighted fluid stroke begins at the figure silhouette crown, flows down the curve of the back, loops tightly around the folded arms, then expands outward in four gentle, widening elliptical ripples across the bottom plane without ever lifting the pen.",
+  "negative_prompt": "photorealism, 3D render, glossy textures, neon lights, generic umbrella silhouette, stock raindrops, text, signature, watermark, clutter"
+}

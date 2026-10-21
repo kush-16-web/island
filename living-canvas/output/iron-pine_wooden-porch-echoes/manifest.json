@@ -1,0 +1,31 @@
+{
+  "slug": "iron-pine_wooden-porch-echoes",
+  "song": {
+    "title": "Wooden Porch Echoes",
+    "artist": "Iron & Pine",
+    "lyrics": "Creaking floorboards and an old six-string with worn frets, family memories carved into the cedar post by the river roots.",
+    "expectedTheme": "Nostalgic / Acoustic / Memory / Hearth"
+  },
+  "createdAt": "2026-10-21T05:42:17.473Z",
+  "generator": {
+    "mode": "mock-svg-renderer",
+    "format": "svg",
+    "source": "interpreter",
+    "model": "rule-based-art-director",
+    "fallbackReason": null
+  },
+  "files": {
+    "concept": "concept.json",
+    "prompt": "prompt.json",
+    "artwork": "artwork.svg"
+  },
+  "hardware": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
+    "cpuCores": 8,
+    "totalRamMB": 5965,
+    "freeRamMB": 486,
+    "nodeVersion": "v22.12.0"
+  }
+}
