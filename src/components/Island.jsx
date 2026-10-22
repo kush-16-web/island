@@ -451,7 +451,7 @@ export default function Island() {
   if (ring) accent = ring.kind === 'alarm' ? 'var(--c-alarm)' : 'var(--c-timer)';
   else if (mode === 'toast') accent = kindColor(toast.kind);
   else if (mode === 'timer') accent = 'var(--c-timer)';
-  else if (mode === 'media' || mode === 'both' || (mode === 'hub' && media.active)) accent = musicColor;
+  else if (media.active) accent = musicColor;
 
   const onIslandPointerDown = (e) => {
     if (e.button !== 0) return;
