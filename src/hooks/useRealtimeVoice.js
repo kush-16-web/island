@@ -178,10 +178,15 @@ export function useRealtimeVoice(options = {}) {
 
     if (currentSourceRef.current) {
       try {
+        currentSourceRef.current.onended = null;
         currentSourceRef.current.stop();
         currentSourceRef.current.disconnect();
       } catch {}
       currentSourceRef.current = null;
+    }
+
+    if (window.island?.kokoro?.cancel) {
+      try { window.island.kokoro.cancel(); } catch {}
     }
 
     if (scriptProcessorRef.current) {
@@ -198,7 +203,9 @@ export function useRealtimeVoice(options = {}) {
 
     if (audioContextRef.current) {
       try {
-        audioContextRef.current.close();
+        if (audioContextRef.current.state !== 'closed') {
+          audioContextRef.current.close();
+        }
       } catch {}
       audioContextRef.current = null;
     }
@@ -223,10 +230,14 @@ export function useRealtimeVoice(options = {}) {
   const interrupt = useCallback(() => {
     if (currentSourceRef.current) {
       try {
+        currentSourceRef.current.onended = null;
         currentSourceRef.current.stop();
         currentSourceRef.current.disconnect();
       } catch {}
       currentSourceRef.current = null;
+    }
+    if (window.island?.kokoro?.cancel) {
+      try { window.island.kokoro.cancel(); } catch {}
     }
     controller.interrupt();
     setStatus('listening');
@@ -261,9 +272,11 @@ export function useRealtimeVoice(options = {}) {
       // Stop any existing playback
       if (currentSourceRef.current) {
         try {
+          currentSourceRef.current.onended = null;
           currentSourceRef.current.stop();
           currentSourceRef.current.disconnect();
         } catch {}
+        currentSourceRef.current = null;
       }
 
       const source = audioCtx.createBufferSource();

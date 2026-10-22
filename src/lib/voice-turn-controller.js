@@ -222,6 +222,9 @@ export class VoiceTurnController {
     if (turnId !== undefined && turnId !== this.turnId) {
       return false; // Stale turn
     }
+    if (this.state !== 'processing' && this.state !== 'speaking') {
+      return false; // Interrupted or cancelled
+    }
     this.isProcessing = false;
     this.isSpeaking = true;
     this.preSpeechRingBuffer = [];
