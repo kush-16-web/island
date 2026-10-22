@@ -209,7 +209,17 @@ export default function NowPlaying({
       companion: companionState,
       onControl,
       onOpenUrl: (url) => window.island?.media?.openUrl?.(url),
-      onDispatchCompanion: (cmd) => window.island?.companion?.dispatchCommand?.(cmd),
+      onDispatchCompanion: (cmd) => {
+        try {
+          const p = window.island?.companion?.dispatchCommand?.(cmd);
+          if (p && typeof p.catch === 'function') {
+            p.catch((err) => console.warn('[NowPlaying] dispatchCommand error:', err.message));
+          }
+          return p;
+        } catch (e) {
+          return null;
+        }
+      },
       storage: typeof window !== 'undefined' ? window.localStorage : null,
     });
 

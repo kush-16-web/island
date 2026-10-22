@@ -1,5 +1,5 @@
 // Dynamic Island Companion - YouTube Music Player Bridge (MAIN World)
-// Runs in page context with direct access to #movie_player and YouTube's internal APIs
+// Runs in page context with direct access to #movie_player, ytmusic-app, and YouTube's internal APIs
 (function () {
   'use strict';
 
@@ -53,31 +53,57 @@
     }
 
     if (action === 'LOAD_VIDEO' && videoId) {
-      const player = getMoviePlayer();
-      let loadSuccess = false;
+      const watchUrl = `/watch?v=${videoId}`;
+      let navSuccess = false;
 
-      if (player) {
-        try {
-          if (typeof player.loadVideoById === 'function') {
-            player.loadVideoById(videoId);
-            loadSuccess = true;
-          } else if (typeof player.cueVideoById === 'function') {
-            player.cueVideoById(videoId);
-            loadSuccess = true;
-          }
-
-          if (typeof player.playVideo === 'function') {
-            player.playVideo();
-          }
-        } catch (err) {
-          console.warn('[Dynamic Island Bridge] loadVideoById error:', err);
+      // 1. YouTube Music native SPA navigation event
+      try {
+        const app = document.querySelector('ytmusic-app');
+        if (app) {
+          app.dispatchEvent(
+            new CustomEvent('yt-navigate', {
+              bubbles: true,
+              composed: true,
+              detail: {
+                endpoint: {
+                  watchEndpoint: {
+                    videoId,
+                  },
+                },
+              },
+            })
+          );
+          navSuccess = true;
         }
+      } catch (err) {
+        console.warn('[Dynamic Island Bridge] yt-navigate error:', err);
       }
+
+      // 2. Click an in-DOM anchor (YouTube Music's global click router catches and updates UI & queue)
+      try {
+        const anchor = document.createElement('a');
+        anchor.href = watchUrl;
+        anchor.style.display = 'none';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        navSuccess = true;
+      } catch (err) {
+        console.warn('[Dynamic Island Bridge] anchor click error:', err);
+      }
+
+      // 3. Trigger playback
+      try {
+        const player = getMoviePlayer();
+        if (player && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+      } catch {}
 
       sendToIsolated('LOAD_INITIATED', {
         commandId,
         videoId,
-        loadSuccess,
+        loadSuccess: navSuccess,
       });
       return;
     }

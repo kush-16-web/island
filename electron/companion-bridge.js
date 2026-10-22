@@ -188,6 +188,38 @@ class CompanionBridge extends EventEmitter {
    * Returns a promise that resolves when the companion acknowledges execution.
    */
   dispatchCommand({ action = 'play_track', videoId = null, title = '', artist = '', url = null, timeoutMs = null } = {}) {
+    const now = Date.now();
+
+    // 1. Deduplication: Check if identical command was dispatched in the last 1000ms
+    for (const inFlight of this.inFlightCommands.values()) {
+      const c = inFlight.command;
+      if (c.action === action && c.videoId === videoId && c.title === title && now - c.timestamp < 1000) {
+        return inFlight.promise;
+      }
+    }
+
+    // 2. Superseding: Any previous in-flight command for the same action is safely superseded
+    for (const [inFlightId, inFlight] of this.inFlightCommands.entries()) {
+      if (inFlight.command.action === action) {
+        clearTimeout(inFlight.timer);
+        this.inFlightCommands.delete(inFlightId);
+        inFlight.resolve({
+          ok: true,
+          status: 'superseded',
+          command: inFlight.command,
+          message: `Command superseded by newer request for ${title || videoId || action}`,
+        });
+        this.emit('command-settled', {
+          commandId: inFlightId,
+          status: 'superseded',
+          action,
+        });
+      }
+    }
+
+    // Clear stale pending queue for this action
+    this.pendingCommands = this.pendingCommands.filter((c) => c.action !== action);
+
     const id = `cmd_${Date.now()}_${++this.commandCounter}`;
     const command = {
       id,
@@ -201,23 +233,33 @@ class CompanionBridge extends EventEmitter {
 
     const effectiveTimeout = timeoutMs || this.commandTimeoutMs;
 
-    return new Promise((resolve, reject) => {
+    let inFlightEntry;
+    const promise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
+        if (!this.inFlightCommands.has(id)) return;
         this.inFlightCommands.delete(id);
-        // Remove from pending if still queued
         this.pendingCommands = this.pendingCommands.filter((c) => c.id !== id);
-        const err = new Error(`Command "${action}" timed out after ${effectiveTimeout}ms`);
+
+        this.lastError = `Command "${action}" timed out after ${effectiveTimeout}ms`;
+        this.emit('command-settled', { commandId: id, status: 'timed_out', error: this.lastError });
+
+        const err = new Error(this.lastError);
         err.code = 'COMMAND_TIMEOUT';
         err.commandId = id;
+        err.command = command;
         reject(err);
       }, effectiveTimeout);
 
-      this.lastDispatchedCommand = command;
-      this.inFlightCommands.set(id, { command, resolve, reject, timer });
+      inFlightEntry = { command, resolve, reject, timer };
+      this.inFlightCommands.set(id, inFlightEntry);
       this.pendingCommands.push(command);
+      this.lastDispatchedCommand = command;
 
       this.emit('command-queued', command);
     });
+
+    inFlightEntry.promise = promise;
+    return promise;
   }
 
   /**
@@ -235,39 +277,55 @@ class CompanionBridge extends EventEmitter {
    * Handle command acknowledgment from the companion extension.
    */
   handleAck(ack = {}) {
-    const { commandId, status, error } = ack;
+    const { commandId, status, error, videoId } = ack;
     this.lastAck = ack;
     if (error) this.lastError = error;
 
     if (!commandId || !this.inFlightCommands.has(commandId)) {
-      return { ok: false, error: 'Unknown or expired commandId' };
+      // Late ack from superseded or expired command
+      return { ok: false, error: 'Unknown or expired commandId', status: 'ignored' };
     }
 
     const { command, resolve, reject, timer } = this.inFlightCommands.get(commandId);
     clearTimeout(timer);
     this.inFlightCommands.delete(commandId);
 
+    let finalStatus = status;
+
     if (status === 'playing' || status === 'confirmed_playing') {
+      finalStatus = 'confirmed_playing';
       this.companionInfo.playbackState = 'confirmed_playing';
+      if (videoId || command.videoId) {
+        this.companionInfo.currentTrack = {
+          videoId: videoId || command.videoId,
+          title: ack.title || command.title,
+          artist: ack.artist || command.artist,
+        };
+      }
       resolve({ ok: true, status: 'confirmed_playing', command, ack });
     } else if (status === 'autoplay_blocked') {
+      finalStatus = 'autoplay_blocked';
       this.companionInfo.playbackState = 'autoplay_blocked';
       resolve({ ok: true, status: 'autoplay_blocked', command, ack });
-    } else if (status === 'navigated') {
+    } else if (status === 'navigated' || status === 'navigation_completed_but_not_playing') {
+      finalStatus = 'navigation_completed_but_not_playing';
       this.companionInfo.playbackState = 'waiting_for_player';
       resolve({ ok: true, status: 'navigated', command, ack });
     } else if (status === 'failed') {
+      finalStatus = 'failed';
       this.companionInfo.playbackState = 'failed';
       const err = new Error(error || 'Companion failed to execute command');
       err.code = 'COMMAND_FAILED';
       err.command = command;
+      err.commandId = commandId;
       reject(err);
     } else {
       resolve({ ok: true, status: status || 'ok', command, ack });
     }
 
-    this.emit('command-acked', { commandId, status, ack });
-    return { ok: true };
+    this.emit('command-settled', { commandId, status: finalStatus, ack });
+    this.emit('command-acked', { commandId, status: finalStatus, ack });
+    return { ok: true, status: finalStatus };
   }
 
   /**

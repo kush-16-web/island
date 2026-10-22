@@ -512,17 +512,40 @@ export function addFavorite(track, storage = null, companion = null) {
   return newFavorite;
 }
 
+function stripTitleNoise(title) {
+  return normalizeText(
+    String(title || '')
+      .replace(/\s*\([^)]*(?:official|video|audio|lyrics|visualizer|remix|feat|ft)[^)]*\)/gi, '')
+      .replace(/\s*\[[^\]]*(?:official|video|audio|lyrics|visualizer|remix|feat|ft)[^\]]*\]/gi, '')
+      .replace(/\s*-\s*(?:official|video|audio|lyrics).*/gi, '')
+  );
+}
+
 /**
  * Heal an existing favorite record with an exact video ID and canonical playable URL.
  */
 export function healFavoriteWithExactId(idOrTitle, exactVideoId, storage = null) {
   if (!idOrTitle || !exactVideoId || !/^[a-zA-Z0-9_-]{11}$/.test(exactVideoId)) return null;
   const list = getAllFavorites(storage);
-  const normTarget = normalizeText(idOrTitle);
+  const rawTarget = normalizeText(idOrTitle);
+  const cleanTarget = stripTitleNoise(idOrTitle);
 
   let updatedTrack = null;
   const nextList = list.map((item) => {
-    if (item.id === idOrTitle || normalizeText(item.title) === normTarget) {
+    if (!item) return item;
+    const itemNorm = normalizeText(item.title);
+    const itemClean = stripTitleNoise(item.title);
+
+    // 1. Direct ID match
+    const isIdMatch = item.id === idOrTitle;
+    // 2. Exact or stripped title match
+    const isExactMatch = itemNorm === rawTarget || itemClean === cleanTarget;
+    // 3. Containment match (e.g. "Die For You" within "The Weeknd - Die For You (Official Video)")
+    const isFuzzyMatch =
+      cleanTarget.length >= 4 &&
+      (itemClean.includes(cleanTarget) || cleanTarget.includes(itemClean));
+
+    if (isIdMatch || isExactMatch || isFuzzyMatch) {
       updatedTrack = {
         ...item,
         provider: SUPPORTED_PROVIDERS.YOUTUBE,

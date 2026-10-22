@@ -793,12 +793,19 @@ export function handlePlaybackExecution(
       if (targetVideoId) {
         // Exact video ID available -> request exact playback in existing tab
         if (typeof onDispatchCompanion === 'function') {
-          onDispatchCompanion({
-            action: 'play_track',
-            videoId: targetVideoId,
-            title: track.title,
-            artist: track.artist,
-          });
+          try {
+            const p = onDispatchCompanion({
+              action: 'play_track',
+              videoId: targetVideoId,
+              title: track.title,
+              artist: track.artist,
+            });
+            if (p && typeof p.catch === 'function') {
+              p.catch((err) => console.warn('[music-actions] onDispatchCompanion handled error:', err.message));
+            }
+          } catch (err) {
+            console.warn('[music-actions] onDispatchCompanion synchronous error:', err.message);
+          }
         }
 
         const res = {
@@ -828,13 +835,20 @@ export function handlePlaybackExecution(
           `https://music.youtube.com/search?q=${encodeURIComponent(track.title + ' ' + (track.artist || ''))}`;
 
         if (typeof onDispatchCompanion === 'function') {
-          onDispatchCompanion({
-            action: 'play_track',
-            url: searchUrl,
-            query: `${track.title} ${track.artist || ''}`.trim(),
-            title: track.title,
-            artist: track.artist,
-          });
+          try {
+            const p = onDispatchCompanion({
+              action: 'play_track',
+              url: searchUrl,
+              query: `${track.title} ${track.artist || ''}`.trim(),
+              title: track.title,
+              artist: track.artist,
+            });
+            if (p && typeof p.catch === 'function') {
+              p.catch((err) => console.warn('[music-actions] onDispatchCompanion search handled error:', err.message));
+            }
+          } catch (err) {
+            console.warn('[music-actions] onDispatchCompanion search error:', err.message);
+          }
         }
 
         const res = {

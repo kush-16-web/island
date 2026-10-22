@@ -119,6 +119,8 @@ async function sendHeartbeat() {
   return await postToIsland('/companion/ping', pingPayload);
 }
 
+let currentInFlightCommand = null;
+
 // Pull next command and dispatch to primary YouTube Music tab
 async function pullAndDispatchCommand() {
   const primaryTab = getPrimaryTab();
@@ -128,6 +130,11 @@ async function pullAndDispatchCommand() {
   if (res && res.ok && res.command) {
     const command = res.command;
     console.log('[Dynamic Island SW] Received command from Island:', command.action, command.id);
+    currentInFlightCommand = {
+      command,
+      tabId: primaryTab.tabId,
+      startTime: Date.now(),
+    };
 
     try {
       chrome.tabs.sendMessage(
@@ -138,22 +145,31 @@ async function pullAndDispatchCommand() {
         },
         async (ack) => {
           if (chrome.runtime.lastError) {
-            console.warn('[Dynamic Island SW] Failed to send command to tab:', chrome.runtime.lastError.message);
-            await postToIsland('/companion/ack', {
-              commandId: command.id,
-              status: 'failed',
-              error: chrome.runtime.lastError.message,
-            });
+            console.warn('[Dynamic Island SW] Tab message port closed (tab may be navigating):', chrome.runtime.lastError.message);
+            // Tab might be navigating to watch URL; give it grace period to initialize before failing
+            setTimeout(async () => {
+              if (currentInFlightCommand && currentInFlightCommand.command.id === command.id) {
+                console.warn('[Dynamic Island SW] Command not confirmed after navigation timeout');
+                await postToIsland('/companion/ack', {
+                  commandId: command.id,
+                  status: 'failed',
+                  error: 'Tab navigation completed but player did not start',
+                });
+                currentInFlightCommand = null;
+              }
+            }, 9000);
             return;
           }
           if (ack) {
             console.log('[Dynamic Island SW] Forwarding ack to Island:', ack.status);
+            currentInFlightCommand = null;
             await postToIsland('/companion/ack', ack);
           }
         }
       );
     } catch (err) {
       console.warn('[Dynamic Island SW] Error dispatching command:', err);
+      currentInFlightCommand = null;
       await postToIsland('/companion/ack', {
         commandId: command.id,
         status: 'failed',
@@ -251,6 +267,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.payload?.currentTrack) existing.currentTrack = message.payload.currentTrack;
       existing.lastSeen = Date.now();
       if (existing.status === 'playing') primaryTabId = tabId;
+    }
+
+    if (
+      currentInFlightCommand &&
+      currentInFlightCommand.command.videoId &&
+      message.payload?.videoId === currentInFlightCommand.command.videoId &&
+      (message.payload?.status === 'playing' || message.payload?.event === 'playing')
+    ) {
+      console.log('[Dynamic Island SW] State update confirmed in-flight command:', currentInFlightCommand.command.id);
+      const cmdId = currentInFlightCommand.command.id;
+      const vid = currentInFlightCommand.command.videoId;
+      currentInFlightCommand = null;
+      postToIsland('/companion/ack', {
+        commandId: cmdId,
+        status: 'confirmed_playing',
+        videoId: vid,
+        title: message.payload?.title || '',
+        artist: message.payload?.artist || '',
+      });
     }
 
     postToIsland('/companion/state', message.payload).then((res) => {

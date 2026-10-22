@@ -666,4 +666,137 @@ test('Pass 2.2 Proof of Concept - Browser Companion Bridge & Scenarios', async (
     assert.equal(bridge.isConnected(), true);
     assert.equal(bridge.getDiagnostics().connectionState, 'connected');
   });
+
+  // --- Scenario 19: Rapid commands superseding & deduplication ---
+  await t.test('Scenario 19: Five rapid commands safely supersede older commands without timeouts or crashes', async () => {
+    await postJson('/companion/ping', { isYtMusic: true, status: 'playing' });
+
+    // User rapidly clicks 5 different tracks
+    const p1 = bridge.dispatchCommand({ action: 'play_track', videoId: 'vid1', title: 'Track 1' });
+    const p2 = bridge.dispatchCommand({ action: 'play_track', videoId: 'vid2', title: 'Track 2' });
+    const p3 = bridge.dispatchCommand({ action: 'play_track', videoId: 'vid3', title: 'Track 3' });
+    const p4 = bridge.dispatchCommand({ action: 'play_track', videoId: 'vid4', title: 'Track 4' });
+    const p5 = bridge.dispatchCommand({ action: 'play_track', videoId: 'vid5', title: 'Track 5' });
+
+    // First 4 must resolve as superseded
+    const [r1, r2, r3, r4] = await Promise.all([p1, p2, p3, p4]);
+    assert.equal(r1.status, 'superseded');
+    assert.equal(r2.status, 'superseded');
+    assert.equal(r3.status, 'superseded');
+    assert.equal(r4.status, 'superseded');
+
+    // Only 5th command is pending
+    const pull = await getJson('/companion/command');
+    assert.equal(pull.command?.videoId, 'vid5');
+
+    // Ack 5th command
+    await postJson('/companion/ack', {
+      commandId: pull.command.id,
+      status: 'confirmed_playing',
+      videoId: 'vid5',
+    });
+
+    const r5 = await p5;
+    assert.equal(r5.status, 'confirmed_playing');
+    assert.equal(bridge.getStatus().currentTrack?.videoId, 'vid5');
+  });
+
+  // --- Scenario 20: Late acknowledgment from superseded command is safely ignored ---
+  await t.test('Scenario 20: Late ack from superseded command cannot overwrite active track', async () => {
+    await postJson('/companion/ping', { isYtMusic: true, status: 'playing' });
+
+    const pOld = bridge.dispatchCommand({ action: 'play_track', videoId: 'oldVid', title: 'Old Song' });
+    const pullOld = await getJson('/companion/command');
+
+    // User switches to new song before old song finishes
+    const pNew = bridge.dispatchCommand({ action: 'play_track', videoId: 'newVid', title: 'New Song' });
+    const pullNew = await getJson('/companion/command');
+
+    // Acknowledge new song
+    await postJson('/companion/ack', {
+      commandId: pullNew.command.id,
+      status: 'confirmed_playing',
+      videoId: 'newVid',
+      title: 'New Song',
+    });
+    await pNew;
+    assert.equal(bridge.getStatus().currentTrack?.videoId, 'newVid');
+
+    // Late ack arrives for old song
+    const lateAckRes = await postJson('/companion/ack', {
+      commandId: pullOld.command.id,
+      status: 'confirmed_playing',
+      videoId: 'oldVid',
+      title: 'Old Song',
+    });
+    assert.equal(lateAckRes.ok, false);
+    assert.equal(lateAckRes.status, 'ignored');
+
+    // Current track remains the new song!
+    assert.equal(bridge.getStatus().currentTrack?.videoId, 'newVid');
+  });
+
+  // --- Scenario 21: "Die For You" favorite identity repair with title noise stripping ---
+  await t.test('Scenario 21: Die For You legacy unresolved favorite is healed by confirmed playback of official video', () => {
+    const { addFavorite, getAllFavorites, healFavoriteWithExactId } = require('../src/lib/favorites');
+    const store = new Map();
+    const mockStorage = {
+      getItem: (k) => store.get(k) || null,
+      setItem: (k, v) => store.set(k, String(v)),
+    };
+
+    // Stored as legacy favorite without videoId (reproducing Bug D)
+    addFavorite({
+      title: 'Die For You',
+      artist: 'The Weeknd',
+      provider: 'youtube',
+    }, mockStorage, null);
+
+    const initial = getAllFavorites(mockStorage);
+    assert.equal(initial[0].title, 'Die For You');
+    assert.equal(initial[0].youtubeId, null);
+    assert.equal(initial[0].isUnresolvedIdentity, true);
+    assert.match(initial[0].playableUrl, /search\?q=Die/);
+
+    // User searches and plays official video on YouTube Music: "The Weeknd - Die For You (Official Music Video)"
+    const healed = healFavoriteWithExactId(
+      'The Weeknd - Die For You (Official Music Video)',
+      'u9n7Ey24L3x',
+      mockStorage
+    );
+
+    assert.ok(healed);
+    assert.equal(healed.youtubeId, 'u9n7Ey24L3x');
+    assert.equal(healed.playableUrl, 'https://music.youtube.com/watch?v=u9n7Ey24L3x');
+    assert.equal(healed.isUnresolvedIdentity, false);
+
+    // Persisted in storage permanently
+    const after = getAllFavorites(mockStorage);
+    assert.equal(after[0].youtubeId, 'u9n7Ey24L3x');
+    assert.equal(after[0].isUnresolvedIdentity, false);
+  });
+
+  // --- Scenario 22: Track synchronization from How Long to Pashmina ---
+  await t.test('Scenario 22: State update directly updates track state without lagging SMTC conflict', async () => {
+    await postJson('/companion/ping', {
+      isYtMusic: true,
+      status: 'playing',
+      currentTrack: { videoId: 'howLongVid', title: 'How Long', artist: 'Charlie Puth' },
+    });
+    assert.equal(bridge.getStatus().currentTrack?.title, 'How Long');
+
+    // Pashmina starts playing on YouTube Music
+    await postJson('/companion/state', {
+      event: 'playing',
+      status: 'playing',
+      videoId: 'pashminaVid',
+      title: 'Pashmina',
+      artist: 'Amit Trivedi',
+    });
+
+    const status = bridge.getStatus();
+    assert.equal(status.currentTrack?.videoId, 'pashminaVid');
+    assert.equal(status.currentTrack?.title, 'Pashmina');
+    assert.equal(status.playbackState, 'confirmed_playing');
+  });
 });

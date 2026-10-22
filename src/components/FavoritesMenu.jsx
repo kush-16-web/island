@@ -4,6 +4,7 @@ import {
   removeFavorite,
   updateFavorite,
   reconnectFavoriteProvider,
+  healFavoriteWithExactId,
   SUPPORTED_PROVIDERS,
 } from '../lib/favorites';
 import { playFavoriteTrack } from '../lib/music-actions';
@@ -29,6 +30,19 @@ export default function FavoritesMenu({
   const [favorites, setFavorites] = useState(() => getAllFavorites());
   const [filterProvider, setFilterProvider] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [companionStatus, setCompanionStatus] = useState(() => (typeof window !== 'undefined' && window.__islandCompanionState) || null);
+
+  useEffect(() => {
+    if (window.island?.companion?.getStatus) {
+      window.island.companion.getStatus().then((status) => {
+        setCompanionStatus(status);
+      }).catch(() => {});
+    }
+    const unsub = window.island?.on?.('companion:status-changed', (data) => {
+      setCompanionStatus(data?.info || data);
+    });
+    return () => unsub?.();
+  }, []);
 
   // Synchronize immediately whenever favorites change anywhere in the app
   useEffect(() => {
@@ -267,6 +281,28 @@ export default function FavoritesMenu({
                         >
                           Spotify
                         </button>
+                      </div>
+                    )}
+                    {!item.isAmbiguousSource && (item.isUnresolvedIdentity || (item.provider === 'youtube' && !item.youtubeId)) && (
+                      <div className="fav-item__reconnect-group" onClick={(e) => e.stopPropagation()}>
+                        {companionStatus?.currentTrack?.videoId ? (
+                          <button
+                            type="button"
+                            className="fav-item__reconnect-btn"
+                            style={{ color: 'var(--music-accent, #38bdf8)' }}
+                            onClick={() => {
+                              healFavoriteWithExactId(item.id, companionStatus.currentTrack.videoId);
+                              setFavorites(getAllFavorites());
+                            }}
+                            title={`Link to currently playing track (${companionStatus.currentTrack.title})`}
+                          >
+                            🔗 Link to Playing Track
+                          </button>
+                        ) : (
+                          <span className="fav-item__unresolved-tag" style={{ fontSize: '10px', opacity: 0.6 }}>
+                            Search on play
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

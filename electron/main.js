@@ -737,21 +737,18 @@ function wireNotifyServer() {
   });
   companionBridge.on('state-update', (data) => {
     if (data.track && data.track.videoId) {
-      if (mediaState) {
-        const normSmtc = (mediaState.title || '').toLowerCase().trim();
-        const normComp = (data.track.title || '').toLowerCase().trim();
-        if (!normSmtc || (normComp && (normSmtc.includes(normComp) || normComp.includes(normSmtc)))) {
-          mediaState.active = true;
-          if (data.event === 'playing') mediaState.status = 'playing';
-          else if (data.event === 'paused') mediaState.status = 'paused';
-          if (data.track.title) mediaState.title = data.track.title;
-          if (data.track.artist) mediaState.artist = data.track.artist;
-          mediaState.youtubeId = data.track.videoId;
-          mediaState.provider = 'youtube';
-          mediaState.playableUrl = `https://music.youtube.com/watch?v=${data.track.videoId}`;
-          send('media', mediaState);
-        }
+      if (!mediaState) {
+        mediaState = { active: true, title: '', artist: '' };
       }
+      mediaState.active = true;
+      if (data.event === 'playing') mediaState.status = 'playing';
+      else if (data.event === 'paused') mediaState.status = 'paused';
+      if (data.track.title) mediaState.title = data.track.title;
+      if (data.track.artist) mediaState.artist = data.track.artist;
+      mediaState.youtubeId = data.track.videoId;
+      mediaState.provider = 'youtube';
+      mediaState.playableUrl = `https://music.youtube.com/watch?v=${data.track.videoId}`;
+      send('media', mediaState);
     }
     send('companion:playback-state', data);
   });
@@ -806,7 +803,13 @@ function wireIpc() {
 
   handle('companion:get-status', () => (companionBridge ? companionBridge.getStatus() : { connected: false }));
   handle('companion:get-diagnostics', () => (companionBridge ? companionBridge.getDiagnostics() : { connectionState: 'bridge_unavailable' }));
-  handle('companion:dispatch', (cmd) => (companionBridge ? companionBridge.dispatchCommand(cmd) : Promise.reject(new Error('Companion bridge unavailable'))));
+  handle('companion:dispatch', (cmd) => {
+    if (!companionBridge) return Promise.reject(new Error('Companion bridge unavailable'));
+    return companionBridge.dispatchCommand(cmd).catch((err) => {
+      console.warn('[main] companion:dispatch error handled:', err.message);
+      return { ok: false, status: 'failed', error: err.message, commandId: err.commandId };
+    });
+  });
 
   handle('scheduler:add-alarm', (input) => guard(() => ({ item: scheduler.addAlarm(input) })));
   handle('scheduler:add-timer', (input) => guard(() => ({ item: scheduler.addTimer(input) })));
