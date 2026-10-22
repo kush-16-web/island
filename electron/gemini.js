@@ -503,8 +503,8 @@ For normal conversation, NEVER include an [[ACTION:...]] tag.`;
         };
       }
 
-      // 3. Synthesize speech using gemini-3.8-flash-tts ONLY if not using Kokoro and TTS is not skipped
-      if (skipTts || ttsEngine === 'kokoro' || ttsEngine === 'none') {
+      // 3. Synthesize speech using gemini-3.8-flash-tts ONLY if not using Kokoro/Windows and TTS is not skipped
+      if (skipTts || ttsEngine === 'kokoro' || ttsEngine === 'windows' || ttsEngine === 'none') {
         return {
           ok: true,
           text: replyText,

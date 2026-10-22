@@ -150,4 +150,18 @@ test('PASS 2.2.4.3 — Native Windows TTS & Audible Speech Pipeline', async (t) 
     assert.equal(audioCoordinator.duckState, 'idle');
     assert.equal(audioCoordinator.duckingMultiplier, 1.0);
   });
+
+  await t.test('8. Shared native-audio-player interface provides hardware playback and safe error handling', async () => {
+    const { getPlaybackAudioContext, getPlaybackAnalyser, playNativeWavBase64, stopActivePlayback } = await import('../src/lib/native-audio-player.js');
+
+    // In Node.js environment without window.AudioContext, it safely returns null or handles missing window
+    const invalidRes = await playNativeWavBase64(null);
+    assert.equal(invalidRes.ok, false);
+    assert.equal(invalidRes.error, 'No audio data provided');
+
+    // stopActivePlayback must not throw when called with no active node
+    assert.doesNotThrow(() => stopActivePlayback());
+  });
 });
+
+

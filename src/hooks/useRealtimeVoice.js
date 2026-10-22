@@ -5,6 +5,7 @@ import { getAssistantName } from '../lib/assistant';
 import { audioCoordinator } from '../lib/audio-coordinator';
 import { interpretLocalMusicCommand } from '../lib/music-command-interpreter';
 import { formatActionOutcomeSpeech } from '../lib/music-actions';
+import { playNativeWavBase64, stopActivePlayback, getPlaybackAnalyser } from '../lib/native-audio-player';
 const isDev = Boolean(import.meta.env?.DEV);
 
 function logDevStage(stageNumber, stageDescription, extra = {}) {
@@ -190,6 +191,7 @@ export function useRealtimeVoice(options = {}) {
       animFrameRef.current = null;
     }
 
+    stopActivePlayback();
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.onended = null;
@@ -269,6 +271,7 @@ export function useRealtimeVoice(options = {}) {
   // Interrupt assistant immediately
   const interrupt = useCallback(() => {
     audioCoordinator.cancelDucking();
+    stopActivePlayback();
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.onended = null;
@@ -276,6 +279,9 @@ export function useRealtimeVoice(options = {}) {
         currentSourceRef.current.disconnect();
       } catch {}
       currentSourceRef.current = null;
+    }
+    if (window.island?.windowsTts?.cancel) {
+      try { window.island.windowsTts.cancel(); } catch {}
     }
     if (activeUtteranceRef.current) {
       activeUtteranceRef.current.onend = null;
@@ -304,99 +310,57 @@ export function useRealtimeVoice(options = {}) {
     }
   }, []);
 
-  // Play audio buffer received from TTS with real-time waveform connection and explicit Promise completion
+  // Play audio buffer received from TTS using shared, hardware-verified native player
   const playAssistantSpeech = useCallback((audioBase64, text, turnId, isIntermediate = false) => {
     return new Promise(async (resolve) => {
-      const audioCtx = audioContextRef.current;
-      if (!audioCtx) {
+      if (!controller.isTurnActive(turnId)) {
         logDevStage(9, 'Audio playback rejected', {
-          reason: 'No AudioContext available',
+          reason: 'Turn superseded before audio start',
           turnId,
         });
-        resolve({ ok: false, error: 'AudioContext unavailable' });
+        resolve({ ok: false, error: 'Turn superseded before audio start' });
         return;
       }
 
-      try {
-        if (audioCtx.state === 'suspended') {
-          try {
-            await audioCtx.resume();
-          } catch (e) {
-            console.warn('[AudioContext Resume Error]', e);
+      const startTime = Date.now();
+      const res = await playNativeWavBase64(audioBase64, {
+        onStart: () => {
+          if (!controller.isTurnActive(turnId)) {
+            stopActivePlayback();
+            resolve({ ok: false, error: 'Turn superseded at audio start' });
+            return;
           }
-        }
+          controller.beginSpeaking(turnId);
+          setStatus('speaking');
+          window.island?.setVoiceMood?.('speaking');
 
-        const arrayBuffer = base64ToArrayBuffer(audioBase64);
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-        // Verify turn is still active before starting playback
-        if (!controller.isTurnActive(turnId)) {
-          resolve({ ok: false, error: 'Turn superseded before audio start' });
-          return;
-        }
-
-        // Stop any existing playback
-        if (currentSourceRef.current) {
-          try {
-            currentSourceRef.current.onended = null;
-            currentSourceRef.current.stop();
-            currentSourceRef.current.disconnect();
-          } catch {}
-          currentSourceRef.current = null;
-        }
-
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-
-        // Connect source to speaker analyser -> destination for actual output-driven waveform
-        let speakerAnalyser = speakerAnalyserRef.current;
-        if (!speakerAnalyser) {
-          speakerAnalyser = audioCtx.createAnalyser();
-          speakerAnalyser.fftSize = 64;
-          speakerAnalyser.smoothingTimeConstant = 0.75;
-          speakerAnalyserRef.current = speakerAnalyser;
-        }
-
-        source.connect(speakerAnalyser);
-        speakerAnalyser.connect(audioCtx.destination);
-        currentSourceRef.current = source;
-
-        controller.beginSpeaking(turnId);
-        setStatus('speaking');
-        window.island?.setVoiceMood?.('speaking');
-
-        const startTime = Date.now();
-
-        logDevStage(9, 'Audio playback started', {
-          method: 'audio_buffer',
-          durationMs: Math.round(audioBuffer.duration * 1000),
-          audioCtxState: audioCtx.state,
-          effectiveVolume: audioCoordinator.effectiveVolume,
-          controllerState: controller.state,
-          turnId,
-        });
-
-        source.onended = () => {
-          if (currentSourceRef.current === source) {
-            currentSourceRef.current = null;
-          }
+          logDevStage(9, 'Audio playback started', {
+            method: 'native_wav_buffer',
+            effectiveVolume: audioCoordinator.effectiveVolume,
+            controllerState: controller.state,
+            turnId,
+          });
+        },
+        onEnded: () => {
           logDevStage(9, 'Audio playback ended', {
-            method: 'audio_buffer',
+            method: 'native_wav_buffer',
             durationMs: Date.now() - startTime,
             turnId,
           });
           resolve({ ok: true });
-        };
+        },
+        onError: (err) => {
+          console.warn('[Audio Playback Error]', err);
+          logDevStage(9, 'Audio playback rejected', {
+            reason: err.message || 'Error playing native audio buffer',
+            turnId,
+          });
+          resolve({ ok: false, error: err.message || 'Audio playback error' });
+        },
+      });
 
-        source.start(0);
-      } catch (err) {
-        console.warn('[Audio Playback Error]', err);
-        logDevStage(9, 'Audio playback rejected', {
-          reason: err.message || 'Error decoding or playing audio buffer',
-          audioCtxState: audioCtx?.state,
-          turnId,
-        });
-        resolve({ ok: false, error: err.message || 'Audio playback error' });
+      if (!res.ok) {
+        resolve(res);
       }
     });
   }, [controller]);
@@ -616,6 +580,8 @@ export function useRealtimeVoice(options = {}) {
       const audioData = arrayBufferToBase64(wavBuffer);
 
       let userText = null;
+      let turnResult = null;
+      let geminiAudioBase64 = null;
 
       // 1. Stage 1: Speech-to-Text (STT)
       if (sttProvider === 'groq-whisper') {
@@ -895,24 +861,25 @@ export function useRealtimeVoice(options = {}) {
           }
         }
 
-        // Graceful Native Fallback: If Gemini or Kokoro TTS failed (e.g. 429 quota exhaustion or network error),
+        // Graceful Native Fallback: If primary TTS failed or was unavailable,
         // synthesize via native Windows SAPI TTS so speech is audibly delivered to speakers!
-        if (!audioBase64 && (ttsEngine === 'gemini' || ttsEngine === 'kokoro')) {
-          if (window.island?.windowsTts?.synthesizeSpeech) {
-            try {
-              const savedWindowsVoice = localStorage.getItem('island_windows_voice_uri') || undefined;
-              const winFallbackRes = await window.island.windowsTts.synthesizeSpeech({
-                text: textToSynthesize,
-                voice: savedWindowsVoice,
+        if (!audioBase64 && window.island?.windowsTts?.synthesizeSpeech) {
+          try {
+            const savedWindowsVoice = localStorage.getItem('island_windows_voice_uri') || undefined;
+            const winFallbackRes = await window.island.windowsTts.synthesizeSpeech({
+              text: textToSynthesize,
+              voice: savedWindowsVoice,
+            });
+            if (winFallbackRes?.ok && winFallbackRes.audioBase64) {
+              audioBase64 = winFallbackRes.audioBase64;
+              logDevStage(9, 'Fell back to Native Windows SAPI TTS', {
+                originalEngine: ttsEngine,
+                originalError: ttsError,
+                bytes: winFallbackRes.audioBase64.length,
               });
-              if (winFallbackRes?.ok && winFallbackRes.audioBase64) {
-                audioBase64 = winFallbackRes.audioBase64;
-                logDevStage(9, 'Fell back to Native Windows SAPI TTS', {
-                  originalEngine: ttsEngine,
-                  originalError: ttsError,
-                });
-              }
-            } catch {}
+            }
+          } catch (fbErr) {
+            console.warn('[Windows TTS Fallback Error]', fbErr);
           }
         }
 
@@ -1198,11 +1165,6 @@ export function useRealtimeVoice(options = {}) {
       micSource.connect(micAnalyser);
       micAnalyserRef.current = micAnalyser;
 
-      const speakerAnalyser = audioCtx.createAnalyser();
-      speakerAnalyser.fftSize = 64;
-      speakerAnalyser.smoothingTimeConstant = 0.75;
-      speakerAnalyserRef.current = speakerAnalyser;
-
       // 4. Hardened VAD via ScriptProcessor & VoiceTurnController
       const bufferSize = 2048;
       const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
@@ -1244,8 +1206,9 @@ export function useRealtimeVoice(options = {}) {
           lastVisualUpdate = timestamp;
           let currentLevel = 0;
 
-          if (controller.state === 'speaking' && speakerAnalyserRef.current) {
-            speakerAnalyserRef.current.getByteFrequencyData(speakerData);
+          const playbackAnalyser = getPlaybackAnalyser();
+          if (controller.state === 'speaking' && playbackAnalyser) {
+            playbackAnalyser.getByteFrequencyData(speakerData);
             let sum = 0;
             for (let i = 0; i < 16; i++) {
               const val = speakerData[i] / 255;

@@ -1,32 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icon } from './icons';
-
-function base64ToArrayBuffer(base64) {
-  const binaryString = window.atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
+import { playNativeWavBase64, stopActivePlayback, getPlaybackAudioContext } from '../lib/native-audio-player';
 
 export default function VoiceOutputDiagnostic() {
   const [isRunning, setIsRunning] = useState(false);
   const [report, setReport] = useState(null);
   const [logMessages, setLogMessages] = useState([]);
-  const audioContextRef = useRef(null);
-  const sourceNodeRef = useRef(null);
   const activeUtteranceRef = useRef(null);
 
   useEffect(() => {
     return () => {
-      if (sourceNodeRef.current) {
-        try { sourceNodeRef.current.stop(); } catch {}
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        try { audioContextRef.current.close(); } catch {}
-      }
+      stopActivePlayback();
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         try { window.speechSynthesis.cancel(); } catch {}
       }
@@ -153,42 +137,32 @@ export default function VoiceOutputDiagnostic() {
           diag.windowsNative.audioBytes = synthRes.audioBase64.length;
           addLog(`Native SAPI generated ${Math.round(synthRes.audioBase64.length * 0.75)} bytes of PCM WAV in ${elapsed}ms`);
 
-          // Play through WebAudio to the user's default Windows speaker
-          addLog('Initializing WebAudio output node...');
-          let ctx = audioContextRef.current;
-          if (!ctx || ctx.state === 'closed') {
-            ctx = new (window.AudioContext || window.webkitAudioContext)();
-            audioContextRef.current = ctx;
-          }
-          if (ctx.state === 'suspended') {
-            await ctx.resume();
-          }
-          diag.webAudio.contextState = ctx.state;
-          addLog(`AudioContext state: ${ctx.state}, sampleRate: ${ctx.sampleRate}Hz`);
+          // Play through shared WebAudio player to the user's default Windows speaker
+          addLog('Initializing WebAudio output via shared native-audio-player...');
+          const ctx = getPlaybackAudioContext();
+          diag.webAudio.contextState = ctx?.state;
+          addLog(`AudioContext state: ${ctx?.state}, sampleRate: ${ctx?.sampleRate}Hz`);
 
-          const arrayBuf = base64ToArrayBuffer(synthRes.audioBase64);
-          const audioBuf = await ctx.decodeAudioData(arrayBuf);
-          addLog(`Decoded WAV AudioBuffer: ${audioBuf.duration.toFixed(2)}s, ${audioBuf.numberOfChannels} channel(s)`);
-
-          const source = ctx.createBufferSource();
-          source.buffer = audioBuf;
-          source.connect(ctx.destination);
-          sourceNodeRef.current = source;
-
-          await new Promise((playbackResolve) => {
-            source.onended = () => {
+          const playRes = await playNativeWavBase64(synthRes.audioBase64, {
+            onStart: () => {
+              diag.webAudio.playbackStarted = true;
+              diag.webAudio.hardwareAudible = true;
+              addLog('WebAudio hardware playback started...');
+            },
+            onEnded: () => {
               diag.webAudio.playbackEnded = true;
-              addLog('WebAudio source.onended fired: Audio played through Windows speakers!');
-              playbackResolve();
-            };
-
-            diag.webAudio.playbackStarted = true;
-            diag.webAudio.hardwareAudible = true;
-            addLog('Starting WebAudio hardware playback (source.start(0))...');
-            source.start(0);
+              addLog('WebAudio playback ended: Audio played through Windows speakers!');
+            },
+            onError: (err) => {
+              addLog(`Playback error: ${err.message}`);
+            },
           });
 
-          diag.finalVerdict = 'SUCCESS: Real audible speech generated via Native SAPI and delivered through Windows speakers.';
+          if (playRes.ok) {
+            diag.finalVerdict = 'SUCCESS: Real audible speech generated via Native SAPI and delivered through Windows speakers.';
+          } else {
+            diag.finalVerdict = `FAILED: Playback error (${playRes.error})`;
+          }
         } else {
           diag.windowsNative.synthesisOk = false;
           addLog(`Native synthesis failed: ${synthRes?.error || 'Unknown error'}`);
