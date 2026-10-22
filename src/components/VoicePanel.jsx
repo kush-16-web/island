@@ -232,9 +232,9 @@ export default function VoicePanel({
   let currentStatus = 'listening';
   let statusLabel = 'Listening';
 
-  if (status === 'error') {
+  if (status === 'error' || status === 'failed') {
     currentStatus = 'error';
-    statusLabel = 'Notice';
+    statusLabel = status === 'failed' ? 'Failed' : 'Notice';
   } else if (status === 'cooldown') {
     currentStatus = 'cooldown';
     statusLabel = cooldownSeconds > 0 ? `Resting (${cooldownSeconds}s)` : 'Cooling Down';
@@ -244,9 +244,21 @@ export default function VoicePanel({
   } else if (status === 'connecting') {
     currentStatus = 'connecting';
     statusLabel = 'Connecting';
-  } else if (status === 'thinking' || status === 'processing') {
+  } else if (status === 'understanding' || status === 'thinking' || status === 'processing') {
     currentStatus = 'thinking';
-    statusLabel = 'Thinking';
+    statusLabel = 'Understanding';
+  } else if (status === 'acknowledging') {
+    currentStatus = 'speaking';
+    statusLabel = 'Opening';
+  } else if (status === 'executing' || status === 'awaiting_result') {
+    currentStatus = 'thinking';
+    statusLabel = 'Connecting Player';
+  } else if (status === 'completed') {
+    currentStatus = 'speaking';
+    statusLabel = 'Playing';
+  } else if (status === 'needs_user_action') {
+    currentStatus = 'cooldown';
+    statusLabel = 'Action Needed';
   } else if (status === 'speaking') {
     currentStatus = 'speaking';
     statusLabel = 'Speaking';

@@ -42,6 +42,7 @@ export const ALLOWED_ACTIONS = Object.freeze([
   'add_current_to_favorites',
   'remove_current_from_favorites',
   'show_favorites',
+  'compound_pause_play',
 ]);
 
 export const PLAYBACK_STATES = Object.freeze({
@@ -53,6 +54,42 @@ export const PLAYBACK_STATES = Object.freeze({
   AUTOPLAY_BLOCKED: 'autoplay_blocked',
   FAILED: 'failed',
 });
+
+/**
+ * Format context-aware, concise final speech matching actual browser companion outcomes.
+ * Adheres strictly to Pass 2.2.4 Section 4 specifications.
+ */
+export function formatActionOutcomeSpeech(outcome, trackTitle, extra = {}) {
+  const title = trackTitle || 'the song';
+  switch (outcome) {
+    case 'confirmed_playing':
+    case 'playing':
+      return `Playing ${title}. Enjoy!`;
+
+    case 'search_results_opened':
+    case 'opened_provider':
+    case 'navigated':
+      if (extra.isUnresolved || extra.isSearch) {
+        return `I've opened the results for ${title}.`;
+      }
+      return `${title} is open. Playback hasn't started yet.`;
+
+    case 'autoplay_blocked':
+      return `${title} is ready, but you'll need to press Play.`;
+
+    case 'navigation_completed_but_not_playing':
+    case 'waiting_for_player':
+    case 'playback_pending':
+      return `${title} is open. Playback hasn't started yet.`;
+
+    case 'failed':
+    case 'timed_out':
+    case 'COMMAND_TIMEOUT':
+    case 'COMMAND_FAILED':
+    default:
+      return `I couldn't open ${title} this time.`;
+  }
+}
 
 /**
  * Normalize string for resilient phonetic/spoken comparison.
@@ -283,6 +320,26 @@ export function executeMusicAction(intent, env = {}) {
   }
 
   switch (action) {
+    case 'compound_pause_play': {
+      // 1. Preserve intended order: Pause current playback source
+      if (media.active && media.status !== 'paused') {
+        onControl('pause');
+      }
+      // 2. Execute target playback action
+      const playIntent = intent.playIntent || { action: 'play_favorite', track };
+      const playRes = executeMusicAction(playIntent, env);
+      const targetTitle = playRes.track?.title || track?.title || 'the song';
+      const initialAck = `Pausing and opening ${targetTitle}.`;
+      return {
+        ...playRes,
+        action: 'compound_pause_play',
+        subActions: ['pause', playIntent.action],
+        initialAcknowledgment: initialAck,
+        spokenConfirmation: initialAck,
+        isCompound: true,
+      };
+    }
+
     case 'show_favorites': {
       if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
         window.dispatchEvent(
@@ -814,7 +871,9 @@ export function handlePlaybackExecution(
           track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId },
           status: 'playback_requested',
           playbackState: PLAYBACK_STATES.PLAYBACK_REQUESTED,
-          spokenConfirmation: `Requesting ${track.title} on YouTube Music.`,
+          initialAcknowledgment: `Opening ${track.title}.`,
+          spokenConfirmation: `Opening ${track.title}.`,
+          awaitingResult: true,
         };
 
         logActionDiagnostic({
@@ -856,8 +915,12 @@ export function handlePlaybackExecution(
           action,
           track: { title: track.title, artist: track.artist, provider: track.provider, isUnresolvedIdentity: true },
           status: 'opened_provider',
+          subStatus: 'search_results_opened',
           playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
+          initialAcknowledgment: `Opening ${track.title}.`,
           spokenConfirmation: `Opening search for ${track.title} in your YouTube Music tab. Please select your version.`,
+          awaitingResult: true,
+          isUnresolved: true,
         };
 
         logActionDiagnostic({
@@ -890,8 +953,12 @@ export function handlePlaybackExecution(
       action,
       track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId },
       status: 'opened_provider',
+      subStatus: targetVideoId ? 'opened_provider' : 'search_results_opened',
       playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
+      initialAcknowledgment: `Opening ${track.title}.`,
       spokenConfirmation: `Opening ${track.title} in YouTube Music.`,
+      awaitingResult: true,
+      isUnresolved: !targetVideoId,
     };
 
     logActionDiagnostic({

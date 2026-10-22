@@ -69,15 +69,28 @@ function CompactVoiceView({ voice, width }) {
   const assistantName = getAssistantName();
   let dotClass = 'is-listening';
   let stateLabel = 'Listening';
-  if (voice.status === 'thinking' || voice.status === 'processing') {
+
+  if (voice.status === 'understanding' || voice.status === 'thinking' || voice.status === 'processing') {
     dotClass = 'is-thinking';
-    stateLabel = 'Thinking';
+    stateLabel = 'Understanding';
+  } else if (voice.status === 'acknowledging') {
+    dotClass = 'is-speaking';
+    stateLabel = 'Opening';
+  } else if (voice.status === 'executing' || voice.status === 'awaiting_result') {
+    dotClass = 'is-thinking';
+    stateLabel = 'Connecting player';
+  } else if (voice.status === 'completed') {
+    dotClass = 'is-speaking';
+    stateLabel = 'Playing';
+  } else if (voice.status === 'needs_user_action') {
+    dotClass = 'is-cooldown';
+    stateLabel = 'Action needed';
+  } else if (voice.status === 'failed' || voice.status === 'error') {
+    dotClass = 'is-error';
+    stateLabel = 'Failed';
   } else if (voice.status === 'speaking') {
     dotClass = 'is-speaking';
     stateLabel = 'Speaking';
-  } else if (voice.status === 'error') {
-    dotClass = 'is-error';
-    stateLabel = 'Error';
   } else if (voice.status === 'connecting') {
     dotClass = 'is-connecting';
     stateLabel = 'Connecting';

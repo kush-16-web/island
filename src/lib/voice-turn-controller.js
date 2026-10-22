@@ -10,6 +10,18 @@
  * 6. Speaker Mic Suppression: Drops mic frames while assistant is speaking to eliminate self-recording.
  * 7. Rate-Limit Cooldown: Manages Google 429 retryDelay and locks submissions until the cooldown timer expires.
  */
+export const ACTION_LIFECYCLE_STATES = Object.freeze({
+  IDLE: 'idle',
+  LISTENING: 'listening',
+  UNDERSTANDING: 'understanding',
+  ACKNOWLEDGING: 'acknowledging',
+  EXECUTING: 'executing',
+  AWAITING_RESULT: 'awaiting_result',
+  COMPLETED: 'completed',
+  NEEDS_USER_ACTION: 'needs_user_action',
+  FAILED: 'failed',
+});
+
 export class VoiceTurnController {
   constructor(options = {}) {
     this.state = 'idle';
@@ -218,32 +230,42 @@ export class VoiceTurnController {
   /**
    * Call when assistant speech playback begins.
    */
-  beginSpeaking(turnId) {
+  beginSpeaking(turnId, speakingState = 'speaking') {
     if (turnId !== undefined && turnId !== this.turnId) {
       return false; // Stale turn
     }
-    if (this.state !== 'processing' && this.state !== 'speaking') {
+    // Allow speaking from active turn states
+    const activeAllowedStates = [
+      'processing',
+      'understanding',
+      'acknowledging',
+      'executing',
+      'awaiting_result',
+      'completed',
+      'needs_user_action',
+      'failed',
+      'speaking',
+    ];
+    if (!activeAllowedStates.includes(this.state)) {
       return false; // Interrupted or cancelled
     }
     this.isProcessing = false;
     this.isSpeaking = true;
     this.preSpeechRingBuffer = [];
     this.accumulatedChunks = [];
-    this.setState('speaking', { turnId });
+    this.setState(speakingState, { turnId });
     return true;
   }
 
   /**
    * Call when assistant speech playback finishes.
    */
-  finishSpeaking(turnId) {
+  finishSpeaking(turnId, nextState = 'listening') {
     if (turnId !== undefined && turnId !== this.turnId) {
       return false; // Stale turn
     }
     this.isSpeaking = false;
-    if (this.state === 'speaking') {
-      this.setState('listening');
-    }
+    this.setState(nextState, { turnId });
     return true;
   }
 

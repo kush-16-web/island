@@ -48,19 +48,28 @@ export function useIsland() {
     let alive = true;
     island.getState().then((s) => {
       if (!alive) return;
-      dispatch({
-        type: 'init',
-        payload: {
-          schedule: s.schedule,
-          inbox: s.inbox,
-          media: s.media,
-          platform: s.platform,
-          port: s.port,
-          hotkey: s.hotkey,
-          systemAccent: s.systemAccent || null,
-        },
+        dispatch({
+          type: 'init',
+          payload: {
+            schedule: s.schedule,
+            inbox: s.inbox,
+            media: s.media,
+            platform: s.platform,
+            port: s.port,
+            hotkey: s.hotkey,
+            systemAccent: s.systemAccent || null,
+          },
+        });
+        if (s.companion && typeof window !== 'undefined') {
+          window.__islandCompanionState = s.companion;
+        } else if (window.island?.companion?.getStatus) {
+          window.island.companion.getStatus().then((comp) => {
+            if (alive && comp && typeof window !== 'undefined') {
+              window.__islandCompanionState = comp;
+            }
+          }).catch(() => {});
+        }
       });
-    });
     const offs = [
       island.on('scheduler:state', (payload) => dispatch({ type: 'schedule', payload })),
       island.on('inbox:state', (payload) => dispatch({ type: 'inbox', payload })),
@@ -70,6 +79,19 @@ export function useIsland() {
         dispatch({ type: 'ring', payload: { ...payload, key: `${payload.item.id}-${Date.now()}` } }),
       ),
       island.on('system:accent-color', (payload) => dispatch({ type: 'system-accent', payload })),
+      island.on('companion:status-changed', (payload) => {
+        if (typeof window !== 'undefined') {
+          window.__islandCompanionState = payload?.info || payload;
+        }
+      }),
+      island.on('companion:playback-state', (payload) => {
+        if (typeof window !== 'undefined' && window.__islandCompanionState) {
+          window.__islandCompanionState.playbackState = payload?.playbackState || payload?.status || window.__islandCompanionState.playbackState;
+          if (payload?.track) {
+            window.__islandCompanionState.currentTrack = payload.track;
+          }
+        }
+      }),
     ];
     return () => {
       alive = false;

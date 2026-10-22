@@ -3240,16 +3240,28 @@ button:hover .lucide-icon--bell {
   background: var(--music-accent, var(--accent, #38bdf8));
   box-shadow: 0 0 6px var(--music-accent, var(--accent, #38bdf8));
   flex-shrink: 0;
+  transition: background-color 0.24s ease, box-shadow 0.24s ease, transform 0.2s ease, opacity 0.2s ease;
 }
 .compact-voice-dot.is-speaking {
-  box-shadow: 0 0 8px var(--music-accent, var(--accent, #38bdf8));
+  box-shadow: 0 0 10px var(--music-accent, var(--accent, #38bdf8));
+  transform: scale(1.08);
 }
 .compact-voice-dot.is-thinking {
-  animation: voice-pulse-anim 1s infinite;
+  animation: voice-pulse-anim 1.2s infinite ease-in-out;
+}
+.compact-voice-dot.is-cooldown {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
 }
 .compact-voice-dot.is-error {
   background: #ef4444;
   box-shadow: 0 0 6px rgba(239, 68, 68, 0.8);
+}
+@media (prefers-reduced-motion: reduce) {
+  .compact-voice-dot {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 .compact-voice-bars {
   display: flex;

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { VoiceTurnController } from '../lib/voice-turn-controller';
+import { VoiceTurnController, ACTION_LIFECYCLE_STATES } from '../lib/voice-turn-controller';
 import { processTurnIntent } from '../lib/voice-intent';
 import { getAssistantName } from '../lib/assistant';
 import { audioCoordinator } from '../lib/audio-coordinator';
 import { interpretLocalMusicCommand } from '../lib/music-command-interpreter';
+import { formatActionOutcomeSpeech } from '../lib/music-actions';
 
 /**
  * Helper to encode float32 PCM samples into standard 16-bit mono WAV ArrayBuffer
@@ -117,6 +118,7 @@ export function useRealtimeVoice(options = {}) {
   const currentSourceRef = useRef(null);
   const animFrameRef = useRef(null);
   const historyRef = useRef([]);
+  const handledTurnsRef = useRef(new Set());
 
   // Deterministic Turn Controller
   const controllerRef = useRef(null);
@@ -515,102 +517,256 @@ export function useRealtimeVoice(options = {}) {
         });
       }
 
-      const finalSpokenText = turnResult.spokenText;
-      const finalTranscriptText = turnResult.transcriptText;
-
-      setTranscript((prev) => [
-        ...prev,
-        { role: 'assistant', text: finalTranscriptText },
-      ]);
-      historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
-
-      // Check if this action triggers music playback (PASS 2 - PART E & F)
+      // 5. Stage 4: Context-Aware Action Lifecycle & Outcome Speech (PASS 2.2.4)
       const isPlaybackAction = Boolean(
         turnResult.actionResult?.ok && (
           turnResult.actionResult.action === 'play_favorite' ||
           turnResult.actionResult.action === 'play_track' ||
-          turnResult.actionResult.action === 'play_random_favorite'
+          turnResult.actionResult.action === 'play_random_favorite' ||
+          turnResult.actionResult.action === 'compound_pause_play'
         )
       );
 
-      if (isPlaybackAction) {
-        // Start playing music softly in background (~22% volume) over 250ms
-        audioCoordinator.startDucking({ duckLevel: 0.22, durationMs: 250 });
-      }
+      const isAwaitingBrowserOutcome = Boolean(
+        isPlaybackAction && turnResult.actionResult?.awaitingResult
+      );
 
-      const handleSpeechComplete = () => {
-        if (isPlaybackAction) {
-          // Smoothly fade music back up to 100% user volume over 1100ms
-          audioCoordinator.restoreVolume({ durationMs: 1100 });
-          // Only transition to Now Playing if requested song is confirmed playing or resumed
-          const isConfirmedPlaying =
-            turnResult.actionResult?.status === 'confirmed_playing' ||
-            turnResult.actionResult?.status === 'resumed_current' ||
-            (mediaRef.current?.active && mediaRef.current?.status === 'playing');
-
-          if (isConfirmedPlaying && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-            window.dispatchEvent(new CustomEvent('island:navigate', { detail: { tab: 'playing' } }));
+      const synthesizeSpeechText = async (textToSynthesize) => {
+        if (!textToSynthesize || typeof textToSynthesize !== 'string') return null;
+        let audioBase64 = null;
+        if (ttsEngine === 'kokoro') {
+          if (window.island?.kokoro?.synthesize) {
+            try {
+              const kRes = await window.island.kokoro.synthesize({
+                text: textToSynthesize,
+                voice: kokoroVoice,
+                speed: 1.0,
+              });
+              if (kRes?.ok && kRes.audioBase64) {
+                audioBase64 = kRes.audioBase64;
+              } else if (!allowCloudFallback) {
+                console.warn('[Kokoro synthesis unavailable, cloud fallback disallowed]:', kRes?.error);
+              }
+            } catch (kErr) {
+              console.warn('[Kokoro synthesis error]:', kErr);
+            }
+          }
+          if (!audioBase64 && allowCloudFallback && window.island?.gemini?.synthesizeSpeech) {
+            try {
+              const synthRes = await window.island.gemini.synthesizeSpeech({
+                text: textToSynthesize,
+                voice: 'Despina',
+              });
+              if (synthRes?.ok && synthRes.audioBase64) {
+                audioBase64 = synthRes.audioBase64;
+              }
+            } catch (e) {
+              console.warn('[Cloud fallback synthesis failed]:', e);
+            }
+          }
+        } else if (ttsEngine === 'gemini') {
+          if (geminiAudioBase64 && textToSynthesize === turnResult.spokenText) {
+            audioBase64 = geminiAudioBase64;
+          } else if (window.island?.gemini?.synthesizeSpeech) {
+            try {
+              const synthRes = await window.island.gemini.synthesizeSpeech({
+                text: textToSynthesize,
+                voice: 'Despina',
+              });
+              if (synthRes?.ok && synthRes.audioBase64) {
+                audioBase64 = synthRes.audioBase64;
+              }
+            } catch (e) {
+              console.warn('[Synthesize spoken action failed]:', e);
+            }
           }
         }
+        return audioBase64;
       };
 
-      // 5. Stage 4: Speech Synthesis (TTS)
-      let spokenAudioBase64 = null;
+      if (isAwaitingBrowserOutcome) {
+        // Multi-phase flow: Acknowledge immediately -> Await browser result -> Speak concise outcome
+        const initialText =
+          turnResult.actionResult.initialAcknowledgment ||
+          turnResult.actionResult.spokenConfirmation ||
+          `Opening ${turnResult.actionResult.track?.title || 'the song'}.`;
 
-      if (ttsEngine === 'kokoro') {
-        if (window.island?.kokoro?.synthesize) {
-          try {
-            const kRes = await window.island.kokoro.synthesize({
-              text: finalSpokenText,
-              voice: kokoroVoice,
-              speed: 1.0,
-            });
-            if (kRes?.ok && kRes.audioBase64) {
-              spokenAudioBase64 = kRes.audioBase64;
-            } else if (!allowCloudFallback) {
-              console.warn('[Kokoro synthesis unavailable, cloud fallback disallowed]:', kRes?.error);
-            }
-          } catch (kErr) {
-            console.warn('[Kokoro synthesis error]:', kErr);
-          }
+        setTranscript((prev) => [
+          ...prev,
+          { role: 'assistant', text: initialText },
+        ]);
+        historyRef.current.push({ role: 'assistant', text: initialText });
+
+        // Start ducking audio softly
+        audioCoordinator.startDucking({ duckLevel: 0.22, durationMs: 250 });
+
+        // Transition to acknowledging state
+        controller.setState('acknowledging', { turnId, text: initialText });
+        const initialAudio = await synthesizeSpeechText(initialText);
+
+        if (initialAudio && controller.isTurnActive(turnId)) {
+          await playAssistantSpeech(initialAudio, initialText, turnId);
         }
 
-        // STRICT SAFETY: Never call Gemini TTS unless user explicitly turned on cloud fallback
-        if (!spokenAudioBase64 && allowCloudFallback && window.island?.gemini?.synthesizeSpeech) {
-          try {
-            const synthRes = await window.island.gemini.synthesizeSpeech({
-              text: finalSpokenText,
-              voice: 'Despina',
-            });
-            if (synthRes?.ok && synthRes.audioBase64) {
-              spokenAudioBase64 = synthRes.audioBase64;
-            }
-          } catch (e) {
-            console.warn('[Cloud fallback synthesis failed]:', e);
-          }
+        // Check if turn was superseded during initial speech
+        if (!controller.isTurnActive(turnId)) {
+          audioCoordinator.restoreVolume({ durationMs: 500 });
+          return;
         }
-      } else if (ttsEngine === 'gemini') {
-        spokenAudioBase64 = geminiAudioBase64;
-        if (!spokenAudioBase64 && window.island?.gemini?.synthesizeSpeech) {
-          try {
-            const synthRes = await window.island.gemini.synthesizeSpeech({
-              text: finalSpokenText,
-              voice: 'Despina',
-            });
-            if (synthRes?.ok && synthRes.audioBase64) {
-              spokenAudioBase64 = synthRes.audioBase64;
-            }
-          } catch (e) {
-            console.warn('[Synthesize spoken action failed]:', e);
-          }
-        }
-      }
 
-      if (spokenAudioBase64 && controller.isTurnActive(turnId)) {
-        await playAssistantSpeech(spokenAudioBase64, finalSpokenText, turnId, handleSpeechComplete);
+        // Transition to executing / awaiting_result
+        controller.setState('awaiting_result', {
+          turnId,
+          track: turnResult.actionResult.track,
+        });
+
+        // Wait for actual browser outcome (max 7500ms timeout)
+        const outcome = await new Promise((resolve) => {
+          let settled = false;
+          let unsub = null;
+
+          const timer = setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              if (unsub) unsub();
+              resolve({ status: 'timed_out' });
+            }
+          }, 7500);
+
+          if (window.island?.on) {
+            unsub = window.island.on('companion:playback-state', (payload) => {
+              if (settled) return;
+              if (payload?.status === 'playing' || payload?.event === 'playing') {
+                settled = true;
+                clearTimeout(timer);
+                if (unsub) unsub();
+                resolve({ status: 'confirmed_playing', ...payload });
+              } else if (payload?.status === 'autoplay_blocked' || payload?.event === 'autoplay_blocked') {
+                settled = true;
+                clearTimeout(timer);
+                if (unsub) unsub();
+                resolve({ status: 'autoplay_blocked', ...payload });
+              }
+            });
+          }
+
+          if (turnResult.actionResult.dispatchPromise) {
+            turnResult.actionResult.dispatchPromise
+              .then((res) => {
+                if (settled) return;
+                if (res?.status === 'confirmed_playing') {
+                  settled = true;
+                  clearTimeout(timer);
+                  if (unsub) unsub();
+                  resolve({ status: 'confirmed_playing', ...res });
+                } else if (res?.status === 'navigated' || res?.ack?.isUnresolved) {
+                  settled = true;
+                  clearTimeout(timer);
+                  if (unsub) unsub();
+                  resolve({ status: 'search_results_opened', ...res });
+                } else if (res?.status === 'autoplay_blocked') {
+                  settled = true;
+                  clearTimeout(timer);
+                  if (unsub) unsub();
+                  resolve({ status: 'autoplay_blocked', ...res });
+                } else if (res?.status === 'navigation_completed_but_not_playing') {
+                  settled = true;
+                  clearTimeout(timer);
+                  if (unsub) unsub();
+                  resolve({ status: 'playback_pending', ...res });
+                }
+              })
+              .catch((err) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (unsub) unsub();
+                resolve({ status: 'failed', error: err.message });
+              });
+          }
+        });
+
+        // Correlate with Turn ID: Discard obsolete completions if superseded
+        if (!controller.isTurnActive(turnId)) {
+          audioCoordinator.restoreVolume({ durationMs: 500 });
+          return;
+        }
+
+        // Deduplication: Produce AT MOST ONE completion announcement per turn
+        if (handledTurnsRef.current.has(turnId)) {
+          return;
+        }
+        handledTurnsRef.current.add(turnId);
+
+        let finalOutcomeStatus = outcome.status;
+        if (
+          turnResult.actionResult.isUnresolved &&
+          (finalOutcomeStatus === 'navigated' || finalOutcomeStatus === 'search_results_opened' || finalOutcomeStatus === 'timed_out')
+        ) {
+          finalOutcomeStatus = 'search_results_opened';
+        }
+
+        let terminalState = 'completed';
+        if (finalOutcomeStatus === 'autoplay_blocked' || finalOutcomeStatus === 'playback_pending') {
+          terminalState = 'needs_user_action';
+        } else if (finalOutcomeStatus === 'failed' || finalOutcomeStatus === 'timed_out') {
+          terminalState = 'failed';
+        }
+
+        controller.setState(terminalState, { turnId, outcome: finalOutcomeStatus });
+
+        const targetTitle = turnResult.actionResult.track?.title || 'the song';
+        const completionText = formatActionOutcomeSpeech(finalOutcomeStatus, targetTitle, {
+          isUnresolved: turnResult.actionResult.isUnresolved,
+          isSearch: turnResult.actionResult.isUnresolved,
+        });
+
+        setTranscript((prev) => [
+          ...prev,
+          { role: 'assistant', text: completionText },
+        ]);
+        historyRef.current.push({ role: 'assistant', text: completionText });
+
+        const completionAudio = await synthesizeSpeechText(completionText);
+
+        if (completionAudio && controller.isTurnActive(turnId)) {
+          await playAssistantSpeech(completionAudio, completionText, turnId, () => {
+            audioCoordinator.restoreVolume({ durationMs: 1100 });
+            controller.finishSpeaking(turnId, 'idle');
+          });
+        } else {
+          audioCoordinator.restoreVolume({ durationMs: 1100 });
+          controller.finishSpeaking(turnId, 'idle');
+        }
       } else {
-        handleSpeechComplete();
-        controller.finishSpeaking(turnId);
+        // Immediate deterministic or conversational response (pause, resume, info, or chat)
+        const finalSpokenText = turnResult.spokenText;
+        const finalTranscriptText = turnResult.transcriptText;
+
+        setTranscript((prev) => [
+          ...prev,
+          { role: 'assistant', text: finalTranscriptText },
+        ]);
+        historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
+
+        if (isPlaybackAction) {
+          audioCoordinator.startDucking({ duckLevel: 0.22, durationMs: 250 });
+        }
+
+        const handleSpeechComplete = () => {
+          if (isPlaybackAction) {
+            audioCoordinator.restoreVolume({ durationMs: 1100 });
+          }
+          controller.finishSpeaking(turnId, 'idle');
+        };
+
+        const spokenAudioBase64 = await synthesizeSpeechText(finalSpokenText);
+
+        if (spokenAudioBase64 && controller.isTurnActive(turnId)) {
+          await playAssistantSpeech(spokenAudioBase64, finalSpokenText, turnId, handleSpeechComplete);
+        } else {
+          handleSpeechComplete();
+        }
       }
     } catch (err) {
       console.warn('[Voice Turn Error]', err);

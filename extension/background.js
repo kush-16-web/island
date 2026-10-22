@@ -4,9 +4,9 @@
 const ISLAND_ENDPOINT = 'http://127.0.0.1:47823';
 const POLL_INTERVAL_MS = 2000;
 const ERROR_BACKOFF_MS = 6000;
-const TAB_EXPIRY_MS = 15000;
+const TAB_EXPIRY_MS = 120000; // 2 minutes (prevents premature tab eviction during Chrome background throttling)
 
-// Tab registry: tabId -> { tabId, url, title, currentTrack, status, lastSeen }
+// Tab registry: tabId -> { tabId, url, title, currentTrack, status, lastSeen, lastActivated }
 const ytMusicTabs = new Map();
 let primaryTabId = null;
 
@@ -30,17 +30,70 @@ function cleanStaleTabs() {
   }
   // Re-elect primary tab if needed
   if (!primaryTabId && ytMusicTabs.size > 0) {
-    // Prefer playing tab, otherwise first available
+    // Prefer playing tab, otherwise most recently seen
+    let bestTabId = null;
+    let latestSeen = 0;
     for (const [tabId, tab] of ytMusicTabs.entries()) {
       if (tab.status === 'playing') {
-        primaryTabId = tabId;
+        bestTabId = tabId;
         break;
       }
+      if (tab.lastSeen > latestSeen) {
+        latestSeen = tab.lastSeen;
+        bestTabId = tabId;
+      }
     }
-    if (!primaryTabId) {
-      primaryTabId = ytMusicTabs.keys().next().value;
-    }
+    primaryTabId = bestTabId || ytMusicTabs.keys().next().value;
   }
+}
+
+async function findOrElectPrimaryTab() {
+  cleanStaleTabs();
+  if (primaryTabId && ytMusicTabs.has(primaryTabId)) {
+    return ytMusicTabs.get(primaryTabId);
+  }
+
+  // If no registered tab or stale, search Chrome tabs directly
+  try {
+    if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
+      const liveTabs = await chrome.tabs.query({ url: '*://music.youtube.com/*' });
+      if (liveTabs && liveTabs.length > 0) {
+        // 1. Prefer active tab
+        let chosen = liveTabs.find((t) => t.active);
+        // 2. Prefer tab registered as playing
+        if (!chosen) {
+          for (const t of liveTabs) {
+            const reg = ytMusicTabs.get(t.id);
+            if (reg && reg.status === 'playing') {
+              chosen = t;
+              break;
+            }
+          }
+        }
+        // 3. Otherwise first eligible tab
+        if (!chosen) {
+          chosen = liveTabs[0];
+        }
+
+        primaryTabId = chosen.id;
+        if (!ytMusicTabs.has(chosen.id)) {
+          ytMusicTabs.set(chosen.id, {
+            tabId: chosen.id,
+            url: chosen.url,
+            title: chosen.title,
+            currentTrack: null,
+            status: 'unknown',
+            lastSeen: Date.now(),
+          });
+        }
+        return ytMusicTabs.get(chosen.id);
+      }
+    }
+  } catch (err) {
+    console.warn('[Dynamic Island SW] Tab query error:', err.message);
+  }
+
+  return null;
 }
 
 function getPrimaryTab() {
@@ -123,8 +176,36 @@ let currentInFlightCommand = null;
 
 // Pull next command and dispatch to primary YouTube Music tab
 async function pullAndDispatchCommand() {
-  const primaryTab = getPrimaryTab();
-  if (!primaryTab) return;
+  let primaryTab = await findOrElectPrimaryTab();
+
+  if (!primaryTab) {
+    // If no tab exists anywhere, pull command to see if we should create a single tab
+    const res = await fetchFromIsland('/companion/command');
+    if (res && res.ok && res.command) {
+      const command = res.command;
+      const targetUrl = command.videoId
+        ? `https://music.youtube.com/watch?v=${command.videoId}`
+        : (command.url || `https://music.youtube.com/search?q=${encodeURIComponent((command.title || '') + ' ' + (command.artist || ''))}`);
+      console.log('[Dynamic Island SW] Zero YTM tabs found. Opening exactly ONE new tab for:', command.id);
+      try {
+        if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+          const newTab = await chrome.tabs.create({ url: targetUrl, active: false });
+          primaryTabId = newTab.id;
+          ytMusicTabs.set(newTab.id, {
+            tabId: newTab.id,
+            url: targetUrl,
+            title: command.title || 'YouTube Music',
+            currentTrack: null,
+            status: 'loading',
+            lastSeen: Date.now(),
+          });
+        }
+      } catch (err) {
+        console.warn('[Dynamic Island SW] Failed to create fallback tab:', err);
+      }
+    }
+    return;
+  }
 
   const res = await fetchFromIsland('/companion/command');
   if (res && res.ok && res.command) {
@@ -185,11 +266,11 @@ async function pollLoop() {
   isPolling = true;
 
   try {
-    cleanStaleTabs();
-    if (ytMusicTabs.size > 0) {
+    const primaryTab = await findOrElectPrimaryTab();
+    if (primaryTab || ytMusicTabs.size > 0) {
       await sendHeartbeat();
-      await pullAndDispatchCommand();
     }
+    await pullAndDispatchCommand();
   } catch (err) {
     console.warn('[Dynamic Island SW] pollLoop error:', err);
   } finally {

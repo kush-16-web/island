@@ -84,6 +84,41 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
   const storage = env.customStorage || null;
   const turnId = env.turnId || Date.now();
 
+  // 0. Compound Voice Commands: e.g. "Pause the current song and play Pashmina from my favorites"
+  const compoundMatch = cleaned.match(
+    /^(pause(?:\s+(?:the\s+)?(?:current\s+)?(?:song|track|music|playback))?|stop(?:\s+(?:the\s+)?(?:music|playback))?|halt)\s+(?:and\s+then|then|and|after\s+that)\s+(play\s+.+)$/i
+  );
+  if (compoundMatch) {
+    const playPart = compoundMatch[2].trim();
+    // 1. Preserve intended order: Pause current playback source first
+    if (media.active && media.status !== 'paused') {
+      const onCtrl = typeof env.onControl === 'function' ? env.onControl : () => {};
+      onCtrl('pause');
+    }
+    // 2. Interpret and execute the target playback action
+    const playEval = interpretLocalMusicCommand(playPart, env);
+    if (playEval.handledLocally && playEval.actionResult) {
+      const playRes = playEval.actionResult;
+      if (!playRes.ok) {
+        return playEval;
+      }
+      const targetTitle = playRes.track?.title || 'the song';
+      const initialAck = `Pausing and opening ${targetTitle}.`;
+      return {
+        ...playEval,
+        isCompound: true,
+        actionResult: {
+          ...playRes,
+          action: 'compound_pause_play',
+          subActions: ['pause', playRes.action],
+          initialAcknowledgment: initialAck,
+          spokenConfirmation: initialAck,
+          isCompound: true,
+        },
+      };
+    }
+  }
+
   // 1. Basic Transport Commands
   if (/^(pause|pause music|pause the music|stop music|stop the music|pause playback|halt)$/i.test(cleaned)) {
     return {
