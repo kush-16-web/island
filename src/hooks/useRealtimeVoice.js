@@ -5,6 +5,12 @@ import { getAssistantName } from '../lib/assistant';
 import { audioCoordinator } from '../lib/audio-coordinator';
 import { interpretLocalMusicCommand } from '../lib/music-command-interpreter';
 import { formatActionOutcomeSpeech } from '../lib/music-actions';
+const isDev = Boolean(import.meta.env?.DEV);
+
+function logDevStage(stageNumber, stageDescription, extra = {}) {
+  if (!isDev) return;
+  console.log(`[VoiceDevStage] ${stageNumber}. ${stageDescription}`, extra);
+}
 
 /**
  * Helper to encode float32 PCM samples into standard 16-bit mono WAV ArrayBuffer
@@ -129,6 +135,9 @@ export function useRealtimeVoice(options = {}) {
       speechThreshold: 0.02,
       interruptThreshold: 0.045,
       minUtteranceDurationMs: 400,
+      onSpeechDetected: () => {
+        logDevStage(2, 'Speech detected');
+      },
       onStateChange: (newState, _oldState, meta) => {
         if (newState === 'cooldown') {
           setStatus('cooldown');
@@ -327,7 +336,7 @@ export function useRealtimeVoice(options = {}) {
       source.onended = () => {
         if (currentSourceRef.current === source) {
           currentSourceRef.current = null;
-          controller.finishSpeaking(turnId);
+          controller.finishSpeaking(turnId, 'listening');
           if (typeof onSpeechComplete === 'function') {
             try { onSpeechComplete(); } catch {}
           }
@@ -337,7 +346,7 @@ export function useRealtimeVoice(options = {}) {
       source.start(0);
     } catch (err) {
       console.warn('[Audio Playback Error]', err);
-      controller.finishSpeaking(turnId);
+      controller.finishSpeaking(turnId, 'listening');
       if (typeof onSpeechComplete === 'function') {
         try { onSpeechComplete(); } catch {}
       }
@@ -361,6 +370,8 @@ export function useRealtimeVoice(options = {}) {
       const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
       const groqChatModel = localStorage.getItem('island_groq_chat_model') || 'openai/gpt-oss-20b';
       const groqWhisperModel = localStorage.getItem('island_groq_whisper_model') || 'whisper-large-v3-turbo';
+      const speechLanguage = localStorage.getItem('island_speech_language') || 'en';
+      const whisperLanguage = speechLanguage === 'auto' ? undefined : speechLanguage;
 
       // Validate provider readiness before proceeding to avoid mysterious failures
       if (chatProvider === 'groq' || sttProvider === 'groq-whisper') {
@@ -389,6 +400,7 @@ export function useRealtimeVoice(options = {}) {
         const sttRes = await window.island.groq.transcribe({
           audioBase64: audioData,
           model: groqWhisperModel,
+          language: whisperLanguage,
         });
 
         if (!controller.isTurnActive(turnId)) return;
@@ -401,9 +413,35 @@ export function useRealtimeVoice(options = {}) {
           return;
         }
 
+        logDevStage(4, 'Raw transcription returned', {
+          provider: 'groq-whisper',
+          rawTextLength: sttRes.text?.length || 0,
+          empty: Boolean(sttRes.empty),
+        });
+        logDevStage(5, 'Detected language and confidence', {
+          languagePreference: speechLanguage,
+          whisperLanguageHint: whisperLanguage || 'auto',
+          provider: 'groq-whisper',
+        });
+
         if (sttRes.empty || !sttRes.text?.trim()) {
-          // Silence or no speech detected; reset turn cleanly without error
-          controller.finishSpeaking(turnId);
+          // Silence or no speech detected; reset turn cleanly to listening readiness
+          controller.resetToListening(turnId);
+          return;
+        }
+
+        // Filter out obvious hallucination artifacts on silence or noise
+        const rawLower = sttRes.text.trim().toLowerCase();
+        const isHallucination = [
+          'thank you for watching',
+          'thanks for watching',
+          'subtitles by',
+          'amara.org',
+          'subscribe to my channel',
+        ].some((phrase) => rawLower.includes(phrase));
+
+        if (isHallucination || /^[.\s?!,;:\-_–—…]+$/.test(sttRes.text.trim())) {
+          controller.resetToListening(turnId);
           return;
         }
 
@@ -417,6 +455,10 @@ export function useRealtimeVoice(options = {}) {
         { role: 'user', text: displayedUserText },
       ]);
       historyRef.current.push({ role: 'user', text: displayedUserText });
+
+      logDevStage(6, 'Normalized text sent to intent processing', {
+        text: displayedUserText,
+      });
 
       // 2. Direct Local Music Command Interpretation (PASS 2 - PART B)
       // Checks local-first command grammar to completely eliminate unnecessary Groq chat calls
@@ -432,8 +474,9 @@ export function useRealtimeVoice(options = {}) {
         }
       }
 
-      let turnResult = null;
-      let geminiAudioBase64 = null;
+      logDevStage(7, 'Selected intent or AI tool', {
+        intent: localMusicResult ? localMusicResult.action : 'conversational_llm',
+      });
 
       if (localMusicResult) {
         // Handled deterministically locally: 0 Groq chat API quota spent
@@ -459,6 +502,7 @@ export function useRealtimeVoice(options = {}) {
             assistantName,
             userName,
             model: groqChatModel,
+            language: speechLanguage,
           });
 
           if (!controller.isTurnActive(turnId)) return;
@@ -494,6 +538,7 @@ export function useRealtimeVoice(options = {}) {
             userName,
             skipTts: ttsEngine === 'kokoro',
             ttsEngine,
+            language: speechLanguage,
           });
 
           if (!controller.isTurnActive(turnId)) return;
@@ -509,6 +554,11 @@ export function useRealtimeVoice(options = {}) {
           llmReplyText = chatRes.text;
           geminiAudioBase64 = chatRes.audioBase64;
         }
+
+        logDevStage(8, 'AI response text', {
+          replyLength: llmReplyText?.length || 0,
+          sample: (llmReplyText || '').slice(0, 60),
+        });
 
         // 4. Stage 3: Truth-grounded Island Action Execution
         turnResult = processTurnIntent(llmReplyText, {
@@ -533,6 +583,11 @@ export function useRealtimeVoice(options = {}) {
 
       const synthesizeSpeechText = async (textToSynthesize) => {
         if (!textToSynthesize || typeof textToSynthesize !== 'string') return null;
+        logDevStage(9, 'TTS language and voice', {
+          engine: ttsEngine,
+          voice: ttsEngine === 'kokoro' ? kokoroVoice : (ttsEngine === 'gemini' ? 'Despina' : 'windows-default'),
+          language: speechLanguage,
+        });
         let audioBase64 = null;
         if (ttsEngine === 'kokoro') {
           if (window.island?.kokoro?.synthesize) {
@@ -732,11 +787,13 @@ export function useRealtimeVoice(options = {}) {
         if (completionAudio && controller.isTurnActive(turnId)) {
           await playAssistantSpeech(completionAudio, completionText, turnId, () => {
             audioCoordinator.restoreVolume({ durationMs: 1100 });
-            controller.finishSpeaking(turnId, 'idle');
+            controller.finishSpeaking(turnId, 'listening');
+            logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
           });
         } else {
           audioCoordinator.restoreVolume({ durationMs: 1100 });
-          controller.finishSpeaking(turnId, 'idle');
+          controller.finishSpeaking(turnId, 'listening');
+          logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
         }
       } else {
         // Immediate deterministic or conversational response (pause, resume, info, or chat)
@@ -757,7 +814,8 @@ export function useRealtimeVoice(options = {}) {
           if (isPlaybackAction) {
             audioCoordinator.restoreVolume({ durationMs: 1100 });
           }
-          controller.finishSpeaking(turnId, 'idle');
+          controller.finishSpeaking(turnId, 'listening');
+          logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
         };
 
         const spokenAudioBase64 = await synthesizeSpeechText(finalSpokenText);
@@ -778,6 +836,11 @@ export function useRealtimeVoice(options = {}) {
   // Wire turn submission handler to controller
   useEffect(() => {
     controller.onTurnTriggered = (samples, turnId) => {
+      logDevStage(3, 'Speech segment finalized', {
+        sampleCount: samples.length,
+        durationMs: Math.round((samples.length / 16000) * 1000),
+        turnId,
+      });
       submitUserSpeech(samples, 16000, turnId);
     };
   }, [controller, submitUserSpeech]);
@@ -794,11 +857,17 @@ export function useRealtimeVoice(options = {}) {
     setIsMuted(false);
 
     try {
-      // 1. Verify Gemini status from main process
-      if (window.island?.gemini?.getStatus) {
+      // 1. Verify provider status from main process
+      const activeChatProvider = localStorage.getItem('island_chat_provider') || localStorage.getItem('island_voice_provider') || 'gemini';
+      if (activeChatProvider === 'gemini' && window.island?.gemini?.getStatus) {
         const geminiStatus = await window.island.gemini.getStatus();
         if (!geminiStatus?.hasKey) {
           throw new Error('GEMINI_API_KEY is not configured in .env. Please add your key to enable voice.');
+        }
+      } else if (activeChatProvider === 'groq' && window.island?.groq?.getStatus) {
+        const groqStatus = await window.island.groq.getStatus();
+        if (!groqStatus?.hasKey) {
+          throw new Error('GROQ_API_KEY is not configured. Please add your key in Settings.');
         }
       }
 
@@ -825,6 +894,11 @@ export function useRealtimeVoice(options = {}) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioCtx({ sampleRate: 16000 });
       audioContextRef.current = audioCtx;
+
+      logDevStage(1, 'Audio capture started', {
+        sampleRate: 16000,
+        provider: activeChatProvider,
+      });
 
       const micSource = audioCtx.createMediaStreamSource(micStream);
       const micAnalyser = audioCtx.createAnalyser();

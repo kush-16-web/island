@@ -369,6 +369,7 @@ class GeminiVoiceService {
     voice = 'Despina',
     skipTts = false,
     ttsEngine = 'gemini',
+    language = 'en',
   }) {
     if (!this.hasKey()) {
       return {
@@ -380,9 +381,16 @@ class GeminiVoiceService {
     try {
       // 1. Build conversation contents
       const resolvedName = (assistantName || petName || 'Assistant').trim();
+      const preferredLang = (language || 'en').toLowerCase();
+      const langInstruction = preferredLang === 'en'
+        ? `Default to English for all responses. You naturally understand Hindi, Hinglish, and other languages, but only switch languages when the user clearly and intentionally speaks in that language or asks you to speak in it. Never switch languages due to a single foreign word, proper noun, song title (e.g. Pashmina), or noisy transcription.`
+        : preferredLang === 'hi'
+        ? `Respond naturally in Hindi or Hinglish. If the user addresses you in English, respond in English.`
+        : `Default to English, but naturally accommodate the language intentionally used by the user. Do not switch languages on isolated proper nouns or song titles.`;
+
       const systemPrompt = `You are "${resolvedName}", an intelligent, witty, warm and concise desktop companion living inside Island for your human friend "${userName}".
 Keep your answers very concise (1 to 2 sentences maximum, never lengthy paragraphs or lists) so it sounds like real spoken dialogue.
-You naturally understand and respond in English, Hindi, and Hinglish. Match the language and tone used by the user.
+${langInstruction}
 Never output markdown symbols like asterisks, bullet points, or emojis, since your text will be read aloud as speech.
 
 You can also control Island's music playback and favorites. When the user requests a music command, append a single action tag at the end of your response:

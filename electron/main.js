@@ -90,6 +90,50 @@ function logWindowLifecycle(event, extra = {}) {
   } catch {}
 }
 
+function logCrashDiagnostic(type, details = {}) {
+  try {
+    const logDir = (app && typeof app.getPath === 'function')
+      ? app.getPath('userData')
+      : path.join(__dirname, '..');
+    const logPath = path.join(logDir, 'crash-diagnostics.jsonl');
+    const record = {
+      timestamp: new Date().toISOString(),
+      type,
+      pid: process.pid,
+      platform: process.platform,
+      arch: process.arch,
+      nodeVersion: process.versions?.node,
+      electronVersion: process.versions?.electron,
+      memory: process.memoryUsage ? process.memoryUsage() : null,
+      ...details,
+    };
+    fs.appendFileSync(logPath, JSON.stringify(record) + '\n', 'utf8');
+  } catch {}
+}
+
+process.on('uncaughtException', (err, origin) => {
+  logCrashDiagnostic('uncaughtException', {
+    message: err?.message,
+    stack: err?.stack,
+    origin,
+  });
+  console.error('[CRASH] Uncaught Exception:', origin, err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logCrashDiagnostic('unhandledRejection', {
+    reason: reason instanceof Error ? { message: reason.message, stack: reason.stack } : String(reason),
+  });
+  console.error('[CRASH] Unhandled Rejection:', reason);
+});
+
+if (app && typeof app.on === 'function') {
+  app.on('child-process-gone', (_event, details) => {
+    logCrashDiagnostic('child-process-gone', details);
+    console.error('[CRASH] Child Process Gone:', details);
+  });
+}
+
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   if (petWin && !petWin.isDestroyed()) petWin.webContents.send(channel, payload);
@@ -512,6 +556,16 @@ function createWindow() {
     send('window:blur');
   });
 
+  win.webContents.on('render-process-gone', (_event, details) => {
+    logCrashDiagnostic('render-process-gone:main', details);
+    console.error('[CRASH] Main window renderer process gone:', details);
+  });
+
+  win.on('closed', () => {
+    logCrashDiagnostic('window:closed:main');
+    win = null;
+  });
+
   if (DEV_URL) win.loadURL(DEV_URL);
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 
@@ -576,6 +630,16 @@ function createPetWindow() {
 
   const targetUrl = DEV_URL ? `${DEV_URL}#pet` : `file://${path.join(__dirname, '..', 'dist', 'index.html')}#pet`;
   petWin.loadURL(targetUrl);
+
+  petWin.webContents.on('render-process-gone', (_event, details) => {
+    logCrashDiagnostic('render-process-gone:pet', details);
+    console.error('[CRASH] Pet window renderer process gone:', details);
+  });
+
+  petWin.on('closed', () => {
+    logCrashDiagnostic('window:closed:pet');
+    petWin = null;
+  });
 
   petWin.once('ready-to-show', () => {
     const petVisible = store ? store.get('island_pet_visible', false) : false;
@@ -829,6 +893,22 @@ function wireIpc() {
   listen('window:log-lifecycle', (payload) => {
     if (payload && payload.event) {
       logWindowLifecycle(payload.event, payload);
+    }
+  });
+
+  handle('diagnostics:get-crash-logs', () => {
+    try {
+      const logDir = (app && typeof app.getPath === 'function')
+        ? app.getPath('userData')
+        : path.join(__dirname, '..');
+      const logPath = path.join(logDir, 'crash-diagnostics.jsonl');
+      if (!fs.existsSync(logPath)) return [];
+      const lines = fs.readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean);
+      return lines.slice(-50).map((l) => {
+        try { return JSON.parse(l); } catch { return { raw: l }; }
+      });
+    } catch {
+      return [];
     }
   });
 

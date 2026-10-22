@@ -60,6 +60,15 @@ export default function SettingsPanel({ accentColor }) {
   const [isTestingVoice, setIsTestingVoice] = useState(false);
   const previewAudioRef = useRef(null);
 
+  const [speechLanguage, setSpeechLanguage] = useState(() => {
+    return localStorage.getItem('island_speech_language') || 'en';
+  });
+
+  const handleSetSpeechLanguage = (lang) => {
+    setSpeechLanguage(lang);
+    localStorage.setItem('island_speech_language', lang);
+  };
+
   // Multi-Provider AI Assistant configuration
   const [chatProvider, setChatProvider] = useState(() => {
     return localStorage.getItem('island_chat_provider') || 'gemini';
@@ -961,6 +970,36 @@ export default function SettingsPanel({ accentColor }) {
             </span>
           </div>
         )}
+
+        {/* Spoken Language Preference */}
+        <div className="settings-row settings-row--wrap">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Spoken Language Preference</span>
+            <span className="settings-row__sub">
+              {speechLanguage === 'en'
+                ? 'English default. Understands names & song titles without switching language.'
+                : speechLanguage === 'hi'
+                ? 'Hindi & Hinglish conversational preference.'
+                : 'Automatic multilingual detection across English, Hindi, and supported languages.'}
+            </span>
+          </div>
+          <div className="settings-chips">
+            {[
+              { id: 'en', label: 'English (Default)' },
+              { id: 'auto', label: 'Auto-Detect' },
+              { id: 'hi', label: 'Hindi / Hinglish' },
+            ].map((lang) => (
+              <button
+                key={lang.id}
+                type="button"
+                className={`settings-chip ${speechLanguage === lang.id ? 'is-active' : ''}`}
+                onClick={() => handleSetSpeechLanguage(lang.id)}
+              >
+                {lang.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Voice Engine Selector */}
         <div className="settings-row settings-row--wrap">

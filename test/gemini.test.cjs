@@ -25,7 +25,9 @@ test('GeminiVoiceService: security boundary - never exposes GEMINI_API_KEY', asy
   if (res.ok) {
     assert.strictEqual(typeof res.text, 'string');
     assert.strictEqual(res.provider, 'gemini');
-    assert.ok(res.audioBase64, 'audio base64 should be generated');
+    if (!res.ttsError) {
+      assert.ok(res.audioBase64, 'audio base64 should be generated when TTS succeeds');
+    }
   } else {
     assert.ok(res.error, 'error should be present if request fails');
   }

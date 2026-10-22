@@ -269,6 +269,8 @@ export function createMockIsland() {
         return { ok: false, error: 'Realtime voice requires the desktop Electron app with .env OPENAI_API_KEY.' };
       },
     },
+    logLifecycle: () => {},
+    getCrashDiagnostics: async () => [],
     on(channel, callback) {
       (handlers[channel] = handlers[channel] || []).push(callback);
       return () => {

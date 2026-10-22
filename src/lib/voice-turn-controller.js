@@ -30,17 +30,23 @@ export class VoiceTurnController {
     this.silenceDurationMs = options.silenceDurationMs ?? 1400;
     this.minUtteranceDurationMs = options.minUtteranceDurationMs ?? 400;
     this.sampleRate = options.sampleRate ?? 16000;
-    this.preSpeechBufferLimit = options.preSpeechBufferLimit ?? 4; // ~512ms at 2048 samples/frame
+    this.preSpeechBufferLimit = options.preSpeechBufferLimit ?? 6; // ~768ms at 2048 samples/frame (16kHz)
 
     this.turnId = 0;
     this.isProcessing = false;
     this.isSpeaking = false;
     this.isUserSpeaking = false;
+    this.speechFrameCount = 0;
+
+    // Bounded adaptive noise floor tracking
+    this.noiseFloor = options.initialNoiseFloor ?? 0.005;
+    this.useAdaptiveVad = options.useAdaptiveVad !== false;
 
     this.preSpeechRingBuffer = [];
     this.accumulatedChunks = [];
     this.silenceTimer = null;
     this.cooldownTimer = null;
+    this._errorRecoveryTimer = null;
     this.cooldownEndMs = 0;
     this.cooldownSeconds = 0;
 
@@ -71,11 +77,16 @@ export class VoiceTurnController {
   startSession() {
     this.clearSilenceTimer();
     this.clearCooldownTimer();
+    if (this._errorRecoveryTimer) {
+      clearTimeout(this._errorRecoveryTimer);
+      this._errorRecoveryTimer = null;
+    }
     this.preSpeechRingBuffer = [];
     this.accumulatedChunks = [];
     this.isProcessing = false;
     this.isSpeaking = false;
     this.isUserSpeaking = false;
+    this.speechFrameCount = 0;
     this.setState('listening');
   }
 
@@ -85,13 +96,40 @@ export class VoiceTurnController {
   stopSession() {
     this.clearSilenceTimer();
     this.clearCooldownTimer();
+    if (this._errorRecoveryTimer) {
+      clearTimeout(this._errorRecoveryTimer);
+      this._errorRecoveryTimer = null;
+    }
     this.preSpeechRingBuffer = [];
     this.accumulatedChunks = [];
     this.isProcessing = false;
     this.isSpeaking = false;
     this.isUserSpeaking = false;
+    this.speechFrameCount = 0;
     this.turnId += 1; // Invalidate any in-flight turns
     this.setState('idle');
+  }
+
+  /**
+   * Return cleanly to listening state without invalidating session context.
+   */
+  resetToListening(turnId) {
+    if (turnId !== undefined && turnId !== this.turnId) {
+      return false; // Stale turn
+    }
+    this.isProcessing = false;
+    this.isSpeaking = false;
+    this.isUserSpeaking = false;
+    this.speechFrameCount = 0;
+    this.clearSilenceTimer();
+    if (this._errorRecoveryTimer) {
+      clearTimeout(this._errorRecoveryTimer);
+      this._errorRecoveryTimer = null;
+    }
+    this.accumulatedChunks = [];
+    this.preSpeechRingBuffer = [];
+    this.setState('listening', { turnId: this.turnId });
+    return true;
   }
 
   clearSilenceTimer() {
@@ -137,11 +175,21 @@ export class VoiceTurnController {
       return false;
     }
 
-    // 4. Voice Activity Detection (VAD)
+    // 4. Bounded adaptive threshold calculation
+    // Floor = 0.010 (captures quiet speech), Ceiling = 0.045 (prevents music/fan false activations)
+    const dynamicThreshold = Math.max(0.010, Math.min(0.045, this.noiseFloor * 1.8 + 0.005));
+    const effectiveSpeechThreshold = this.useAdaptiveVad ? dynamicThreshold : this.speechThreshold;
+    const silenceThreshold = Math.max(0.006, effectiveSpeechThreshold * 0.72);
+
+    // 5. Bounded adaptive noise floor tracking (only updated during ambient non-speech, never on speech)
+    if (!this.isUserSpeaking && rms < effectiveSpeechThreshold) {
+      this.noiseFloor = Math.max(0.002, Math.min(0.035, this.noiseFloor * 0.94 + rms * 0.06));
+    }
+
+    // 6. Voice Activity Detection (VAD)
     const chunk = new Float32Array(inputData);
 
-    if (rms > this.speechThreshold) {
-      // User is actively speaking
+    if (rms > effectiveSpeechThreshold) {
       this.clearSilenceTimer();
 
       if (!this.isUserSpeaking) {
@@ -153,16 +201,21 @@ export class VoiceTurnController {
 
       this.accumulatedChunks.push(chunk);
     } else if (this.isUserSpeaking) {
-      // Trailing pause or quiet sound during a turn
       this.accumulatedChunks.push(chunk);
 
-      // Start silence timer if not already ticking
-      if (!this.silenceTimer) {
-        this.silenceTimer = setTimeout(() => {
-          this.onSilenceTimeout();
-        }, this.silenceDurationMs);
+      // Trailing pause or quiet sound during an ongoing turn
+      if (rms < silenceThreshold) {
+        if (!this.silenceTimer) {
+          this.silenceTimer = setTimeout(() => {
+            this.onSilenceTimeout();
+          }, this.silenceDurationMs);
+        }
+      } else {
+        // Paused within threshold (breathing/hesitation), keep speech alive
+        this.clearSilenceTimer();
       }
     } else {
+      this.speechFrameCount = 0;
       // User is not speaking: maintain rolling pre-speech ring buffer
       this.preSpeechRingBuffer.push(chunk);
       if (this.preSpeechRingBuffer.length > this.preSpeechBufferLimit) {
@@ -306,6 +359,13 @@ export class VoiceTurnController {
       this.enterCooldown(Math.min(60, retryDelaySeconds), error);
     } else {
       this.setState('error', { error, turnId });
+      if (this._errorRecoveryTimer) clearTimeout(this._errorRecoveryTimer);
+      this._errorRecoveryTimer = setTimeout(() => {
+        this._errorRecoveryTimer = null;
+        if (this.state === 'error') {
+          this.setState('listening', { turnId: this.turnId });
+        }
+      }, 2000);
     }
     return true;
   }
