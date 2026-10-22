@@ -435,11 +435,11 @@ export default function Island() {
   const isVideo = isVideoMedia(media);
   const { ambientColor: videoAmbientColor, stream: videoStream, streamActive: videoStreamActive, youtubeId } = useVideoAmbient(media, playing);
 
-  const defaultThemeColor = s.systemAccent || 'var(--c-info)';
+  const defaultThemeColor = 'rgba(255, 255, 255, 0.85)';
   const fallbackMusicColor = `hsl(${media.active ? hueFrom(`${media.title}${media.artist}`) : 265} 80% 70%)`;
   const musicColor = (isVideo && videoAmbientColor) ? videoAmbientColor : (dynamicColor || (media.active ? fallbackMusicColor : defaultThemeColor));
 
-  // Sync Windows system accent color to CSS root variables
+  // Sync Windows system accent color to CSS root variables for external references if needed
   useEffect(() => {
     if (s.systemAccent) {
       document.documentElement.style.setProperty('--c-info', s.systemAccent);
@@ -451,7 +451,7 @@ export default function Island() {
   if (ring) accent = ring.kind === 'alarm' ? 'var(--c-alarm)' : 'var(--c-timer)';
   else if (mode === 'toast') accent = kindColor(toast.kind);
   else if (mode === 'timer') accent = 'var(--c-timer)';
-  else if (media.active) accent = musicColor;
+  else if (mode === 'media' || mode === 'both' || (mode === 'hub' && media.active)) accent = musicColor;
 
   const onIslandPointerDown = (e) => {
     if (e.button !== 0) return;
