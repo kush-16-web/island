@@ -264,6 +264,22 @@ export function createMockIsland() {
       cancel: async () => ({ ok: true, cancelled: false }),
       dispose: async () => ({ ok: true, disposed: false }),
     },
+    windowsTts: {
+      getVoices: async () => ({
+        ok: true,
+        voices: [
+          { name: 'Microsoft David Desktop', voiceURI: 'Microsoft David Desktop', lang: 'en-US', enabled: true, default: true },
+          { name: 'Microsoft Zira Desktop', voiceURI: 'Microsoft Zira Desktop', lang: 'en-US', enabled: true, default: false },
+        ],
+      }),
+      synthesizeSpeech: async ({ text, voice }) => ({
+        ok: true,
+        audioBase64: 'UklGRk6eAQBXQVZFZm10IBIAAAABAAEAIlYAAESsAAACABAAZGF0YZqeAQAA',
+        mimeType: 'audio/wav',
+        durationMs: 120,
+      }),
+      cancel: async () => ({ ok: true }),
+    },
     realtime: {
       async createSession() {
         return { ok: false, error: 'Realtime voice requires the desktop Electron app with .env OPENAI_API_KEY.' };

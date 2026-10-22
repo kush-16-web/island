@@ -16,81 +16,196 @@ const PRESET_PHRASES = [
   { label: 'Short Response', text: 'All systems are running smoothly on your desktop.' },
 ];
 
+function base64ToArrayBuffer(base64) {
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
 export default function WindowsVoicePreview({ onClose }) {
   const [voices, setVoices] = useState([]);
-  const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState(() => localStorage.getItem('island_windows_voice_uri') || '');
   const [previewText, setPreviewText] = useState(PRESET_PHRASES[0].text);
   const [rate, setRate] = useState(1.0);
   const [pitch, setPitch] = useState(1.0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [filterQuery, setFilterQuery] = useState('');
+  const [previewStatus, setPreviewStatus] = useState(null);
 
-  // Enumerate voices
+  const activeUtteranceRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const sourceNodeRef = useRef(null);
+
+  // Enumerate voices: prioritize native Windows SAPI service, fallback to Web Speech
   useEffect(() => {
-    const updateVoices = () => {
-      if (typeof window === 'undefined' || !window.speechSynthesis) return;
-      const list = window.speechSynthesis.getVoices() || [];
-      setVoices(list);
-      if (list.length > 0 && !selectedVoiceURI) {
-        // Default to an Indian English or local voice if present, else first
-        const indianVoice = list.find((v) => v.lang.includes('IN') || v.name.includes('India') || v.name.includes('Heera') || v.name.includes('Ravi'));
-        setSelectedVoiceURI(indianVoice ? indianVoice.voiceURI : list[0].voiceURI);
+    let isMounted = true;
+
+    const loadVoices = async () => {
+      let loaded = [];
+      if (window.island?.windowsTts?.getVoices) {
+        try {
+          const res = await window.island.windowsTts.getVoices();
+          if (res?.ok && res.voices?.length > 0) {
+            loaded = res.voices;
+          }
+        } catch {}
+      }
+
+      if (loaded.length === 0 && typeof window !== 'undefined' && window.speechSynthesis) {
+        loaded = window.speechSynthesis.getVoices() || [];
+        if (loaded.length === 0) {
+          await new Promise((r) => setTimeout(r, 200));
+          loaded = window.speechSynthesis.getVoices() || [];
+        }
+      }
+
+      if (isMounted && loaded.length > 0) {
+        setVoices(loaded);
+        const saved = localStorage.getItem('island_windows_voice_uri');
+        if (saved && loaded.some((v) => v.voiceURI === saved)) {
+          setSelectedVoiceURI(saved);
+        } else {
+          const defaultVoice = loaded.find((v) => v.default) || loaded[0];
+          setSelectedVoiceURI(defaultVoice.voiceURI);
+          localStorage.setItem('island_windows_voice_uri', defaultVoice.voiceURI);
+        }
       }
     };
 
-    updateVoices();
+    loadVoices();
+
     if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = updateVoices;
+      window.speechSynthesis.onvoiceschanged = loadVoices;
     }
 
     return () => {
+      isMounted = false;
+      if (sourceNodeRef.current) {
+        try { sourceNodeRef.current.stop(); } catch {}
+        sourceNodeRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try { audioContextRef.current.close(); } catch {}
+      }
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
+      }
+      if (window.island?.windowsTts?.cancel) {
+        window.island.windowsTts.cancel();
       }
     };
   }, []);
 
-  const activeUtteranceRef = useRef(null);
-
-  const handleSpeak = () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.resume();
-
+  const handleSpeak = async () => {
     if (!previewText.trim()) return;
 
-    // Small delay avoids Chromium race condition where cancel() kills immediately subsequent speak()
-    setTimeout(() => {
-      if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    handleStop();
+    setIsPlaying(true);
+    setPreviewStatus('Synthesizing speech...');
 
-      const utterance = new SpeechSynthesisUtterance(previewText);
-      activeUtteranceRef.current = utterance; // Prevent GC in Chromium
-      const chosen = voices.find((v) => v.voiceURI === selectedVoiceURI);
-      if (chosen) {
-        utterance.voice = chosen;
+    // 1. Try Native Windows SAPI TTS Service
+    if (window.island?.windowsTts?.synthesizeSpeech) {
+      try {
+        const res = await window.island.windowsTts.synthesizeSpeech({
+          text: previewText,
+          voice: selectedVoiceURI,
+          rate: Math.round((rate - 1.0) * 5), // Map 0.5-2.0 to SAPI -10 to +10
+        });
+
+        if (res?.ok && res.audioBase64) {
+          setPreviewStatus(`Playing via Windows SAPI (${res.durationMs}ms)...`);
+          let ctx = audioContextRef.current;
+          if (!ctx || ctx.state === 'closed') {
+            ctx = new (window.AudioContext || window.webkitAudioContext)();
+            audioContextRef.current = ctx;
+          }
+          if (ctx.state === 'suspended') {
+            await ctx.resume();
+          }
+
+          const arrayBuf = base64ToArrayBuffer(res.audioBase64);
+          const audioBuffer = await ctx.decodeAudioData(arrayBuf);
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(ctx.destination);
+          sourceNodeRef.current = source;
+
+          source.onended = () => {
+            setIsPlaying(false);
+            setPreviewStatus('Playback finished');
+            sourceNodeRef.current = null;
+          };
+
+          source.start(0);
+          return;
+        } else {
+          setPreviewStatus(`Native synthesis error: ${res?.error || 'Unknown error'}`);
+        }
+      } catch (err) {
+        setPreviewStatus(`Native synthesis failed: ${err.message}`);
       }
-      utterance.rate = rate;
-      utterance.pitch = pitch;
+    }
 
-      utterance.onstart = () => setIsPlaying(true);
-      utterance.onend = () => {
+    // 2. Fallback to Web Speech API
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const avail = window.speechSynthesis.getVoices() || [];
+      if (avail.length === 0) {
         setIsPlaying(false);
-        activeUtteranceRef.current = null;
-      };
-      utterance.onerror = (e) => {
-        console.warn('[Windows TTS Error]', e);
-        setIsPlaying(false);
-        activeUtteranceRef.current = null;
-      };
+        setPreviewStatus('No speech voices available in Web Speech API');
+        return;
+      }
 
-      window.speechSynthesis.speak(utterance);
-    }, 60);
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+
+      setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(previewText);
+        activeUtteranceRef.current = utterance;
+        const chosen = avail.find((v) => v.voiceURI === selectedVoiceURI);
+        if (chosen) utterance.voice = chosen;
+        utterance.rate = rate;
+        utterance.pitch = pitch;
+
+        utterance.onstart = () => {
+          setIsPlaying(true);
+          setPreviewStatus('Speaking via Web Speech...');
+        };
+        utterance.onend = () => {
+          setIsPlaying(false);
+          setPreviewStatus('Playback finished');
+          activeUtteranceRef.current = null;
+        };
+        utterance.onerror = (e) => {
+          setIsPlaying(false);
+          setPreviewStatus(`Speech error: ${e?.error || 'Utterance failed'}`);
+          activeUtteranceRef.current = null;
+        };
+
+        window.speechSynthesis.speak(utterance);
+      }, 50);
+    } else {
+      setIsPlaying(false);
+      setPreviewStatus('Speech synthesis is not supported in this environment');
+    }
   };
 
   const handleStop = () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.stop(); } catch {}
+      sourceNodeRef.current = null;
+    }
+    if (window.island?.windowsTts?.cancel) {
+      window.island.windowsTts.cancel();
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
     setIsPlaying(false);
+    setPreviewStatus(null);
   };
 
   const filteredVoices = voices.filter((v) => {
@@ -174,7 +289,9 @@ export default function WindowsVoicePreview({ onClose }) {
               className="voice-preview-select"
               value={selectedVoiceURI}
               onChange={(e) => {
-                setSelectedVoiceURI(e.target.value);
+                const val = e.target.value;
+                setSelectedVoiceURI(val);
+                localStorage.setItem('island_windows_voice_uri', val);
                 if (isPlaying) handleStop();
               }}
             >
@@ -265,6 +382,12 @@ export default function WindowsVoicePreview({ onClose }) {
               <span>Stop</span>
             </button>
           </div>
+
+          {previewStatus && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--panel-accent)', textAlign: 'center' }}>
+              {previewStatus}
+            </div>
+          )}
         </div>
       </div>
     </div>

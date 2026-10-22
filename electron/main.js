@@ -32,6 +32,7 @@ const { FullscreenWatcher } = require('./fullscreen');
 const { RealtimeSessionBroker } = require('./realtime');
 const { GeminiVoiceService } = require('./gemini');
 const { KokoroLocalService } = require('./kokoro-tts');
+const { windowsTtsService } = require('./windows-tts');
 const { GroqService } = require('./groq');
 
 let geminiVoiceService = null;
@@ -1213,6 +1214,20 @@ function wireIpc() {
   handle('kokoro:dispose', () => {
     if (!kokoroLocalService) return { ok: true, disposed: false };
     return kokoroLocalService.dispose();
+  });
+
+  // Native Windows SAPI Speech Synthesis Service
+  handle('windows-tts:get-voices', () => {
+    return windowsTtsService.getVoices();
+  });
+
+  handle('windows-tts:synthesize', (params) => {
+    return windowsTtsService.synthesizeSpeech(params || {});
+  });
+
+  handle('windows-tts:cancel', () => {
+    windowsTtsService.cancel();
+    return { ok: true };
   });
 
   // Groq Service (Conversational Llama & Whisper STT)

@@ -99,6 +99,13 @@ contextBridge.exposeInMainWorld('island', {
     dispose: () => ipcRenderer.invoke('kokoro:dispose'),
   },
 
+  // Native Windows SAPI TTS Service
+  windowsTts: {
+    getVoices: () => ipcRenderer.invoke('windows-tts:get-voices'),
+    synthesizeSpeech: (params) => ipcRenderer.invoke('windows-tts:synthesize', params),
+    cancel: () => ipcRenderer.invoke('windows-tts:cancel'),
+  },
+
   // OpenAI Realtime voice broker (ephemeral token)
   realtime: {
     createSession: (options) => ipcRenderer.invoke('realtime:create-session', options),

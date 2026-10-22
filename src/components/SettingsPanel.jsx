@@ -4,6 +4,7 @@ import { SPRING } from '../lib/motion';
 import { Switch } from './bits';
 import { Icon } from './icons';
 import WindowsVoicePreview from './WindowsVoicePreview';
+import VoiceOutputDiagnostic from './VoiceOutputDiagnostic';
 import { getAssistantName, setAssistantName } from '../lib/assistant';
 
 /**
@@ -1030,6 +1031,9 @@ export default function SettingsPanel({ accentColor }) {
             ))}
           </div>
         </div>
+
+        {/* Development Diagnostic: Isolated Voice Output Test */}
+        <VoiceOutputDiagnostic />
 
         {/* Kokoro Local Settings when selected */}
         {voiceEngine === 'kokoro' && (

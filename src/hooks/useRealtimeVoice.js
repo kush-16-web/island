@@ -208,6 +208,10 @@ export function useRealtimeVoice(options = {}) {
       try { window.speechSynthesis.cancel(); } catch {}
     }
 
+    if (window.island?.windowsTts?.cancel) {
+      try { window.island.windowsTts.cancel(); } catch {}
+    }
+
     if (window.island?.kokoro?.cancel) {
       try { window.island.kokoro.cancel(); } catch {}
     }
@@ -414,84 +418,117 @@ export function useRealtimeVoice(options = {}) {
         return;
       }
 
-      try {
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.resume();
-      } catch {}
-
-      const cleanText = text.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '').trim();
-      if (!cleanText) {
-        resolve({ ok: true });
-        return;
-      }
-
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      activeUtteranceRef.current = utterance; // Prevent garbage collection bug in Chromium
-
-      const prefLang = localStorage.getItem('island_speech_language') || 'en';
-      utterance.lang = prefLang === 'hi' ? 'hi-IN' : 'en-US';
-
-      // Pick user preferred Windows voice if available
-      const savedVoiceURI = localStorage.getItem('island_windows_voice_uri');
-      const allVoices = window.speechSynthesis.getVoices?.() || [];
-      if (savedVoiceURI && allVoices.length > 0) {
-        const matchingVoice = allVoices.find((v) => v.voiceURI === savedVoiceURI);
-        if (matchingVoice) utterance.voice = matchingVoice;
-      } else if (allVoices.length > 0 && prefLang === 'en') {
-        const englishVoice = allVoices.find((v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('David') || v.name.includes('Zira') || v.name.includes('Mark')));
-        if (englishVoice) utterance.voice = englishVoice;
-      }
-
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-
-      const startTime = Date.now();
-
-      utterance.onstart = () => {
-        if (!controller.isTurnActive(turnId)) {
-          try { window.speechSynthesis.cancel(); } catch {}
-          resolve({ ok: false, error: 'Turn superseded at onstart' });
+      // Check for available voices. In Chromium inside Electron on Windows,
+      // speech synthesis voices are typically not installed/exposed, which causes
+      // speak() to complete silently via a fake timer without sending audio to speakers.
+      let allVoices = window.speechSynthesis.getVoices?.() || [];
+      const proceedWithVoice = (voices) => {
+        if (!voices || voices.length === 0) {
+          logDevStage(9, 'Audio playback rejected', {
+            reason: 'window.speechSynthesis has 0 voices. Prevented silent mock timer playback.',
+            turnId,
+          });
+          resolve({ ok: false, error: 'No Web Speech voices available' });
           return;
         }
-        controller.beginSpeaking(turnId);
-        setStatus('speaking');
-        window.island?.setVoiceMood?.('speaking');
 
-        logDevStage(9, 'Audio playback started', {
-          method: 'web_speech',
-          voice: utterance.voice?.name || 'default',
-          lang: utterance.lang,
-          effectiveVolume: audioCoordinator.effectiveVolume,
-          controllerState: controller.state,
-          turnId,
-        });
-      };
+        try {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.resume();
+        } catch {}
 
-      utterance.onend = () => {
-        activeUtteranceRef.current = null;
-        logDevStage(9, 'Audio playback ended', {
-          method: 'web_speech',
-          durationMs: Date.now() - startTime,
-          turnId,
-        });
-        resolve({ ok: true });
-      };
-
-      utterance.onerror = (e) => {
-        activeUtteranceRef.current = null;
-        logDevStage(9, 'Audio playback rejected', {
-          reason: e?.error || 'SpeechSynthesisUtterance error',
-          turnId,
-        });
-        resolve({ ok: false, error: e?.error || 'SpeechSynthesisUtterance error' });
-      };
-
-      // Small timeout avoids Chromium race condition between cancel() and speak()
-      setTimeout(() => {
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-          window.speechSynthesis.speak(utterance);
+        const cleanText = text.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '').trim();
+        if (!cleanText) {
+          resolve({ ok: true });
+          return;
         }
-      }, 30);
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        activeUtteranceRef.current = utterance; // Prevent garbage collection bug in Chromium
+
+        const prefLang = localStorage.getItem('island_speech_language') || 'en';
+        utterance.lang = prefLang === 'hi' ? 'hi-IN' : 'en-US';
+
+        const savedVoiceURI = localStorage.getItem('island_windows_voice_uri');
+        if (savedVoiceURI && voices.length > 0) {
+          const matchingVoice = voices.find((v) => v.voiceURI === savedVoiceURI);
+          if (matchingVoice) utterance.voice = matchingVoice;
+        } else if (voices.length > 0 && prefLang === 'en') {
+          const englishVoice = voices.find((v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('David') || v.name.includes('Zira') || v.name.includes('Mark')));
+          if (englishVoice) utterance.voice = englishVoice;
+        }
+
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+
+        const startTime = Date.now();
+
+        utterance.onstart = () => {
+          if (!controller.isTurnActive(turnId)) {
+            try { window.speechSynthesis.cancel(); } catch {}
+            resolve({ ok: false, error: 'Turn superseded at onstart' });
+            return;
+          }
+          controller.beginSpeaking(turnId);
+          setStatus('speaking');
+          window.island?.setVoiceMood?.('speaking');
+
+          logDevStage(9, 'Audio playback started', {
+            method: 'web_speech',
+            voice: utterance.voice?.name || 'default',
+            lang: utterance.lang,
+            effectiveVolume: audioCoordinator.effectiveVolume,
+            controllerState: controller.state,
+            turnId,
+          });
+        };
+
+        utterance.onend = () => {
+          activeUtteranceRef.current = null;
+          logDevStage(9, 'Audio playback ended', {
+            method: 'web_speech',
+            durationMs: Date.now() - startTime,
+            turnId,
+          });
+          resolve({ ok: true });
+        };
+
+        utterance.onerror = (e) => {
+          activeUtteranceRef.current = null;
+          logDevStage(9, 'Audio playback rejected', {
+            reason: e?.error || 'SpeechSynthesisUtterance error',
+            turnId,
+          });
+          resolve({ ok: false, error: e?.error || 'SpeechSynthesisUtterance error' });
+        };
+
+        // Small timeout avoids Chromium race condition between cancel() and speak()
+        setTimeout(() => {
+          if (typeof window !== 'undefined' && window.speechSynthesis) {
+            window.speechSynthesis.speak(utterance);
+          }
+        }, 30);
+      };
+
+      if (allVoices.length === 0) {
+        let fired = false;
+        const timer = setTimeout(() => {
+          if (!fired) {
+            fired = true;
+            proceedWithVoice(window.speechSynthesis.getVoices?.() || []);
+          }
+        }, 200);
+
+        window.speechSynthesis.onvoiceschanged = () => {
+          if (!fired) {
+            fired = true;
+            clearTimeout(timer);
+            proceedWithVoice(window.speechSynthesis.getVoices?.() || []);
+          }
+        };
+      } else {
+        proceedWithVoice(allVoices);
+      }
     });
   }, [controller]);
 
@@ -839,8 +876,44 @@ export function useRealtimeVoice(options = {}) {
             }
           }
         } else if (ttsEngine === 'windows') {
-          // Native Windows speech synthesis handled directly by Web Speech API, no base64 needed
-          audioBase64 = null;
+          // Native Windows SAPI speech synthesis via electron/windows-tts service
+          const savedWindowsVoice = localStorage.getItem('island_windows_voice_uri') || undefined;
+          if (window.island?.windowsTts?.synthesizeSpeech) {
+            try {
+              const winRes = await window.island.windowsTts.synthesizeSpeech({
+                text: textToSynthesize,
+                voice: savedWindowsVoice,
+              });
+              if (winRes?.ok && winRes.audioBase64) {
+                audioBase64 = winRes.audioBase64;
+              } else {
+                ttsError = winRes?.error || 'Windows speech synthesis failed';
+              }
+            } catch (wErr) {
+              ttsError = wErr.message;
+            }
+          }
+        }
+
+        // Graceful Native Fallback: If Gemini or Kokoro TTS failed (e.g. 429 quota exhaustion or network error),
+        // synthesize via native Windows SAPI TTS so speech is audibly delivered to speakers!
+        if (!audioBase64 && (ttsEngine === 'gemini' || ttsEngine === 'kokoro')) {
+          if (window.island?.windowsTts?.synthesizeSpeech) {
+            try {
+              const savedWindowsVoice = localStorage.getItem('island_windows_voice_uri') || undefined;
+              const winFallbackRes = await window.island.windowsTts.synthesizeSpeech({
+                text: textToSynthesize,
+                voice: savedWindowsVoice,
+              });
+              if (winFallbackRes?.ok && winFallbackRes.audioBase64) {
+                audioBase64 = winFallbackRes.audioBase64;
+                logDevStage(9, 'Fell back to Native Windows SAPI TTS', {
+                  originalEngine: ttsEngine,
+                  originalError: ttsError,
+                });
+              }
+            } catch {}
+          }
         }
 
         logDevStage(9, 'TTS synthesis result', {
@@ -850,8 +923,10 @@ export function useRealtimeVoice(options = {}) {
           error: ttsError,
         });
 
-        if (ttsError && !audioBase64) {
+        if (ttsError && audioBase64) {
           setErrorMessage(`${ttsError}. Using Windows Voice fallback.`);
+        } else if (ttsError && !audioBase64) {
+          setErrorMessage(`${ttsError}. Speech output unavailable.`);
         }
 
         return audioBase64;
