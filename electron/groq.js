@@ -8,11 +8,21 @@ const https = require('https');
 const path = require('path');
 const { app, safeStorage } = require('electron');
 
-const GROQ_DEFAULT_CHAT_MODEL = 'llama-3.1-8b-instant';
-const GROQ_FAST_CHAT_MODEL = 'llama-3.1-8b-instant';
+const GROQ_DEFAULT_CHAT_MODEL = 'openai/gpt-oss-20b';
+const GROQ_FAST_CHAT_MODEL = 'openai/gpt-oss-20b';
+const GROQ_REASONING_CHAT_MODEL = 'openai/gpt-oss-120b';
 const GROQ_TIERED_CHAT_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_LEGACY_CHAT_MODEL = 'llama-3.1-8b-instant';
 const GROQ_DEFAULT_WHISPER_MODEL = 'whisper-large-v3-turbo';
 const GROQ_ACCURATE_WHISPER_MODEL = 'whisper-large-v3';
+
+// Official Groq Catalog Chat Models
+const GROQ_CATALOG_CHAT_MODELS = [
+  { id: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B (Recommended • Fast)', description: 'Production open-weight MoE, 131k context, native tool use' },
+  { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B (High Reasoning)', description: 'Production high-capacity MoE, complex reasoning & tools' },
+  { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Tiered / Enterprise)', description: 'May require Enterprise model access on Groq' },
+  { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Tiered / Enterprise)', description: 'May require Enterprise model access on Groq' },
+];
 
 // Standard Island Tool Definitions for OpenAI-compatible function calling
 const ISLAND_MUSIC_TOOLS = [
@@ -122,6 +132,7 @@ class GroqService {
   constructor(options = {}) {
     this.store = options.store || null;
     this.apiKey = this._loadApiKey();
+    this.accessibleModels = this._loadAccessibleModels();
   }
 
   setStore(store) {
@@ -129,6 +140,19 @@ class GroqService {
     if (!this.apiKey) {
       this.apiKey = this._loadApiKey();
     }
+    if (!this.accessibleModels) {
+      this.accessibleModels = this._loadAccessibleModels();
+    }
+  }
+
+  _loadAccessibleModels() {
+    if (this.store && typeof this.store.get === 'function') {
+      try {
+        const cached = this.store.get('groq_accessible_models', null);
+        if (cached && typeof cached === 'object') return cached;
+      } catch {}
+    }
+    return null;
   }
 
   _loadApiKey() {
@@ -242,9 +266,145 @@ class GroqService {
       keyMasked: this.getKeyMasked(),
       defaultChatModel: GROQ_DEFAULT_CHAT_MODEL,
       fastChatModel: GROQ_FAST_CHAT_MODEL,
+      reasoningChatModel: GROQ_REASONING_CHAT_MODEL,
+      tieredChatModel: GROQ_TIERED_CHAT_MODEL,
       defaultWhisperModel: GROQ_DEFAULT_WHISPER_MODEL,
       accurateWhisperModel: GROQ_ACCURATE_WHISPER_MODEL,
+      catalogChatModels: GROQ_CATALOG_CHAT_MODELS,
+      accessibleModels: this.accessibleModels || null,
     };
+  }
+
+  /**
+   * Safe discovery of accessible models for the configured Groq account.
+   * Calls GET https://api.groq.com/openai/v1/models
+   * Never leaks API key.
+   */
+  async listModels({ force = false } = {}) {
+    if (!this.hasKey()) {
+      return {
+        ok: false,
+        error: 'GROQ_API_KEY is not configured. Please add your key in Settings -> AI Assistant.',
+        code: 'NO_KEY',
+      };
+    }
+
+    const startTime = Date.now();
+
+    return new Promise((resolve) => {
+      const req = https.request({
+        hostname: 'api.groq.com',
+        path: '/openai/v1/models',
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Accept': 'application/json',
+        },
+        timeout: 12000,
+      }, (res) => {
+        let body = '';
+        if (typeof res.setEncoding === 'function') res.setEncoding('utf8');
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          const durationMs = Date.now() - startTime;
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              const data = JSON.parse(body);
+              const list = Array.isArray(data?.data) ? data.data : [];
+              const rawIds = list.map((item) => item?.id).filter(Boolean);
+
+              const whisperModels = rawIds.filter((id) => id.startsWith('whisper-'));
+              // Chat models: exclude whisper models and guard/moderation models
+              const chatModels = rawIds.filter((id) => (
+                !id.startsWith('whisper-') &&
+                !id.includes('guard') &&
+                !id.includes('moderation') &&
+                !id.includes('safeguard')
+              ));
+
+              const result = {
+                ok: true,
+                rawIds,
+                chatModels,
+                whisperModels,
+                hasGptOss20b: chatModels.includes('openai/gpt-oss-20b'),
+                hasGptOss120b: chatModels.includes('openai/gpt-oss-120b'),
+                hasLlama8b: chatModels.includes('llama-3.1-8b-instant'),
+                hasLlama70b: chatModels.includes('llama-3.3-70b-versatile'),
+                checkedAt: new Date().toISOString(),
+              };
+
+              this.accessibleModels = result;
+              if (this.store && typeof this.store.set === 'function') {
+                this.store.set('groq_accessible_models', result);
+                if (typeof this.store.flush === 'function') this.store.flush();
+              }
+
+              this._logDiagnostic({
+                timestamp: new Date().toISOString(),
+                provider: 'groq',
+                callType: 'list-models',
+                ok: true,
+                httpStatus: res.statusCode,
+                durationMs,
+                count: rawIds.length,
+              });
+
+              resolve(result);
+            } catch (err) {
+              resolve({
+                ok: false,
+                error: `Failed to parse Groq models response: ${err.message}`,
+              });
+            }
+          } else {
+            const errDetails = this._extractError(body, res);
+            this._logDiagnostic({
+              timestamp: new Date().toISOString(),
+              provider: 'groq',
+              callType: 'list-models',
+              ok: false,
+              httpStatus: res.statusCode,
+              durationMs,
+              error: errDetails,
+            });
+
+            let userError = errDetails.message;
+            if (errDetails.statusCode === 401) {
+              userError = 'Invalid Groq API Key. Please verify your key in Settings.';
+            } else if (errDetails.statusCode === 403) {
+              userError = 'Groq account lacks permissions to view models.';
+            } else if (errDetails.statusCode === 429) {
+              userError = 'Groq rate limit reached while checking models.';
+            }
+
+            resolve({
+              ok: false,
+              error: userError,
+              code: errDetails.code,
+              statusCode: errDetails.statusCode,
+            });
+          }
+        });
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({
+          ok: false,
+          error: 'Connection to Groq API timed out (12s)',
+        });
+      });
+
+      req.on('error', (err) => {
+        resolve({
+          ok: false,
+          error: err.message || 'Network error reaching Groq API',
+        });
+      });
+
+      req.end();
+    });
   }
 
   /**
@@ -327,6 +487,8 @@ class GroqService {
     userName = 'Friend',
     model = GROQ_DEFAULT_CHAT_MODEL,
     temperature = 0.6,
+    _failedModels = [],
+    _originalModel = null,
   }) {
     if (!this.hasKey()) {
       return {
@@ -335,6 +497,9 @@ class GroqService {
         code: 'NO_KEY',
       };
     }
+
+    const requestedModel = model || GROQ_DEFAULT_CHAT_MODEL;
+    const originModel = _originalModel || requestedModel;
 
     const resolvedName = (assistantName || 'Assistant').trim();
     const systemPrompt = `You are "${resolvedName}", an intelligent, witty, warm and concise desktop companion living inside Island for your human friend "${userName}".
@@ -364,7 +529,7 @@ When the user asks to play music, check the current song, or control playback, u
     }
 
     const payload = {
-      model: model || GROQ_DEFAULT_CHAT_MODEL,
+      model: requestedModel,
       messages,
       tools: ISLAND_MUSIC_TOOLS,
       tool_choice: 'auto',
@@ -425,7 +590,7 @@ When the user asks to play music, check the current song, or control playback, u
               this._logDiagnostic({
                 timestamp: new Date().toISOString(),
                 provider: 'groq',
-                model,
+                model: requestedModel,
                 callType: 'chat',
                 ok: true,
                 httpStatus: res.statusCode,
@@ -439,7 +604,8 @@ When the user asks to play music, check the current song, or control playback, u
                 hasAction: Boolean(actionTag),
                 action: actionTag,
                 provider: 'groq',
-                model,
+                model: requestedModel,
+                fallbackFrom: originModel !== requestedModel ? originModel : undefined,
                 usage: data?.usage || null,
               });
             } catch (err) {
@@ -451,15 +617,42 @@ When the user asks to play music, check the current song, or control playback, u
           } else {
             const errDetails = this._extractError(body, res);
 
-            // Auto-fallback: If a user has a model configured that is retired/restricted on their tier (HTTP 404),
-            // seamlessly retry with the active production model so voice chat succeeds without breaking.
-            if (res.statusCode === 404 && model !== GROQ_FAST_CHAT_MODEL && !arguments[0]?._isFallback) {
+            // Robust multi-model fallback on 404 (model_not_found) or 403 (forbidden model access)
+            // Rules:
+            // 1. NEVER retry the same model that just failed
+            // 2. Bound retries strictly to avoid loops
+            // 3. Only fall back to an un-attempted candidate
+            const currentFailed = Array.isArray(_failedModels) ? [..._failedModels] : [];
+            if (!currentFailed.includes(requestedModel)) {
+              currentFailed.push(requestedModel);
+            }
+
+            let nextCandidate = null;
+            if ((res.statusCode === 404 || res.statusCode === 403) && currentFailed.length < 3) {
+              // Priority candidate pool:
+              // 1. Verified accessible chat models from cached /openai/v1/models (if available)
+              // 2. Standard production models: GROQ_DEFAULT_CHAT_MODEL ('openai/gpt-oss-20b'), GROQ_REASONING_CHAT_MODEL ('openai/gpt-oss-120b')
+              const candidatesPool = [
+                ...(this.accessibleModels?.chatModels || []),
+                GROQ_DEFAULT_CHAT_MODEL,
+                GROQ_REASONING_CHAT_MODEL,
+              ];
+
+              for (const cand of candidatesPool) {
+                if (cand && !currentFailed.includes(cand)) {
+                  nextCandidate = cand;
+                  break;
+                }
+              }
+            }
+
+            if (nextCandidate && nextCandidate !== requestedModel) {
               this._logDiagnostic({
                 timestamp: new Date().toISOString(),
                 provider: 'groq',
-                model,
+                model: requestedModel,
                 callType: 'chat-fallback',
-                note: `Model '${model}' returned 404. Automatically retrying with active production model '${GROQ_FAST_CHAT_MODEL}'.`,
+                note: `Model '${requestedModel}' returned ${res.statusCode}. Automatically retrying with accessible candidate '${nextCandidate}'.`,
               });
 
               return this.chat({
@@ -467,16 +660,18 @@ When the user asks to play music, check the current song, or control playback, u
                 history,
                 assistantName,
                 userName,
-                model: GROQ_FAST_CHAT_MODEL,
+                model: nextCandidate,
                 temperature,
-                _isFallback: true,
+                _failedModels: currentFailed,
+                _originalModel: originModel,
               }).then(resolve);
             }
 
+            // No valid fallback candidate available or all candidates failed
             this._logDiagnostic({
               timestamp: new Date().toISOString(),
               provider: 'groq',
-              model,
+              model: requestedModel,
               callType: 'chat',
               ok: false,
               httpStatus: res.statusCode,
@@ -487,8 +682,8 @@ When the user asks to play music, check the current song, or control playback, u
             let userError = errDetails.message;
             if (errDetails.statusCode === 401) {
               userError = 'Invalid Groq API Key. Please verify your key in Settings.';
-            } else if (errDetails.statusCode === 404) {
-              userError = `The model '${model}' is not accessible on this Groq account. Switched to '${GROQ_FAST_CHAT_MODEL}' in Settings.`;
+            } else if (errDetails.statusCode === 404 || errDetails.statusCode === 403) {
+              userError = `The model '${requestedModel}' is not accessible on this Groq account (${errDetails.message}). Click 'Check Access' in Settings to view accessible models.`;
             } else if (errDetails.isDailyQuota) {
               userError = 'Groq daily request limit reached. Please try again later or switch provider.';
             } else if (errDetails.statusCode === 429) {
@@ -502,7 +697,7 @@ When the user asks to play music, check the current song, or control playback, u
               isDailyQuota: errDetails.isDailyQuota,
               retryDelaySeconds: errDetails.retryDelaySeconds,
               provider: 'groq',
-              model,
+              model: requestedModel,
             });
           }
         });
@@ -720,6 +915,10 @@ module.exports = {
   GroqService,
   GROQ_DEFAULT_CHAT_MODEL,
   GROQ_FAST_CHAT_MODEL,
+  GROQ_REASONING_CHAT_MODEL,
+  GROQ_TIERED_CHAT_MODEL,
+  GROQ_LEGACY_CHAT_MODEL,
+  GROQ_CATALOG_CHAT_MODELS,
   GROQ_DEFAULT_WHISPER_MODEL,
   GROQ_ACCURATE_WHISPER_MODEL,
 };

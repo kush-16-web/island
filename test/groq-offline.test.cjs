@@ -201,7 +201,7 @@ test('GroqService: error handling distinguishes 429 burst rate limit from daily 
   }
 });
 
-test('GroqService: 404 model_not_found seamlessly falls back to active production model', async () => {
+test('GroqService: 404 model_not_found seamlessly falls back to active production model (openai/gpt-oss-20b)', async () => {
   const store = new MockStore();
   const service = new GroqService({ store });
   service.apiKey = 'gsk_mock_valid_key_12345';
@@ -235,13 +235,13 @@ test('GroqService: 404 model_not_found seamlessly falls back to active productio
           }));
           resEmitter.emit('end');
         } else {
-          // Second attempt: succeeds with llama-3.1-8b-instant
+          // Second attempt: succeeds with openai/gpt-oss-20b
           resEmitter.statusCode = 200;
           resEmitter.headers = {};
           callback(resEmitter);
           resEmitter.emit('data', JSON.stringify({
             choices: [{
-              message: { role: 'assistant', content: 'Fallback response from active 8B model!' }
+              message: { role: 'assistant', content: 'Fallback response from active 20B MoE model!' }
             }],
             usage: { total_tokens: 20 }
           }));
@@ -257,11 +257,227 @@ test('GroqService: 404 model_not_found seamlessly falls back to active productio
     });
 
     assert.strictEqual(res.ok, true);
-    assert.strictEqual(res.text, 'Fallback response from active 8B model!');
-    assert.strictEqual(res.model, 'llama-3.1-8b-instant');
+    assert.strictEqual(res.text, 'Fallback response from active 20B MoE model!');
+    assert.strictEqual(res.model, 'openai/gpt-oss-20b');
+    assert.strictEqual(res.fallbackFrom, 'llama-3.3-70b-versatile');
     assert.strictEqual(callCount, 2);
-    assert.deepStrictEqual(requestedModels, ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+    assert.deepStrictEqual(requestedModels, ['llama-3.3-70b-versatile', 'openai/gpt-oss-20b']);
   } finally {
     https.request = origRequest;
   }
 });
+
+test('GroqService: Fallback loop prevention halts cleanly and returns precise error when all candidates fail', async () => {
+  const store = new MockStore();
+  const service = new GroqService({ store });
+  service.apiKey = 'gsk_mock_valid_key_12345';
+
+  const origRequest = https.request;
+  const requestedModels = [];
+
+  try {
+    https.request = (opts, callback) => {
+      const reqEmitter = new EventEmitter();
+      let writtenData = '';
+      reqEmitter.write = (chunk) => { writtenData += chunk; };
+      reqEmitter.end = () => {
+        const payload = JSON.parse(writtenData || '{}');
+        requestedModels.push(payload.model);
+
+        const resEmitter = new EventEmitter();
+        resEmitter.statusCode = 404;
+        resEmitter.headers = {};
+        callback(resEmitter);
+        resEmitter.emit('data', JSON.stringify({
+          error: {
+            message: `The model '${payload.model}' does not exist or you do not have access to it.`,
+            type: "invalid_request_error",
+            code: "model_not_found"
+          }
+        }));
+        resEmitter.emit('end');
+      };
+      return reqEmitter;
+    };
+
+    const res = await service.chat({
+      text: 'Hello assistant',
+      model: 'llama-3.1-8b-instant'
+    });
+
+    assert.strictEqual(res.ok, false);
+    // Verified: No same-model retries and no infinite loop!
+    const uniqueRequested = new Set(requestedModels);
+    assert.strictEqual(uniqueRequested.size, requestedModels.length);
+    assert.ok(requestedModels.length <= 3);
+    assert.ok(res.error.includes('is not accessible on this Groq account'));
+    // Never misleading "Switched to X in Settings"
+    assert.ok(!res.error.includes('Switched to'));
+  } finally {
+    https.request = origRequest;
+  }
+});
+
+test('GroqService: listModels safely queries /openai/v1/models and caches accessible models', async () => {
+  const store = new MockStore();
+  const service = new GroqService({ store });
+  service.apiKey = 'gsk_mock_valid_key_12345';
+
+  const origRequest = https.request;
+  try {
+    https.request = (opts, callback) => {
+      assert.strictEqual(opts.hostname, 'api.groq.com');
+      assert.strictEqual(opts.path, '/openai/v1/models');
+      assert.strictEqual(opts.method, 'GET');
+      assert.strictEqual(opts.headers.Authorization, 'Bearer gsk_mock_valid_key_12345');
+
+      const reqEmitter = new EventEmitter();
+      reqEmitter.end = () => {
+        const resEmitter = new EventEmitter();
+        resEmitter.statusCode = 200;
+        resEmitter.headers = {};
+        callback(resEmitter);
+
+        const mockBody = JSON.stringify({
+          object: 'list',
+          data: [
+            { id: 'openai/gpt-oss-20b', object: 'model', owned_by: 'openai', active: true },
+            { id: 'openai/gpt-oss-120b', object: 'model', owned_by: 'openai', active: true },
+            { id: 'whisper-large-v3-turbo', object: 'model', owned_by: 'groq', active: true },
+            { id: 'whisper-large-v3', object: 'model', owned_by: 'groq', active: true },
+            { id: 'llama-guard-3-8b', object: 'model', owned_by: 'meta', active: true }
+          ]
+        });
+
+        resEmitter.emit('data', mockBody);
+        resEmitter.emit('end');
+      };
+      return reqEmitter;
+    };
+
+    const res = await service.listModels();
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.hasGptOss20b, true);
+    assert.strictEqual(res.hasGptOss120b, true);
+    assert.strictEqual(res.hasLlama8b, false);
+    assert.strictEqual(res.hasLlama70b, false);
+    assert.deepStrictEqual(res.chatModels, ['openai/gpt-oss-20b', 'openai/gpt-oss-120b']);
+    assert.deepStrictEqual(res.whisperModels, ['whisper-large-v3-turbo', 'whisper-large-v3']);
+
+    // Check store persistence
+    const saved = store.get('groq_accessible_models');
+    assert.ok(saved);
+    assert.deepStrictEqual(saved.chatModels, ['openai/gpt-oss-20b', 'openai/gpt-oss-120b']);
+
+    // Check service restart persistence
+    const newService = new GroqService({ store });
+    assert.ok(newService.accessibleModels);
+    assert.deepStrictEqual(newService.accessibleModels.chatModels, ['openai/gpt-oss-20b', 'openai/gpt-oss-120b']);
+  } finally {
+    https.request = origRequest;
+  }
+});
+
+test('GroqService: listModels handles 401, 403, 404, 429, and empty lists gracefully', async () => {
+  const store = new MockStore();
+  const service = new GroqService({ store });
+  service.apiKey = 'gsk_mock_valid_key_12345';
+
+  const origRequest = https.request;
+  const testCases = [
+    { statusCode: 401, body: { error: { message: 'Invalid API Key', code: 'invalid_api_key' } }, expectedErr: 'Invalid Groq API Key. Please verify your key in Settings.' },
+    { statusCode: 403, body: { error: { message: 'Forbidden', code: 'forbidden' } }, expectedErr: 'Groq account lacks permissions to view models.' },
+    { statusCode: 429, body: { error: { message: 'Rate limit exceeded', code: 'rate_limit_exceeded' } }, expectedErr: 'Groq rate limit reached while checking models.' },
+    { statusCode: 200, body: { object: 'list', data: [] }, expectedOk: true, chatCount: 0 },
+  ];
+
+  try {
+    for (const tc of testCases) {
+      https.request = (opts, callback) => {
+        const reqEmitter = new EventEmitter();
+        reqEmitter.end = () => {
+          const resEmitter = new EventEmitter();
+          resEmitter.statusCode = tc.statusCode;
+          resEmitter.headers = {};
+          callback(resEmitter);
+          resEmitter.emit('data', JSON.stringify(tc.body));
+          resEmitter.emit('end');
+        };
+        return reqEmitter;
+      };
+
+      const res = await service.listModels();
+      if (tc.expectedOk) {
+        assert.strictEqual(res.ok, true);
+        assert.strictEqual(res.chatModels.length, tc.chatCount);
+      } else {
+        assert.strictEqual(res.ok, false);
+        assert.strictEqual(res.error, tc.expectedErr);
+      }
+    }
+  } finally {
+    https.request = origRequest;
+  }
+});
+
+test('GroqService: Music tool calling with openai/gpt-oss-20b', async () => {
+  const store = new MockStore();
+  const service = new GroqService({ store });
+  service.apiKey = 'gsk_mock_valid_key_12345';
+
+  const origRequest = https.request;
+  try {
+    https.request = (opts, callback) => {
+      const reqEmitter = new EventEmitter();
+      let sentPayload = '';
+      reqEmitter.write = (chunk) => { sentPayload += chunk; };
+      reqEmitter.end = () => {
+        const parsed = JSON.parse(sentPayload);
+        assert.strictEqual(parsed.model, 'openai/gpt-oss-20b');
+        assert.strictEqual(parsed.tools.length, 11);
+
+        const resEmitter = new EventEmitter();
+        resEmitter.statusCode = 200;
+        resEmitter.headers = {};
+        callback(resEmitter);
+
+        resEmitter.emit('data', JSON.stringify({
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Skipping to next song for you!',
+                tool_calls: [
+                  {
+                    id: 'call_next',
+                    type: 'function',
+                    function: {
+                      name: 'next_track',
+                      arguments: '{}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }));
+        resEmitter.emit('end');
+      };
+      return reqEmitter;
+    };
+
+    const res = await service.chat({
+      text: 'Skip this track',
+      model: 'openai/gpt-oss-20b',
+    });
+
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.model, 'openai/gpt-oss-20b');
+    assert.strictEqual(res.hasAction, true);
+    assert.deepStrictEqual(res.action, { action: 'next_track', query: undefined });
+    assert.ok(res.text.includes('[[ACTION:{"action":"next_track"}]]'));
+  } finally {
+    https.request = origRequest;
+  }
+});
+

@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('island', {
     getStatus: () => ipcRenderer.invoke('groq:get-status'),
     setKey: (keyOrParams) => ipcRenderer.invoke('groq:set-key', typeof keyOrParams === 'string' ? { key: keyOrParams } : keyOrParams),
     clearKey: () => ipcRenderer.invoke('groq:clear-key'),
+    listModels: (params) => ipcRenderer.invoke('groq:list-models', params || {}),
   },
 
   // Unified Multi-Provider AI Status & Controls

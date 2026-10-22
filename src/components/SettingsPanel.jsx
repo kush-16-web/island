@@ -65,7 +65,7 @@ export default function SettingsPanel({ accentColor }) {
     return localStorage.getItem('island_chat_provider') || 'gemini';
   });
   const [groqChatModel, setGroqChatModel] = useState(() => {
-    return localStorage.getItem('island_groq_chat_model') || 'llama-3.1-8b-instant';
+    return localStorage.getItem('island_groq_chat_model') || 'openai/gpt-oss-20b';
   });
   const [sttProvider, setSttProvider] = useState(() => {
     return localStorage.getItem('island_stt_provider') || 'gemini';
@@ -78,6 +78,11 @@ export default function SettingsPanel({ accentColor }) {
   const [groqKeyMsg, setGroqKeyMsg] = useState(null);
   const [groqKeyError, setGroqKeyError] = useState(null);
   const [isSavingGroqKey, setIsSavingGroqKey] = useState(false);
+  const [accessibleModels, setAccessibleModels] = useState(null);
+  const [isRefreshingModels, setIsRefreshingModels] = useState(false);
+  const [refreshModelsMsg, setRefreshModelsMsg] = useState(null);
+  const [refreshModelsError, setRefreshModelsError] = useState(null);
+  const [groqModelNotice, setGroqModelNotice] = useState(null);
 
   useEffect(() => {
     window.island?.getWindowDock?.().then((res) => {
@@ -105,16 +110,37 @@ export default function SettingsPanel({ accentColor }) {
 
     if (window.island?.groq?.getStatus) {
       window.island.groq.getStatus().then((st) => {
-        if (st) setGroqStatus(st);
+        if (st) {
+          setGroqStatus(st);
+          if (st.accessibleModels) {
+            setAccessibleModels(st.accessibleModels);
+          }
+        }
       }).catch(() => {});
     }
 
+    const handleModelChanged = (e) => {
+      if (e?.detail?.model) {
+        setGroqChatModel(e.detail.model);
+        if (e.detail.fallbackFrom) {
+          setGroqModelNotice(`Switched to ${e.detail.model} (${e.detail.fallbackFrom} was not accessible on your Groq tier).`);
+        }
+      }
+    };
+    window.addEventListener('island:groq-model-changed', handleModelChanged);
+
+    let unlistenDock = null;
     if (window.island?.on) {
-      return window.island.on('window:dock-changed', (snapped) => {
+      unlistenDock = window.island.on('window:dock-changed', (snapped) => {
         if (snapped?.preset) setCurrentPreset(snapped.preset);
         if (snapped?.edge) setCurrentEdge(snapped.edge);
       });
     }
+
+    return () => {
+      window.removeEventListener('island:groq-model-changed', handleModelChanged);
+      if (typeof unlistenDock === 'function') unlistenDock();
+    };
   }, []);
 
   // Cleanup preview audio on unmount
@@ -143,6 +169,37 @@ export default function SettingsPanel({ accentColor }) {
   const handleSetGroqChatModel = (m) => {
     setGroqChatModel(m);
     localStorage.setItem('island_groq_chat_model', m);
+    setGroqModelNotice(null);
+  };
+
+  const handleRefreshGroqModels = async () => {
+    if (!window.island?.groq?.listModels) return;
+    setIsRefreshingModels(true);
+    setRefreshModelsMsg(null);
+    setRefreshModelsError(null);
+    try {
+      const res = await window.island.groq.listModels({ force: true });
+      if (res?.ok) {
+        setAccessibleModels(res);
+        const count = res.chatModels?.length || 0;
+        setRefreshModelsMsg(`✓ Found ${count} chat models accessible on this Groq key.`);
+
+        // If currently selected model is not in accessible models, switch to an accessible model
+        if (res.chatModels?.length > 0 && !res.chatModels.includes(groqChatModel)) {
+          const candidate = res.chatModels.includes('openai/gpt-oss-20b')
+            ? 'openai/gpt-oss-20b'
+            : res.chatModels[0];
+          handleSetGroqChatModel(candidate);
+          setGroqModelNotice(`Switched to accessible model '${candidate}' because '${groqChatModel}' is not permitted.`);
+        }
+      } else {
+        setRefreshModelsError(res?.error || 'Failed to query models from Groq.');
+      }
+    } catch (err) {
+      setRefreshModelsError(err.message || 'Error checking models.');
+    } finally {
+      setIsRefreshingModels(false);
+    }
   };
 
   const handleSetSttProvider = (p) => {
@@ -718,22 +775,77 @@ export default function SettingsPanel({ accentColor }) {
           <div className="settings-row settings-row--wrap" style={{ paddingLeft: 12 }}>
             <div className="settings-row__text">
               <span className="settings-row__title">Groq Chat Model</span>
-              <span className="settings-row__sub">Select conversational reasoning & tool model</span>
+              <span className="settings-row__sub">
+                Active: <strong style={{ color: 'var(--panel-accent)' }}>{groqChatModel}</strong>
+                {accessibleModels?.chatModels && (
+                  accessibleModels.chatModels.includes(groqChatModel)
+                    ? ' • ✓ Verified Accessible'
+                    : ' • ⚠️ Not verified on this account'
+                )}
+              </span>
             </div>
-            <div className="settings-chips">
+            <div className="settings-chips" style={{ flexWrap: 'wrap', gap: 6 }}>
               {[
-                { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Recommended • Active)' },
-                { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Tiered Access)' },
-              ].map((m) => (
+                { id: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B (Recommended • Fast)', note: 'Production MoE • Native Tools' },
+                { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B (High Reasoning)', note: 'Production MoE • Complex Reasoning' },
+                { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Tiered / Enterprise)', note: 'May require Enterprise access' },
+                { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Tiered / Enterprise)', note: 'May require Enterprise access' },
+                ...((accessibleModels?.chatModels || [])
+                  .filter((id) => !['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.1-8b-instant', 'llama-3.3-70b-versatile'].includes(id))
+                  .map((id) => ({ id, label: id, note: 'Account Permitted' }))
+                ),
+              ].map((m) => {
+                const isSelected = groqChatModel === m.id;
+                const isVerified = accessibleModels?.chatModels?.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`settings-chip ${isSelected ? 'is-active' : ''}`}
+                    onClick={() => handleSetGroqChatModel(m.id)}
+                    title={m.note}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <span>{m.label}</span>
+                    {isVerified && <span style={{ color: '#10b981', fontSize: 10, fontWeight: 700 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Live Model Refresh Control */}
+            <div style={{ width: '100%', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button
-                  key={m.id}
                   type="button"
-                  className={`settings-chip ${groqChatModel === m.id ? 'is-active' : ''}`}
-                  onClick={() => handleSetGroqChatModel(m.id)}
+                  className="settings-chip"
+                  onClick={handleRefreshGroqModels}
+                  disabled={isRefreshingModels || !groqStatus.hasKey}
+                  style={{ fontSize: 11, padding: '4px 10px', height: 28 }}
                 >
-                  {m.label}
+                  {isRefreshingModels ? 'Checking Account Models...' : 'Check Access & Refresh Models'}
                 </button>
-              ))}
+                {accessibleModels?.checkedAt && (
+                  <span className="settings-row__sub" style={{ fontSize: 10, opacity: 0.7 }}>
+                    Checked: {new Date(accessibleModels.checkedAt).toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+              {refreshModelsMsg && (
+                <span className="settings-row__sub" style={{ color: 'var(--panel-accent)', fontSize: 11 }}>
+                  {refreshModelsMsg}
+                </span>
+              )}
+              {refreshModelsError && (
+                <span className="settings-row__sub" style={{ color: '#ef4444', fontSize: 11 }}>
+                  {refreshModelsError}
+                </span>
+              )}
+              {groqModelNotice && (
+                <span className="settings-row__sub" style={{ color: '#f59e0b', fontSize: 11 }}>
+                  {groqModelNotice}
+                </span>
+              )}
             </div>
           </div>
         )}

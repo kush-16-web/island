@@ -1054,6 +1054,11 @@ function wireIpc() {
     return groqService.clearKey(store);
   });
 
+  handle('groq:list-models', (params) => {
+    if (!groqService) groqService = new GroqService({ store });
+    return groqService.listModels(params || {});
+  });
+
   // Unified Multi-Provider AI Status
   handle('ai:get-status', () => {
     if (!geminiVoiceService) geminiVoiceService = new GeminiVoiceService();

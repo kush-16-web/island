@@ -322,7 +322,7 @@ export function useRealtimeVoice(options = {}) {
       const ttsEngine = localStorage.getItem('island_voice_engine') || 'gemini';
       const kokoroVoice = localStorage.getItem('island_kokoro_voice') || 'af_heart';
       const allowCloudFallback = localStorage.getItem('island_voice_cloud_fallback') === 'true';
-      const groqChatModel = localStorage.getItem('island_groq_chat_model') || 'llama-3.1-8b-instant';
+      const groqChatModel = localStorage.getItem('island_groq_chat_model') || 'openai/gpt-oss-20b';
       const groqWhisperModel = localStorage.getItem('island_groq_whisper_model') || 'whisper-large-v3-turbo';
 
       // Validate provider readiness before proceeding to avoid mysterious failures
@@ -427,6 +427,14 @@ export function useRealtimeVoice(options = {}) {
           }
 
           llmReplyText = chatRes.text;
+
+          // If seamless fallback switched models, persist the active model and notify Settings
+          if (chatRes.fallbackFrom && chatRes.model && chatRes.model !== groqChatModel) {
+            localStorage.setItem('island_groq_chat_model', chatRes.model);
+            window.dispatchEvent(new CustomEvent('island:groq-model-changed', {
+              detail: { model: chatRes.model, fallbackFrom: chatRes.fallbackFrom },
+            }));
+          }
         } else {
           // Gemini provider
           if (!window.island?.gemini?.processSpeech) {

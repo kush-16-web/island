@@ -212,12 +212,28 @@ export function createMockIsland() {
     groq: {
       chat: async () => ({ ok: false, error: 'Groq service requires desktop Electron app.' }),
       transcribe: async () => ({ ok: false, error: 'Groq Whisper requires desktop Electron app.' }),
+      listModels: async () => ({
+        ok: true,
+        chatModels: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b'],
+        whisperModels: ['whisper-large-v3-turbo', 'whisper-large-v3'],
+        count: 4,
+        checkedAt: new Date().toISOString(),
+      }),
       getStatus: async () => {
         const key = typeof window !== 'undefined' ? localStorage.getItem('island_mock_groq_key') : null;
         return {
           hasKey: Boolean(key && key.length > 8),
           keyMasked: key && key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : null,
           provider: 'groq',
+          defaultChatModel: 'openai/gpt-oss-20b',
+          fastChatModel: 'openai/gpt-oss-20b',
+          reasoningChatModel: 'openai/gpt-oss-120b',
+          catalogChatModels: [
+            { id: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B (Recommended • Fast)' },
+            { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B (High Reasoning)' },
+            { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Tiered / Enterprise)' },
+            { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Tiered / Enterprise)' },
+          ],
         };
       },
       setKey: async (p) => {
