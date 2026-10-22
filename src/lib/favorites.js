@@ -24,21 +24,36 @@ export const SUPPORTED_PROVIDERS = Object.freeze({
 
 /**
  * Determine the music provider from active SMTC media attributes.
- * @param {object} media - SMTC media state { app, youtubeId, title, artist }
+ * @param {object} media - SMTC media state { app, rawAppId, youtubeId, title, artist, provider }
  * @returns {string} provider key
  */
 export function detectProvider(media = {}) {
   if (!media) return SUPPORTED_PROVIDERS.GENERIC;
+  if (media.provider && Object.values(SUPPORTED_PROVIDERS).includes(media.provider)) {
+    return media.provider;
+  }
   const app = String(media.app || '').toLowerCase();
+  const rawApp = String(media.rawAppId || media.sourceAppId || '').toLowerCase();
   const title = String(media.title || '').toLowerCase();
+  const art = String(media.art || media.artwork || '').toLowerCase();
 
-  if (app.includes('spotify')) return SUPPORTED_PROVIDERS.SPOTIFY;
-  if (app.includes('apple music') || app.includes('itunes')) return SUPPORTED_PROVIDERS.APPLE;
+  if (app.includes('spotify') || rawApp.includes('spotify')) return SUPPORTED_PROVIDERS.SPOTIFY;
+  if (
+    app.includes('apple music') ||
+    app.includes('itunes') ||
+    rawApp.includes('applemusic') ||
+    rawApp.includes('itunes')
+  ) {
+    return SUPPORTED_PROVIDERS.APPLE;
+  }
   if (
     Boolean(media.youtubeId) ||
     app.includes('youtube') ||
+    rawApp.includes('youtube') ||
+    rawApp.includes('cinhimbnkkaohfgiekfkjhmbdcndachm') ||
     title.includes('youtube') ||
-    (media.art && media.art.includes('ytimg'))
+    art.includes('ytimg') ||
+    art.includes('youtube')
   ) {
     return SUPPORTED_PROVIDERS.YOUTUBE;
   }
@@ -91,7 +106,7 @@ export function createFavoriteId(title, artist, provider = 'generic', providerTr
 }
 
 /**
- * Migrate legacy favorites from 'island_fav_tracks' idempotently.
+ * Migrate legacy favorites and repair misclassified provider records.
  */
 export function migrateLegacyFavorites(storage = null) {
   const s = storage || (typeof window !== 'undefined' ? window.localStorage : null);
@@ -105,6 +120,33 @@ export function migrateLegacyFavorites(storage = null) {
       if (Array.isArray(parsed)) unifiedList = parsed;
     }
   } catch {}
+
+  let repairedAny = false;
+  // Repair any records where YouTube tracks were mistakenly classified as Apple Music
+  unifiedList = unifiedList.map((item) => {
+    if (!item) return item;
+    const isYouTubeUrl = item.playableUrl && (item.playableUrl.includes('youtube.com') || item.playableUrl.includes('youtu.be'));
+    const isYouTubeId = Boolean(item.youtubeId || (item.providerTrackId && !item.providerTrackId.startsWith('spotify:')));
+    const hasYouTubeArt = item.artwork && item.artwork.includes('ytimg');
+
+    if (item.provider === SUPPORTED_PROVIDERS.APPLE && (isYouTubeUrl || isYouTubeId || hasYouTubeArt)) {
+      repairedAny = true;
+      const repairedProvider = SUPPORTED_PROVIDERS.YOUTUBE;
+      return {
+        ...item,
+        provider: repairedProvider,
+        id: createFavoriteId(item.title, item.artist, repairedProvider, item.providerTrackId),
+        playableUrl: item.playableUrl || buildPlayableReference(item.title, item.artist, repairedProvider, { youtubeId: item.youtubeId }),
+      };
+    }
+    return item;
+  });
+
+  if (repairedAny) {
+    try {
+      s.setItem(UNIFIED_STORAGE_KEY, JSON.stringify(unifiedList));
+    } catch {}
+  }
 
   const existingIds = new Set(unifiedList.map((f) => f.id));
   const existingTitleArtists = new Set(
@@ -158,17 +200,8 @@ export function getAllFavorites(storage = null) {
   const s = storage || (typeof window !== 'undefined' ? window.localStorage : null);
   if (!s) return [];
 
-  // Run transparent migration if needed
-  migrateLegacyFavorites(s);
-
-  try {
-    const raw = s.getItem(UNIFIED_STORAGE_KEY);
-    if (!raw) return [];
-    const list = JSON.parse(raw);
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
+  // Run transparent migration and repair
+  return migrateLegacyFavorites(s);
 }
 
 /**

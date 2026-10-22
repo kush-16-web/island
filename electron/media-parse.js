@@ -2,6 +2,7 @@
 // Pure helpers for turning the PowerShell watcher's JSON lines into UI-ready media state.
 
 const KNOWN_APPS = [
+  [/cinhimbnkkaohfgiekfkjhmbdcndachm|youtubemusic|youtube-music|music\.youtube/i, 'YouTube Music'],
   [/spotify/i, 'Spotify'],
   [/msedge|edge/i, 'Edge'],
   [/chrome/i, 'Chrome'],
@@ -63,6 +64,7 @@ function toMediaState(raw, reportedAt, art) {
     artist,
     album: cleanText(raw.album, 200),
     app: friendlyAppName(raw.app),
+    rawAppId: cleanText(raw.app, 200),
     status,
     positionMs: secondsToMs(raw.pos),
     durationMs: secondsToMs(raw.dur),

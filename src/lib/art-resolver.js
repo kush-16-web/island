@@ -105,7 +105,7 @@ export async function enrichTrackMetadata(title, artist = '') {
           artwork: hdArt || rawArt || null,
           artist: item.artistName || artist || null,
           album: item.collectionName || null,
-          provider: 'apple',
+          artworkSource: 'itunes',
         };
         trackArtCache.set(cacheKey, result);
         return result;

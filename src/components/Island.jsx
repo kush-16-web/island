@@ -327,6 +327,21 @@ export default function Island() {
     };
   }, [hubOpen]);
 
+  // Listen for navigation events (e.g. from voice music handoff to 'playing')
+  useEffect(() => {
+    const handleNav = (e) => {
+      if (e.detail?.tab) {
+        setTab(e.detail.tab);
+        // Only open the hub if explicitly requested; if already dismissed, stay in compact mode
+        if (e.detail.openHub && !hubOpen) {
+          setHubOpen(true);
+        }
+      }
+    };
+    window.addEventListener('island:navigate', handleNav);
+    return () => window.removeEventListener('island:navigate', handleNav);
+  }, [hubOpen]);
+
   // Hotkey / tray / second launch listeners (supports both hub:toggle and hub:open)
   useEffect(() => {
     if (!window.island?.on) return undefined;

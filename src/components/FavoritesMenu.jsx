@@ -44,9 +44,6 @@ export default function FavoritesMenu({
               artwork: enriched.artwork,
               artist: enriched.artist || item.artist,
               album: enriched.album || item.album,
-              provider: item.provider && item.provider !== 'generic'
-                ? item.provider
-                : (enriched.provider || item.provider),
             });
             setFavorites(getAllFavorites());
           }

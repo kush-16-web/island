@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { VoiceTurnController } from '../lib/voice-turn-controller';
 import { processTurnIntent } from '../lib/voice-intent';
 import { getAssistantName } from '../lib/assistant';
+import { audioCoordinator } from '../lib/audio-coordinator';
+import { interpretLocalMusicCommand } from '../lib/music-command-interpreter';
 
 /**
  * Helper to encode float32 PCM samples into standard 16-bit mono WAV ArrayBuffer
@@ -216,6 +218,7 @@ export function useRealtimeVoice(options = {}) {
     setAudioLevel(0);
     setWaveformData(new Float32Array(16).fill(0.1));
     window.island?.setVoiceMood?.('idle');
+    audioCoordinator.cancelDucking();
   }, [controller]);
 
   // Stop active voice session without clearing conversation history
@@ -229,6 +232,7 @@ export function useRealtimeVoice(options = {}) {
   // End active session completely, clearing conversation history (explicit user action)
   const endSession = useCallback(() => {
     cleanup();
+    audioCoordinator.cancelDucking();
     setTranscript([]);
     historyRef.current = [];
     setStatus('idle');
@@ -239,6 +243,7 @@ export function useRealtimeVoice(options = {}) {
 
   // Interrupt assistant immediately
   const interrupt = useCallback(() => {
+    audioCoordinator.cancelDucking();
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.onended = null;
@@ -266,8 +271,8 @@ export function useRealtimeVoice(options = {}) {
     }
   }, []);
 
-  // Play audio buffer received from Gemini TTS with real-time waveform connection
-  const playAssistantSpeech = useCallback(async (audioBase64, text, turnId) => {
+  // Play audio buffer received from TTS with real-time waveform connection
+  const playAssistantSpeech = useCallback(async (audioBase64, text, turnId, onSpeechComplete = null) => {
     const audioCtx = audioContextRef.current;
     if (!audioCtx) return;
 
@@ -321,6 +326,9 @@ export function useRealtimeVoice(options = {}) {
         if (currentSourceRef.current === source) {
           currentSourceRef.current = null;
           controller.finishSpeaking(turnId);
+          if (typeof onSpeechComplete === 'function') {
+            try { onSpeechComplete(); } catch {}
+          }
         }
       };
 
@@ -328,6 +336,9 @@ export function useRealtimeVoice(options = {}) {
     } catch (err) {
       console.warn('[Audio Playback Error]', err);
       controller.finishSpeaking(turnId);
+      if (typeof onSpeechComplete === 'function') {
+        try { onSpeechComplete(); } catch {}
+      }
     }
   }, [controller]);
 
@@ -405,28 +416,45 @@ export function useRealtimeVoice(options = {}) {
       ]);
       historyRef.current.push({ role: 'user', text: displayedUserText });
 
-      // 2. Direct Local Fast-Path Execution (Phase 8): Check for common playback commands locally
-      let directActionTag = null;
+      // 2. Direct Local Music Command Interpretation (PASS 2 - PART B)
+      // Checks local-first command grammar to completely eliminate unnecessary Groq chat calls
+      let localMusicResult = null;
       if (userText) {
-        const cleanCmd = userText.toLowerCase().replace(/[.,!?;:]/g, '').trim();
-        if (/^(pause|pause music|stop music|pause playback|halt)$/.test(cleanCmd)) {
-          directActionTag = '[[ACTION:{"action":"pause"}]]';
-        } else if (/^(resume|resume music|play music|play|continue|unpause)$/.test(cleanCmd)) {
-          directActionTag = '[[ACTION:{"action":"resume"}]]';
-        } else if (/^(next|next song|next track|skip|skip track)$/.test(cleanCmd)) {
-          directActionTag = '[[ACTION:{"action":"next_track"}]]';
-        } else if (/^(previous|previous song|previous track|prev song|go back)$/.test(cleanCmd)) {
-          directActionTag = '[[ACTION:{"action":"previous_track"}]]';
-        } else if (/^(what is playing|whats playing|current song|what song is this|current track)$/.test(cleanCmd)) {
-          directActionTag = '[[ACTION:{"action":"get_current_track"}]]';
+        const localEval = interpretLocalMusicCommand(userText, {
+          media: mediaRef.current || { active: false },
+          onControl: onControlRef.current || ((act) => window.island?.media?.control?.(act)),
+          turnId,
+        });
+        if (localEval.handledLocally && localEval.actionResult) {
+          localMusicResult = localEval.actionResult;
         }
       }
 
-      let llmReplyText = directActionTag;
+      let turnResult = null;
       let geminiAudioBase64 = null;
 
-      // 3. Stage 2: Conversational LLM (if not handled by direct local action)
-      if (!llmReplyText) {
+      if (localMusicResult) {
+        // Handled deterministically locally: 0 Groq chat API quota spent
+        let confirmation = localMusicResult.spokenConfirmation || 'Action completed.';
+        if (
+          localMusicResult.ok &&
+          localMusicResult.track?.title &&
+          (localMusicResult.action === 'play_favorite' ||
+           localMusicResult.action === 'play_track' ||
+           localMusicResult.action === 'play_random_favorite')
+        ) {
+          const artistText = localMusicResult.track.artist ? ` by ${localMusicResult.track.artist}` : '';
+          confirmation = `Playing ${localMusicResult.track.title}${artistText}.`;
+        }
+        turnResult = {
+          executed: true,
+          actionResult: localMusicResult,
+          spokenText: confirmation,
+          transcriptText: confirmation,
+        };
+      } else {
+        // 3. Stage 2: Conversational LLM (if not handled by direct local action)
+        let llmReplyText = null;
         if (chatProvider === 'groq') {
           if (!window.island?.groq?.chat) {
             throw new Error('Groq conversational service is not available in Electron.');
@@ -488,13 +516,13 @@ export function useRealtimeVoice(options = {}) {
           llmReplyText = chatRes.text;
           geminiAudioBase64 = chatRes.audioBase64;
         }
-      }
 
-      // 4. Stage 3: Truth-grounded Island Action Execution
-      const turnResult = processTurnIntent(llmReplyText, {
-        media: mediaRef.current || { active: false },
-        onControl: onControlRef.current || ((act) => window.island?.media?.control?.(act)),
-      });
+        // 4. Stage 3: Truth-grounded Island Action Execution
+        turnResult = processTurnIntent(llmReplyText, {
+          media: mediaRef.current || { active: false },
+          onControl: onControlRef.current || ((act) => window.island?.media?.control?.(act)),
+        });
+      }
 
       const finalSpokenText = turnResult.spokenText;
       const finalTranscriptText = turnResult.transcriptText;
@@ -504,6 +532,31 @@ export function useRealtimeVoice(options = {}) {
         { role: 'assistant', text: finalTranscriptText },
       ]);
       historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
+
+      // Check if this action triggers music playback (PASS 2 - PART E & F)
+      const isPlaybackAction = Boolean(
+        turnResult.actionResult?.ok && (
+          turnResult.actionResult.action === 'play_favorite' ||
+          turnResult.actionResult.action === 'play_track' ||
+          turnResult.actionResult.action === 'play_random_favorite'
+        )
+      );
+
+      if (isPlaybackAction) {
+        // Start playing music softly in background (~22% volume) over 250ms
+        audioCoordinator.startDucking({ duckLevel: 0.22, durationMs: 250 });
+      }
+
+      const handleSpeechComplete = () => {
+        if (isPlaybackAction) {
+          // Smoothly fade music back up to 100% user volume over 1100ms
+          audioCoordinator.restoreVolume({ durationMs: 1100 });
+          // Smoothly transition expanded view toward Now Playing view while keeping session active
+          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+            window.dispatchEvent(new CustomEvent('island:navigate', { detail: { tab: 'playing' } }));
+          }
+        }
+      };
 
       // 5. Stage 4: Speech Synthesis (TTS)
       let spokenAudioBase64 = null;
@@ -558,12 +611,14 @@ export function useRealtimeVoice(options = {}) {
       }
 
       if (spokenAudioBase64 && controller.isTurnActive(turnId)) {
-        await playAssistantSpeech(spokenAudioBase64, finalSpokenText, turnId);
+        await playAssistantSpeech(spokenAudioBase64, finalSpokenText, turnId, handleSpeechComplete);
       } else {
+        handleSpeechComplete();
         controller.finishSpeaking(turnId);
       }
     } catch (err) {
       console.warn('[Voice Turn Error]', err);
+      audioCoordinator.cancelDucking();
       controller.handleTurnFailure(turnId, err.message || 'Error processing speech turn.');
     }
   }, [controller, playAssistantSpeech]);

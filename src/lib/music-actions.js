@@ -130,13 +130,15 @@ export function scoreTrack(track, query) {
   const title = track.title || '';
   const artist = track.artist || '';
   const combined = `${title} ${artist}`.trim();
+  const cleanQ = query.replace(/\bby\b/gi, ' ').replace(/\s+/g, ' ').trim();
 
   const titleScore = stringSimilarity(query, title);
   const artistScore = stringSimilarity(query, artist);
   const combinedScore = stringSimilarity(query, combined);
+  const cleanCombinedScore = stringSimilarity(cleanQ, combined);
 
   // Highest score with weight on title
-  return Math.max(titleScore * 1.1, combinedScore, artistScore * 0.8);
+  return Math.max(titleScore * 1.1, combinedScore, cleanCombinedScore, artistScore * 0.8);
 }
 
 /**
@@ -656,7 +658,7 @@ function handlePlaybackExecution(track, { action, media, onControl, onOpenUrl, t
   if (track.playableUrl) {
     onOpenUrl(track.playableUrl);
 
-    // Honest truth: We launched the playback command to the provider
+    // Launch playback command to provider
     const res = {
       ok: true,
       action,
