@@ -198,6 +198,7 @@ export default function VoicePanel({
     cooldownSeconds = 0,
     startSession,
     stopSession,
+    endSession,
     interrupt,
     toggleMute,
     dismissCooldown,
@@ -295,11 +296,10 @@ export default function VoicePanel({
             type="button"
             className="voice-panel__close-btn"
             onClick={() => {
-              stopSession();
               onClose?.();
             }}
-            title="End voice session (Ctrl+Shift+Space)"
-            aria-label="End voice session"
+            title="Minimize to Island pill"
+            aria-label="Minimize assistant"
           >
             <Icon.Close width={14} height={14} />
           </button>
@@ -461,11 +461,10 @@ export default function VoicePanel({
               type="button"
               className="voice-btn voice-btn--dismiss"
               onClick={() => {
-                stopSession();
                 onClose?.();
               }}
-              title="Close panel"
-              aria-label="Close"
+              title="Minimize to Island pill"
+              aria-label="Minimize"
             >
               <span>Dismiss</span>
             </button>
@@ -475,10 +474,11 @@ export default function VoicePanel({
             type="button"
             className="voice-btn voice-btn--end"
             onClick={() => {
-              stopSession();
+              if (typeof endSession === 'function') endSession();
+              else stopSession?.();
               onClose?.();
             }}
-            title="End voice session (Ctrl+Shift+Space)"
+            title="End conversation session"
             aria-label="End session"
           >
             <span>End Session</span>

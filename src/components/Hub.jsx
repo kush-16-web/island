@@ -130,7 +130,6 @@ export default function Hub({
                   voice.startSession();
                   setTab('voice');
                 } else if (tab === 'voice') {
-                  voice.stopSession();
                   setTab(s.media?.active ? 'playing' : 'launcher');
                 } else {
                   setTab('voice');
@@ -191,7 +190,6 @@ export default function Hub({
               <VoicePanel
                 voice={voice}
                 onClose={() => {
-                  voice.stopSession();
                   setTab(s.media?.active ? 'playing' : 'launcher');
                   onClose?.();
                 }}

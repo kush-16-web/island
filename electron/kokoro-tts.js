@@ -12,6 +12,9 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
+// Matches Hangul Syllables, Jamo, and Compatibility Jamo
+const HANGUL_REGEX = /[\u1100-\u11FF\u3130-\u318F\uA960-\uA97F\uAC00-\uD7AF\uD7B0-\uD7FF]/;
+
 class KokoroLocalService {
   constructor() {
     this.model = null;
@@ -64,6 +67,7 @@ class KokoroLocalService {
       isLoading: this.isLoading,
       currentVoice: this.currentVoice,
       modelDir: this.modelDir,
+      supportedLanguages: ['en-us', 'en-gb'],
       metrics: { ...this.metrics },
       availableFemaleVoices: [
         { id: 'af_heart', name: 'Heart (Warm & Expressive)', lang: 'en-us' },
@@ -188,6 +192,40 @@ class KokoroLocalService {
       return { ok: false, error: 'No text provided for synthesis' };
     }
 
+    const trimmedText = text.trim();
+
+    // Check for Korean characters: Kokoro phonemizer only bundles English dictionaries
+    if (HANGUL_REGEX.test(trimmedText)) {
+      const hasLatin = /[A-Za-z0-9]/.test(trimmedText);
+      if (!hasLatin) {
+        this._logDiagnostic({
+          event: 'unsupported_language_rejected',
+          language: 'ko',
+          reason: 'Kokoro local engine only supports English phonemization (en-us, en-gb)',
+        });
+        return {
+          ok: false,
+          error: 'Korean speech synthesis is not supported by the local Kokoro engine (English voices only).',
+          unsupportedLanguage: 'ko',
+          supportedLanguages: ['en-us', 'en-gb'],
+        };
+      }
+    }
+
+    // For mixed text, strip unsupported characters so English portion synthesizes cleanly
+    let cleanText = trimmedText;
+    if (HANGUL_REGEX.test(cleanText)) {
+      cleanText = cleanText.replace(new RegExp(HANGUL_REGEX, 'g'), '').replace(/\s+/g, ' ').trim();
+      if (!cleanText) {
+        return {
+          ok: false,
+          error: 'Korean speech synthesis is not supported by the local Kokoro engine (English voices only).',
+          unsupportedLanguage: 'ko',
+          supportedLanguages: ['en-us', 'en-gb'],
+        };
+      }
+    }
+
     this.isCancelling = false;
     const isCold = !this.model;
     const memBefore = process.memoryUsage().heapUsed;
@@ -209,10 +247,36 @@ class KokoroLocalService {
 
     try {
       this.currentVoice = voice;
-      const result = await this.model.generate(text.trim(), {
-        voice,
-        speed: Math.max(0.5, Math.min(2.0, Number(speed) || 1.0)),
-      });
+
+      // Temporarily guard process.stderr to prevent eSpeak-NG /usr/share/espeak-ng-data flood
+      const origStderrWrite = process.stderr.write;
+      let suppressedWarnings = 0;
+      let result;
+
+      try {
+        process.stderr.write = function (chunk, ...args) {
+          const str = typeof chunk === 'string' ? chunk : chunk?.toString?.() || '';
+          if (str.includes('/usr/share/espeak-ng-data/')) {
+            suppressedWarnings++;
+            return true;
+          }
+          return origStderrWrite.apply(process.stderr, [chunk, ...args]);
+        };
+
+        result = await this.model.generate(cleanText, {
+          voice,
+          speed: Math.max(0.5, Math.min(2.0, Number(speed) || 1.0)),
+        });
+      } finally {
+        process.stderr.write = origStderrWrite;
+        if (suppressedWarnings > 0) {
+          this._logDiagnostic({
+            event: 'espeak_dictionary_warnings_suppressed',
+            count: suppressedWarnings,
+            reason: 'Missing non-English dictionary in bundled eSpeak-NG data directory',
+          });
+        }
+      }
 
       if (this.isCancelling) {
         this.isCancelling = false;
@@ -292,6 +356,20 @@ class KokoroLocalService {
       disposed: true,
       message: 'Kokoro model resources released successfully.',
     };
+  }
+
+  /**
+   * Helper to append diagnostic records for Kokoro without flooding terminal.
+   */
+  _logDiagnostic(record) {
+    try {
+      let basePath = process.cwd();
+      if (app && typeof app.getPath === 'function') {
+        basePath = app.getPath('userData');
+      }
+      const logPath = path.join(basePath, 'kokoro-diagnostics.jsonl');
+      fs.appendFileSync(logPath, JSON.stringify({ timestamp: new Date().toISOString(), ...record }) + '\n', 'utf8');
+    } catch {}
   }
 
   /**

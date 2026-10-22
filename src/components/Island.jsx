@@ -13,6 +13,7 @@ import PetSystem from '../pets/PetSystem';
 import { isMock } from '../lib/bridge';
 import { useVideoAmbient, isVideoMedia } from '../hooks/useVideoAmbient';
 import { useRealtimeVoice } from '../hooks/useRealtimeVoice';
+import { getAssistantName } from '../lib/assistant';
 
 const HUB_W = 468;
 const HUB_H = { playing: 282, clock: 384, inbox: 340, pet: 410, settings: 340, voice: 340, launcher: 388 };
@@ -65,12 +66,25 @@ function CompactView({ mode, media, nextTimer, now, musicColor, playing, width }
 }
 
 function CompactVoiceView({ voice, width }) {
-  const petName = localStorage.getItem('island_pet_name') || 'Mochi';
+  const assistantName = getAssistantName();
   let dotClass = 'is-listening';
-  if (voice.status === 'thinking') dotClass = 'is-thinking';
-  else if (voice.status === 'speaking') dotClass = 'is-speaking';
-  else if (voice.status === 'error') dotClass = 'is-error';
-  else if (voice.status === 'connecting') dotClass = 'is-connecting';
+  let stateLabel = 'Listening';
+  if (voice.status === 'thinking' || voice.status === 'processing') {
+    dotClass = 'is-thinking';
+    stateLabel = 'Thinking';
+  } else if (voice.status === 'speaking') {
+    dotClass = 'is-speaking';
+    stateLabel = 'Speaking';
+  } else if (voice.status === 'error') {
+    dotClass = 'is-error';
+    stateLabel = 'Error';
+  } else if (voice.status === 'connecting') {
+    dotClass = 'is-connecting';
+    stateLabel = 'Connecting';
+  } else if (voice.status === 'cooldown') {
+    dotClass = 'is-cooldown';
+    stateLabel = 'Resting';
+  }
 
   return (
     <View w={width} h={SIZE.voice.h} className="compact compact--voice">
@@ -86,7 +100,7 @@ function CompactVoiceView({ voice, width }) {
           />
         ))}
       </div>
-      <span className="compact__title">{petName}: {voice.status}</span>
+      <span className="compact__title">{assistantName}: {stateLabel}</span>
     </View>
   );
 }
@@ -263,18 +277,16 @@ export default function Island() {
     window.island?.setIslandExpanded?.(hubOpen);
   }, [hubOpen]);
 
-  // Voice session dismissal cleanup: if the hub closes while voice is active, stop session cleanly
+  // When the expanded hub collapses, the active voice session (Speaking / Thinking / Listening)
+  // persists seamlessly in the background! Compact Island shows the active voice indicator.
   useEffect(() => {
     if (prevHubOpenRef.current && !hubOpen) {
-      window.island?.logLifecycle?.('hub:dismissed', {
+      window.island?.logLifecycle?.('hub:dismissed_session_preserved', {
         voiceStatus: voice.status,
       });
-      if (voice.status !== 'idle' && voice.status !== 'error') {
-        voice.stopSession();
-      }
     }
     prevHubOpenRef.current = hubOpen;
-  }, [hubOpen, voice]);
+  }, [hubOpen, voice.status]);
 
   // Click-outside dismissal: when the OS window blurs (user clicked Chrome, desktop, taskbar)
   useEffect(() => {
@@ -350,7 +362,7 @@ export default function Island() {
           voice.startSession();
         }
       } else if (tab === 'voice') {
-        voice.stopSession();
+        // Toggle minimizes expanded view to compact pill without interrupting background speech/thinking
         setHubOpen(false);
       } else {
         openHub('voice');

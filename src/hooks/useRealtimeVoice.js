@@ -218,12 +218,23 @@ export function useRealtimeVoice(options = {}) {
     window.island?.setVoiceMood?.('idle');
   }, [controller]);
 
-  // Stop active session
+  // Stop active voice session without clearing conversation history
   const stopSession = useCallback(() => {
     cleanup();
     setStatus('idle');
     setErrorMessage(null);
     setCooldownSeconds(0);
+  }, [cleanup]);
+
+  // End active session completely, clearing conversation history (explicit user action)
+  const endSession = useCallback(() => {
+    cleanup();
+    setTranscript([]);
+    historyRef.current = [];
+    setStatus('idle');
+    setErrorMessage(null);
+    setCooldownSeconds(0);
+    window.island?.logLifecycle?.('voice:session_ended_explicitly');
   }, [cleanup]);
 
   // Interrupt assistant immediately
@@ -566,6 +577,10 @@ export function useRealtimeVoice(options = {}) {
 
   // Start real-time voice session
   const startSession = useCallback(async () => {
+    // If session is already running or connecting, reuse without resetting
+    if (controller.state !== 'idle' && controller.state !== 'error') {
+      return;
+    }
     cleanup();
     setStatus('connecting');
     setErrorMessage(null);
@@ -650,33 +665,45 @@ export function useRealtimeVoice(options = {}) {
       const speakerData = new Uint8Array(32);
       const bars = new Float32Array(16);
 
-      const updateAudioVisuals = () => {
-        let currentLevel = 0;
+      let lastVisualUpdate = 0;
+      const updateAudioVisuals = (timestamp) => {
+        // Throttle React state updates to ~30 FPS (every ~33ms) to prevent high CPU / UI lag
+        if (!lastVisualUpdate || timestamp - lastVisualUpdate >= 32) {
+          lastVisualUpdate = timestamp;
+          let currentLevel = 0;
 
-        if (controller.state === 'speaking' && speakerAnalyserRef.current) {
-          speakerAnalyserRef.current.getByteFrequencyData(speakerData);
-          let sum = 0;
-          for (let i = 0; i < 16; i++) {
-            const val = speakerData[i] / 255;
-            bars[i] = bars[i] * 0.35 + val * 0.65;
-            sum += val;
+          if (controller.state === 'speaking' && speakerAnalyserRef.current) {
+            speakerAnalyserRef.current.getByteFrequencyData(speakerData);
+            let sum = 0;
+            for (let i = 0; i < 16; i++) {
+              const val = speakerData[i] / 255;
+              bars[i] = bars[i] * 0.35 + val * 0.65;
+              sum += val;
+            }
+            currentLevel = sum / 16;
+            setAudioLevel(currentLevel);
+            setWaveformData(new Float32Array(bars));
+          } else if (micAnalyserRef.current && controller.state === 'listening') {
+            micAnalyserRef.current.getByteFrequencyData(micData);
+            let sum = 0;
+            for (let i = 0; i < 16; i++) {
+              const val = micData[i] / 255;
+              bars[i] = bars[i] * 0.35 + val * 0.65;
+              sum += val;
+            }
+            currentLevel = sum / 16;
+            setAudioLevel(currentLevel);
+            setWaveformData(new Float32Array(bars));
+          } else if (controller.state === 'processing') {
+            setAudioLevel(0.2);
           }
-          currentLevel = sum / 16;
-        } else if (micAnalyserRef.current && controller.state === 'listening') {
-          micAnalyserRef.current.getByteFrequencyData(micData);
-          let sum = 0;
-          for (let i = 0; i < 16; i++) {
-            const val = micData[i] / 255;
-            bars[i] = bars[i] * 0.35 + val * 0.65;
-            sum += val;
-          }
-          currentLevel = sum / 16;
         }
 
-        setAudioLevel(currentLevel);
-        setWaveformData(new Float32Array(bars));
-
-        animFrameRef.current = requestAnimationFrame(updateAudioVisuals);
+        if (controller.state !== 'idle' && controller.state !== 'error') {
+          animFrameRef.current = requestAnimationFrame(updateAudioVisuals);
+        } else {
+          animFrameRef.current = null;
+        }
       };
 
       animFrameRef.current = requestAnimationFrame(updateAudioVisuals);
@@ -688,21 +715,6 @@ export function useRealtimeVoice(options = {}) {
       setErrorMessage(err.message || 'Failed to start Gemini voice companion.');
     }
   }, [cleanup, controller]);
-
-  // Listen to global shortcut 'voice:toggle' from Electron (Ctrl+Shift+Space)
-  useEffect(() => {
-    if (!window.island?.on) return undefined;
-    return window.island.on('voice:toggle', () => {
-      setStatus((current) => {
-        if (current === 'idle' || current === 'error') {
-          startSession();
-        } else {
-          stopSession();
-        }
-        return current;
-      });
-    });
-  }, [startSession, stopSession]);
 
   // User-triggered dismissal of cooldown
   const dismissCooldown = useCallback(() => {
@@ -737,6 +749,7 @@ export function useRealtimeVoice(options = {}) {
     setVadSilenceMs,
     startSession,
     stopSession,
+    endSession,
     interrupt,
     toggleMute,
     dismissCooldown,

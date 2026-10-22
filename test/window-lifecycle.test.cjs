@@ -60,10 +60,10 @@ test('Window Lifecycle & Restoration Verification Suite', async (t) => {
     assert.ok(islandCode.includes('Date.now() - expandedAtRef.current < 450'), 'Island.jsx must enforce at least 450ms blur grace period');
   });
 
-  await t.test('7. Island.jsx stops active voice session when hub is dismissed', () => {
+  await t.test('7. Island.jsx preserves active voice session when hub is dismissed (no premature stopSession)', () => {
     const islandCode = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'Island.jsx'), 'utf-8');
     assert.ok(islandCode.includes('prevHubOpenRef'), 'Island.jsx must track previous hubOpen state');
-    assert.ok(islandCode.includes('voice.stopSession()'), 'Island.jsx must call voice.stopSession() on dismissal');
+    assert.ok(islandCode.includes('hub:dismissed_session_preserved'), 'Island.jsx must preserve session on dismissal');
   });
 
   await t.test('8. Island.jsx listens to hub:open to handle restoration from second-instance and tray', () => {
