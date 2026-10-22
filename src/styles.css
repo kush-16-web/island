@@ -4317,6 +4317,35 @@ button:hover .lucide-icon--bell {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.fav-item__reconnect-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+.fav-item__reconnect-label {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.fav-item__reconnect-btn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--fill-2);
+  border: 1px solid var(--hair);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.fav-item__reconnect-btn:hover {
+  background: var(--fill-3);
+  color: var(--text);
+  border-color: var(--menu-accent, #38bdf8);
+}
 .fav-item__actions {
   display: flex;
   align-items: center;

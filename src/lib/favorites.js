@@ -12,6 +12,7 @@
 import { normalizeText } from './music-actions.js';
 
 export const UNIFIED_STORAGE_KEY = 'island_favorites_v2';
+export const BACKUP_STORAGE_KEY = 'island_favorites_v2_backup';
 export const LEGACY_STORAGE_KEY = 'island_fav_tracks';
 
 export const SUPPORTED_PROVIDERS = Object.freeze({
@@ -20,7 +21,58 @@ export const SUPPORTED_PROVIDERS = Object.freeze({
   APPLE: 'apple',
   LOCAL: 'local',
   GENERIC: 'generic',
+  UNKNOWN: 'unknown',
 });
+
+/**
+ * Robust evidence checks for provider verification.
+ * Distinguishes true provider ownership from accidental iTunes search enrichment.
+ */
+export function isVerifiedYouTube(track) {
+  if (!track) return false;
+  if (track.youtubeId) return true;
+  if (typeof track.providerTrackId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(track.providerTrackId)) return true;
+  const url = String(track.playableUrl || '').toLowerCase();
+  if (url.includes('youtube.com') || url.includes('youtu.be')) return true;
+  const art = String(track.artwork || track.art || '').toLowerCase();
+  if (art.includes('ytimg.com') || art.includes('youtube.com')) return true;
+  const rawApp = String(track.rawAppId || track.sourceAppId || '').toLowerCase();
+  if (rawApp.includes('youtube') || rawApp.includes('cinhimbnkkaohfgiekfkjhmbdcndachm')) return true;
+  const app = String(track.app || '').toLowerCase();
+  if (app.includes('youtube')) return true;
+  return false;
+}
+
+export function isVerifiedSpotify(track) {
+  if (!track) return false;
+  if (typeof track.providerTrackId === 'string' && track.providerTrackId.startsWith('spotify:')) return true;
+  const url = String(track.playableUrl || '').toLowerCase();
+  if (url.startsWith('spotify:') || url.includes('open.spotify.com')) return true;
+  const rawApp = String(track.rawAppId || track.sourceAppId || '').toLowerCase();
+  if (rawApp.includes('spotify')) return true;
+  const app = String(track.app || '').toLowerCase();
+  if (app.includes('spotify')) return true;
+  return false;
+}
+
+export function isVerifiedApple(track) {
+  if (!track) return false;
+  const rawApp = String(track.rawAppId || track.sourceAppId || '').toLowerCase();
+  if (rawApp.includes('applemusic') || rawApp.includes('itunes')) return true;
+  const app = String(track.app || '').toLowerCase();
+  if (app.includes('apple music') || app.includes('itunes')) return true;
+  const url = String(track.playableUrl || '').toLowerCase();
+  // Only actual catalog tracks/albums, NOT generic public iTunes search results
+  if (url.includes('music.apple.com') && !url.includes('search?term=') && !url.includes('/search?')) return true;
+  return false;
+}
+
+export function isVerifiedLocal(track) {
+  if (!track) return false;
+  const app = String(track.app || '').toLowerCase();
+  const rawApp = String(track.rawAppId || '').toLowerCase();
+  return app.includes('vlc') || app.includes('media player') || app.includes('groove') || app.includes('foobar') || rawApp.includes('vlc');
+}
 
 /**
  * Determine the music provider from active SMTC media attributes.
@@ -30,6 +82,12 @@ export const SUPPORTED_PROVIDERS = Object.freeze({
 export function detectProvider(media = {}) {
   if (!media) return SUPPORTED_PROVIDERS.GENERIC;
   if (media.provider && Object.values(SUPPORTED_PROVIDERS).includes(media.provider)) {
+    // Guard: If marked Apple Music, ensure it actually has Apple evidence and wasn't just iTunes artwork
+    if (media.provider === SUPPORTED_PROVIDERS.APPLE && !isVerifiedApple(media)) {
+      if (isVerifiedYouTube(media)) return SUPPORTED_PROVIDERS.YOUTUBE;
+      if (isVerifiedSpotify(media)) return SUPPORTED_PROVIDERS.SPOTIFY;
+      return SUPPORTED_PROVIDERS.GENERIC;
+    }
     return media.provider;
   }
   const app = String(media.app || '').toLowerCase();
@@ -75,7 +133,6 @@ export function buildPlayableReference(title, artist, provider, extra = {}) {
       if (extra.providerTrackId && extra.providerTrackId.startsWith('spotify:')) {
         return extra.providerTrackId;
       }
-      // Spotify URI protocol triggers desktop app directly
       return `spotify:search:${encodedQuery}`;
     }
     case SUPPORTED_PROVIDERS.YOUTUBE: {
@@ -106,6 +163,42 @@ export function createFavoriteId(title, artist, provider = 'generic', providerTr
 }
 
 /**
+ * Reconnect an ambiguous or misclassified favorite to a user-confirmed provider.
+ */
+export function reconnectFavoriteProvider(id, targetProvider, storage = null) {
+  const s = storage || (typeof window !== 'undefined' ? window.localStorage : null);
+  const list = getAllFavorites(s);
+  let updated = false;
+
+  const nextList = list.map((item) => {
+    if (item.id === id) {
+      updated = true;
+      const validProvider = Object.values(SUPPORTED_PROVIDERS).includes(targetProvider)
+        ? targetProvider
+        : SUPPORTED_PROVIDERS.YOUTUBE;
+      const newPlayableUrl = buildPlayableReference(item.title, item.artist, validProvider, {
+        youtubeId: item.youtubeId,
+        providerTrackId: item.providerTrackId,
+      });
+      return {
+        ...item,
+        id: createFavoriteId(item.title, item.artist, validProvider, item.providerTrackId),
+        provider: validProvider,
+        playableUrl: newPlayableUrl,
+        isAmbiguousSource: false,
+        sourceConfirmedAt: Date.now(),
+      };
+    }
+    return item;
+  });
+
+  if (updated) {
+    setAllFavorites(nextList, s);
+  }
+  return updated;
+}
+
+/**
  * Migrate legacy favorites and repair misclassified provider records.
  */
 export function migrateLegacyFavorites(storage = null) {
@@ -116,29 +209,79 @@ export function migrateLegacyFavorites(storage = null) {
   try {
     const rawUnified = s.getItem(UNIFIED_STORAGE_KEY);
     if (rawUnified) {
+      // 1. Safety Backup: preserve untouched original storage before any repair or mutation
+      try {
+        if (!s.getItem(BACKUP_STORAGE_KEY)) {
+          s.setItem(BACKUP_STORAGE_KEY, rawUnified);
+        }
+      } catch {}
+
       const parsed = JSON.parse(rawUnified);
       if (Array.isArray(parsed)) unifiedList = parsed;
     }
   } catch {}
 
   let repairedAny = false;
-  // Repair any records where YouTube tracks were mistakenly classified as Apple Music
+  // Repair any records where tracks were misclassified or corrupted by iTunes artwork
   unifiedList = unifiedList.map((item) => {
     if (!item) return item;
-    const isYouTubeUrl = item.playableUrl && (item.playableUrl.includes('youtube.com') || item.playableUrl.includes('youtu.be'));
-    const isYouTubeId = Boolean(item.youtubeId || (item.providerTrackId && !item.providerTrackId.startsWith('spotify:')));
-    const hasYouTubeArt = item.artwork && item.artwork.includes('ytimg');
 
-    if (item.provider === SUPPORTED_PROVIDERS.APPLE && (isYouTubeUrl || isYouTubeId || hasYouTubeArt)) {
+    // Check YouTube / Spotify evidence
+    const hasYtEvidence = isVerifiedYouTube(item);
+    const hasSpEvidence = isVerifiedSpotify(item);
+    const hasAppleEvidence = isVerifiedApple(item);
+
+    // Case 1: Labeled Apple, but has unambiguous YouTube evidence
+    if (item.provider === SUPPORTED_PROVIDERS.APPLE && hasYtEvidence) {
       repairedAny = true;
       const repairedProvider = SUPPORTED_PROVIDERS.YOUTUBE;
       return {
         ...item,
         provider: repairedProvider,
+        isAmbiguousSource: false,
         id: createFavoriteId(item.title, item.artist, repairedProvider, item.providerTrackId),
         playableUrl: item.playableUrl || buildPlayableReference(item.title, item.artist, repairedProvider, { youtubeId: item.youtubeId }),
       };
     }
+
+    // Case 2: Labeled Apple, but has unambiguous Spotify evidence
+    if (item.provider === SUPPORTED_PROVIDERS.APPLE && hasSpEvidence) {
+      repairedAny = true;
+      const repairedProvider = SUPPORTED_PROVIDERS.SPOTIFY;
+      return {
+        ...item,
+        provider: repairedProvider,
+        isAmbiguousSource: false,
+        id: createFavoriteId(item.title, item.artist, repairedProvider, item.providerTrackId),
+        playableUrl: item.playableUrl || buildPlayableReference(item.title, item.artist, repairedProvider, { providerTrackId: item.providerTrackId }),
+      };
+    }
+
+    // Case 3: Labeled Apple, but lacks ANY Apple evidence (corrupted by iTunes artwork enrichment)
+    if (item.provider === SUPPORTED_PROVIDERS.APPLE && !hasAppleEvidence) {
+      repairedAny = true;
+      // Mark as ambiguous so UI can offer reconnection; provide safe playable fallback URL
+      return {
+        ...item,
+        provider: SUPPORTED_PROVIDERS.UNKNOWN,
+        isAmbiguousSource: true,
+        originalCorruptedProvider: SUPPORTED_PROVIDERS.APPLE,
+        playableUrl: item.playableUrl || buildPlayableReference(item.title, item.artist, SUPPORTED_PROVIDERS.YOUTUBE),
+      };
+    }
+
+    // Case 4: Missing playableUrl on ANY record
+    if (!item.playableUrl) {
+      repairedAny = true;
+      return {
+        ...item,
+        playableUrl: buildPlayableReference(item.title, item.artist, item.provider || SUPPORTED_PROVIDERS.GENERIC, {
+          youtubeId: item.youtubeId,
+          providerTrackId: item.providerTrackId,
+        }),
+      };
+    }
+
     return item;
   });
 

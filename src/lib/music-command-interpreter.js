@@ -20,9 +20,7 @@
 import { cleanSpokenQuery, resolveFavoriteTrack } from './favorites-resolver.js';
 import { executeMusicAction, normalizeText } from './music-actions.js';
 import { SUPPORTED_PROVIDERS, getAllFavorites } from './favorites.js';
-
-// Conversational filler prefixes that can precede commands
-const FILLER_PREFIXES = /^(hey\s+)?(jett|jadu|island|computer|assistant)?[\s,]*(please\s+)?(can\s+you\s+)?(could\s+you\s+)?/i;
+import { getAssistantName } from './assistant.js';
 
 // Conversational phrases containing "play" that are NOT music commands
 const NON_MUSIC_PLAY_PATTERNS = [
@@ -32,13 +30,28 @@ const NON_MUSIC_PLAY_PATTERNS = [
 ];
 
 /**
+ * Strip conversational wake names and filler prefixes dynamically.
+ * Respects the user-configurable assistant name without hardcoding.
+ */
+function stripConversationalPrefixes(rawText) {
+  if (!rawText || typeof rawText !== 'string') return '';
+  const name = (typeof getAssistantName === 'function' ? getAssistantName() : 'Nova').toLowerCase().trim();
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const dynamicPattern = new RegExp(
+    `^(hey\\s+)?(${escapedName}|island|computer|assistant)?[\\s,]*(please\\s+)?(can\\s+you\\s+)?(could\\s+you\\s+)?`,
+    'i'
+  );
+  return rawText.replace(dynamicPattern, '');
+}
+
+/**
  * Clean and normalize a spoken user text.
  */
 export function sanitizeSpokenInput(rawText) {
   if (!rawText || typeof rawText !== 'string') return '';
+  const stripped = stripConversationalPrefixes(rawText);
   return cleanSpokenQuery(
-    rawText
-      .replace(FILLER_PREFIXES, '')
+    stripped
       .replace(/[.,!?;:]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -164,7 +177,7 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     }
     return {
       handledLocally: true,
-      actionResult: executeMusicAction({ action: 'play_favorite', query: resolution.match.title }, env),
+      actionResult: executeMusicAction({ action: 'play_favorite', track: resolution.match, query: resolution.match.title }, env),
     };
   }
 
@@ -211,7 +224,7 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     if (resolution.match) {
       return {
         handledLocally: true,
-        actionResult: executeMusicAction({ action: 'play_favorite', query: resolution.match.title }, env),
+        actionResult: executeMusicAction({ action: 'play_favorite', track: resolution.match, query: resolution.match.title }, env),
       };
     }
 
@@ -250,7 +263,7 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     if (favRes.match) {
       return {
         handledLocally: true,
-        actionResult: executeMusicAction({ action: 'play_favorite', query: favRes.match.title }, env),
+        actionResult: executeMusicAction({ action: 'play_favorite', track: favRes.match, query: favRes.match.title }, env),
       };
     }
 

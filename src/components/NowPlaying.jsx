@@ -10,6 +10,7 @@ import FullLyrics from './FullLyrics';
 import VideoPiP from './VideoPiP';
 import FavoritesMenu from './FavoritesMenu';
 import { isTrackFavorite, addFavorite, removeFavorite } from '../lib/favorites';
+import { playFavoriteTrack } from '../lib/music-actions';
 
 export default function NowPlaying({
   media,
@@ -163,11 +164,12 @@ export default function NowPlaying({
   };
 
   const handlePlayFavoriteTrack = (item) => {
-    if (item.playableUrl && window.island?.media?.openUrl) {
-      window.island.media.openUrl(item.playableUrl);
-    } else if (onControl) {
-      onControl('play');
-    }
+    return playFavoriteTrack(item, {
+      media,
+      onControl,
+      onOpenUrl: (url) => window.island?.media?.openUrl?.(url),
+      storage: typeof window !== 'undefined' ? window.localStorage : null,
+    });
   };
 
   // Update view mode when active track or source changes

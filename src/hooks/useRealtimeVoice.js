@@ -435,17 +435,8 @@ export function useRealtimeVoice(options = {}) {
 
       if (localMusicResult) {
         // Handled deterministically locally: 0 Groq chat API quota spent
-        let confirmation = localMusicResult.spokenConfirmation || 'Action completed.';
-        if (
-          localMusicResult.ok &&
-          localMusicResult.track?.title &&
-          (localMusicResult.action === 'play_favorite' ||
-           localMusicResult.action === 'play_track' ||
-           localMusicResult.action === 'play_random_favorite')
-        ) {
-          const artistText = localMusicResult.track.artist ? ` by ${localMusicResult.track.artist}` : '';
-          confirmation = `Playing ${localMusicResult.track.title}${artistText}.`;
-        }
+        // Keep truthful confirmation: "Opening Attention in YouTube Music", "Resuming Attention", etc.
+        const confirmation = localMusicResult.spokenConfirmation || 'Action completed.';
         turnResult = {
           executed: true,
           actionResult: localMusicResult,
@@ -551,8 +542,13 @@ export function useRealtimeVoice(options = {}) {
         if (isPlaybackAction) {
           // Smoothly fade music back up to 100% user volume over 1100ms
           audioCoordinator.restoreVolume({ durationMs: 1100 });
-          // Smoothly transition expanded view toward Now Playing view while keeping session active
-          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          // Only transition to Now Playing if requested song is confirmed playing or resumed
+          const isConfirmedPlaying =
+            turnResult.actionResult?.status === 'confirmed_playing' ||
+            turnResult.actionResult?.status === 'resumed_current' ||
+            (mediaRef.current?.active && mediaRef.current?.status === 'playing');
+
+          if (isConfirmedPlaying && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
             window.dispatchEvent(new CustomEvent('island:navigate', { detail: { tab: 'playing' } }));
           }
         }

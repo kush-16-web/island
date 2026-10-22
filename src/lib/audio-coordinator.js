@@ -1,22 +1,29 @@
-﻿/**
+/**
  * audio-coordinator.js: Centralized audio coordinator for Island.
  *
- * Requirements (PASS 2 - PART E):
- * 1. Volume Ownership:
+ * Scope & Capabilities:
+ * 1. Application-Level Volume & WebAudio Gain:
+ *    - Controls Island's internal Web Audio gain nodes (voice responses, local sound effects).
+ *    - Never modifies global Windows master volume (IAudioEndpointVolume).
+ * 2. Volume Ownership:
  *    - Never overwrites user's base volume to perform ducking.
  *    - baseVolume: User-selected preferred volume [0.0 - 1.0] (default 0.70).
  *    - duckingMultiplier: Temporary assistant multiplier [0.0 - 1.0] (default 1.0).
  *    - effectiveVolume: baseVolume * duckingMultiplier.
- * 2. Dynamic Adjustment:
+ * 3. Dynamic Adjustment:
  *    - If user changes volume while assistant speaks, base volume updates immediately
  *      and ducked volume reflects the new base volume.
  *    - When speech ends, restored volume returns to the NEW user volume.
- * 3. Transitions:
+ * 4. Transitions:
  *    - Duck down: ~250ms smooth transition to ~22% (0.22).
  *    - Fade up after speech: ~1100ms smooth transition back to 100% (1.0).
- * 4. Interruption & Cancellation:
+ * 5. Interruption & Cancellation:
  *    - Sequence-tagged transitions discard stale timer callbacks.
  *    - Cancelling or aborting immediately restores 100% multiplier.
+ * 6. External Windows Process Boundary:
+ *    - Island does not alter third-party Windows processes (Spotify, YouTube Music in Chrome, Apple Music)
+ *      via fragile high-frequency PowerShell WASAPI polling, which takes 2-4 seconds to spin up,
+ *      violates the 250ms timing requirement, and risks freezing or leaving third-party apps quiet.
  */
 
 const STORAGE_KEY = 'island_user_volume';

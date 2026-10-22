@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAllFavorites, removeFavorite, updateFavorite, SUPPORTED_PROVIDERS } from '../lib/favorites';
+import {
+  getAllFavorites,
+  removeFavorite,
+  updateFavorite,
+  reconnectFavoriteProvider,
+  SUPPORTED_PROVIDERS,
+} from '../lib/favorites';
+import { playFavoriteTrack } from '../lib/music-actions';
 import { enrichTrackMetadata } from '../lib/art-resolver';
 import { Icon } from './icons';
 import { Empty } from './bits';
@@ -11,6 +18,7 @@ import { Empty } from './bits';
  * - Dynamic provider filter pills: Only shows sources that actually exist in the user's favorites
  * - Automatic HD artwork and metadata enrichment for tracks missing covers
  * - Song rows: Artwork, Title, "Artist · Provider", Play button, Heart button
+ * - Ambiguous source repair: 1-click reconnection to YouTube Music or Spotify for unverified legacy tracks
  * - Sleek custom modern scrollbar with zero clipping or Windows native arrows
  */
 export default function FavoritesMenu({
@@ -53,11 +61,18 @@ export default function FavoritesMenu({
     return () => { isMounted = false; };
   }, [favorites.length]);
 
-  const getProviderLabel = (provider) => {
+  const getProviderLabel = (provider, isAmbiguous = false) => {
+    if (isAmbiguous || provider === 'unknown') return 'Unconfirmed Source';
     if (provider === SUPPORTED_PROVIDERS.SPOTIFY) return 'Spotify';
     if (provider === SUPPORTED_PROVIDERS.YOUTUBE) return 'YouTube Music';
     if (provider === SUPPORTED_PROVIDERS.APPLE) return 'Apple Music';
+    if (provider === SUPPORTED_PROVIDERS.LOCAL) return 'Local Media';
     return provider ? (provider.charAt(0).toUpperCase() + provider.slice(1)) : '';
+  };
+
+  const handleReconnect = (id, targetProvider) => {
+    reconnectFavoriteProvider(id, targetProvider);
+    setFavorites(getAllFavorites());
   };
 
   // Compute available providers among saved songs dynamically (No hardcoded phantom chips)
@@ -99,8 +114,10 @@ export default function FavoritesMenu({
   const handlePlay = (item) => {
     if (typeof onPlayTrack === 'function') {
       onPlayTrack(item);
-    } else if (item.playableUrl && window.island?.media?.openUrl) {
-      window.island.media.openUrl(item.playableUrl);
+    } else {
+      playFavoriteTrack(item, {
+        onOpenUrl: (url) => window.island?.media?.openUrl?.(url),
+      });
     }
   };
 
@@ -198,7 +215,7 @@ export default function FavoritesMenu({
         ) : (
           <div className="fav-menu__list">
             {filteredList.map((item) => {
-              const providerLabel = getProviderLabel(item.provider);
+              const providerLabel = getProviderLabel(item.provider, item.isAmbiguousSource);
               const subtext = item.artist
                 ? `${item.artist}${providerLabel ? ` · ${providerLabel}` : ''}`
                 : (providerLabel || 'Track');
@@ -231,6 +248,27 @@ export default function FavoritesMenu({
                     <div className="fav-item__artist" title={subtext}>
                       {subtext}
                     </div>
+                    {item.isAmbiguousSource && (
+                      <div className="fav-item__reconnect-group" onClick={(e) => e.stopPropagation()}>
+                        <span className="fav-item__reconnect-label">Connect:</span>
+                        <button
+                          type="button"
+                          className="fav-item__reconnect-btn"
+                          onClick={() => handleReconnect(item.id, SUPPORTED_PROVIDERS.YOUTUBE)}
+                          title="Connect to YouTube Music"
+                        >
+                          YouTube Music
+                        </button>
+                        <button
+                          type="button"
+                          className="fav-item__reconnect-btn"
+                          onClick={() => handleReconnect(item.id, SUPPORTED_PROVIDERS.SPOTIFY)}
+                          title="Connect to Spotify"
+                        >
+                          Spotify
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Right Actions: Play + Heart */}

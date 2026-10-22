@@ -237,7 +237,7 @@ function logActionDiagnostic(record) {
  * @returns {object} structured action result
  */
 export function executeMusicAction(intent, env = {}) {
-  const { action, query, provider: explicitProvider } = intent || {};
+  const { action, query, provider: explicitProvider, track, trackId } = intent || {};
   const media = env.media || { active: false };
   const onControl = typeof env.onControl === 'function' ? env.onControl : () => {};
   const onOpenUrl =
@@ -479,6 +479,17 @@ export function executeMusicAction(intent, env = {}) {
     }
 
     case 'play_favorite': {
+      // 1. If explicit resolved track was passed, use it directly (never discard identity!)
+      if (track && track.title) {
+        return handlePlaybackExecution(track, {
+          action: 'play_favorite',
+          media,
+          onControl,
+          onOpenUrl,
+          turnId,
+        });
+      }
+
       let list = getAllFavorites(storage);
       if (list.length === 0) {
         return {
@@ -487,6 +498,20 @@ export function executeMusicAction(intent, env = {}) {
           reason: 'empty_favorites',
           spokenConfirmation: 'Your favorites list is empty.',
         };
+      }
+
+      // 2. If trackId was passed, resolve by unique ID
+      if (trackId) {
+        const found = list.find((f) => f.id === trackId);
+        if (found) {
+          return handlePlaybackExecution(found, {
+            action: 'play_favorite',
+            media,
+            onControl,
+            onOpenUrl,
+            turnId,
+          });
+        }
       }
 
       // Parse provider filter if specified in query, e.g. "play my spotify favorites"
@@ -629,7 +654,16 @@ export function executeMusicAction(intent, env = {}) {
  * Handle playback execution with provider awareness and truth-grounded confirmation.
  * Resolves the "Attention vs Pashmina" bug where sending SMTC 'play' blindly resumed the wrong song.
  */
-function handlePlaybackExecution(track, { action, media, onControl, onOpenUrl, turnId }) {
+export function handlePlaybackExecution(track, { action = 'play_favorite', media = { active: false }, onControl = () => {}, onOpenUrl = () => {}, turnId = Date.now() } = {}) {
+  if (!track || !track.title) {
+    return {
+      ok: false,
+      action,
+      reason: 'invalid_track',
+      spokenConfirmation: "I couldn't identify that track.",
+    };
+  }
+
   const isCurrent =
     media.active &&
     normalizeText(media.title) === normalizeText(track.title) &&
@@ -646,6 +680,7 @@ function handlePlaybackExecution(track, { action, media, onControl, onOpenUrl, t
     const res = {
       ok: true,
       action,
+      status: 'resumed_current',
       track: { title: track.title, artist: track.artist, provider: track.provider },
       spokenConfirmation: `Resuming ${track.title}${artistText}.`,
     };
@@ -653,45 +688,93 @@ function handlePlaybackExecution(track, { action, media, onControl, onOpenUrl, t
     return res;
   }
 
-  // 2. The requested song is a DIFFERENT track than what's playing (e.g. Pashmina is active, user asked for Attention)
-  // Check if we have a playable reference (e.g. spotify:search:... or youtube URL)
-  if (track.playableUrl) {
-    onOpenUrl(track.playableUrl);
-
-    // Launch playback command to provider
+  // 2. Ambiguous / corrupted provider check
+  // E.g. track was misclassified as Apple Music due to legacy iTunes artwork enrichment
+  if (track.isAmbiguousSource || track.provider === 'unknown') {
     const res = {
-      ok: true,
+      ok: false,
       action,
+      reason: 'ambiguous_provider_source',
       track: { title: track.title, artist: track.artist, provider: track.provider },
-      spokenConfirmation: `Opening ${track.title} in ${providerName}.`,
+      spokenConfirmation: `Found ${track.title} in your favorites, but its music source needs to be confirmed. Please select YouTube Music or Spotify in your Favorites menu.`,
     };
     logActionDiagnostic({
       turnId,
       action,
-      ok: true,
+      ok: false,
       track: track.title,
-      status: 'opened_provider',
-      provider: track.provider,
-      url: track.playableUrl,
+      status: 'ambiguous_provider_source',
     });
     return res;
   }
 
-  // 3. Fallback: If no playable URL or provider integration exists, do NOT falsely claim playback succeeded!
+  // 3. Apple Music provider check: Island has no authenticated remote playback API for Apple Music on Windows
+  if (track.provider === SUPPORTED_PROVIDERS.APPLE) {
+    const playableUrl = track.playableUrl || `https://music.apple.com/search?term=${encodeURIComponent(track.title + ' ' + (track.artist || ''))}`;
+    if (typeof onOpenUrl === 'function') {
+      onOpenUrl(playableUrl);
+    }
+    const res = {
+      ok: false,
+      action,
+      reason: 'apple_music_manual_start_required',
+      track: { title: track.title, artist: track.artist, provider: track.provider },
+      spokenConfirmation: `Found ${track.title} in your favorites and opened it in Apple Music, but automatic playback is not supported by Apple Music. Please start playback in Apple Music.`,
+    };
+    logActionDiagnostic({
+      turnId,
+      action,
+      ok: false,
+      track: track.title,
+      status: 'apple_music_manual_start_required',
+      provider: track.provider,
+    });
+    return res;
+  }
+
+  // 4. YouTube Music / Spotify / Browser playback:
+  // NEVER send generic SMTC 'play' when track is NOT current (that would resume an unrelated paused track!)
+  const playableUrl = track.playableUrl || (
+    track.provider === SUPPORTED_PROVIDERS.SPOTIFY
+      ? `spotify:search:${encodeURIComponent(track.title + ' ' + (track.artist || ''))}`
+      : `https://music.youtube.com/search?q=${encodeURIComponent(track.title + ' ' + (track.artist || ''))}`
+  );
+
+  if (typeof onOpenUrl === 'function') {
+    onOpenUrl(playableUrl);
+  }
+
   const res = {
-    ok: false,
+    ok: true,
     action,
-    reason: 'unsupported_provider_playback',
     track: { title: track.title, artist: track.artist, provider: track.provider },
-    spokenConfirmation: `Found ${track.title} in your favorites, but automatic switching is not supported by ${providerName}. Please select it in your Favorites menu.`,
+    status: 'opened_provider',
+    spokenConfirmation: `Opening ${track.title} in ${providerName}.`,
   };
+
   logActionDiagnostic({
     turnId,
     action,
-    ok: false,
+    ok: true,
     track: track.title,
-    status: 'unsupported_provider_playback',
+    status: 'opened_provider',
     provider: track.provider,
+    url: playableUrl,
   });
+
   return res;
+}
+
+/**
+ * Unified authoritative favorites player for both manual UI clicks and voice actions.
+ * Guarantees zero discrepancy between clicking Play in Favorites and asking Jett/Nova.
+ */
+export function playFavoriteTrack(track, env = {}) {
+  return handlePlaybackExecution(track, {
+    action: 'play_favorite',
+    media: env.media || { active: false },
+    onControl: env.onControl || (() => {}),
+    onOpenUrl: env.onOpenUrl || ((url) => (typeof window !== 'undefined' ? window.island?.media?.openUrl?.(url) : null)),
+    turnId: env.turnId || Date.now(),
+  });
 }
