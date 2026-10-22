@@ -20,6 +20,8 @@ const CHANNELS = new Set([
   'voice:toggle',
   'voice:state',
   'system:accent-color',
+  'companion:playback-state',
+  'companion:status-changed',
 ]);
 
 contextBridge.exposeInMainWorld('island', {
@@ -122,6 +124,11 @@ contextBridge.exposeInMainWorld('island', {
     clear: () => ipcRenderer.send('inbox:clear'),
     remove: (id) => ipcRenderer.send('inbox:remove', id),
     markRead: () => ipcRenderer.send('inbox:mark-read'),
+  },
+
+  companion: {
+    getStatus: () => ipcRenderer.invoke('companion:get-status'),
+    dispatchCommand: (cmd) => ipcRenderer.invoke('companion:dispatch', cmd),
   },
 
   on: (channel, callback) => {

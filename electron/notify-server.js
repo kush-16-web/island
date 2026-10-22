@@ -33,7 +33,7 @@ function parseNotification(body) {
   };
 }
 
-function createNotifyServer({ port = DEFAULT_PORT, onNotify, onVideoState, maxBodyBytes = 16 * 1024 } = {}) {
+function createNotifyServer({ port = DEFAULT_PORT, onNotify, onVideoState, companionBridge, maxBodyBytes = 16 * 1024 } = {}) {
   const server = http.createServer((req, res) => {
     // CORS preflight support for companion browser extension
     if (req.method === 'OPTIONS') {
@@ -63,7 +63,21 @@ function createNotifyServer({ port = DEFAULT_PORT, onNotify, onVideoState, maxBo
     if (pathname === '/health' && req.method === 'GET') {
       return send(200, { ok: true, app: 'island' }, { 'Access-Control-Allow-Origin': '*' });
     }
-    if (pathname !== '/notify' && pathname !== '/video-state') return send(404, { ok: false, error: 'Not found' });
+
+    if (companionBridge && pathname.startsWith('/companion/')) {
+      if (pathname === '/companion/status' && req.method === 'GET') {
+        return send(200, { ok: true, ...companionBridge.getStatus() }, { 'Access-Control-Allow-Origin': '*' });
+      }
+      if (pathname === '/companion/command' && req.method === 'GET') {
+        const command = companionBridge.pullNextCommand();
+        return send(200, { ok: true, command }, { 'Access-Control-Allow-Origin': '*' });
+      }
+    }
+
+    const isCompanionPost = companionBridge && pathname.startsWith('/companion/');
+    if (pathname !== '/notify' && pathname !== '/video-state' && !isCompanionPost) {
+      return send(404, { ok: false, error: 'Not found' });
+    }
     if (req.method !== 'POST') return send(405, { ok: false, error: 'Use POST' });
 
     const type = String(req.headers['content-type'] || '').toLowerCase();
@@ -95,6 +109,34 @@ function createNotifyServer({ port = DEFAULT_PORT, onNotify, onVideoState, maxBo
       } catch {
         return send(400, { ok: false, error: 'Invalid JSON' });
       }
+
+      if (isCompanionPost) {
+        try {
+          if (pathname === '/companion/ping') {
+            const resData = companionBridge.handlePing(parsed);
+            return send(200, resData, { 'Access-Control-Allow-Origin': '*' });
+          }
+          if (pathname === '/companion/state') {
+            const resData = companionBridge.handleStateUpdate(parsed);
+            return send(200, resData, { 'Access-Control-Allow-Origin': '*' });
+          }
+          if (pathname === '/companion/ack') {
+            const resData = companionBridge.handleAck(parsed);
+            return send(200, resData, { 'Access-Control-Allow-Origin': '*' });
+          }
+          if (pathname === '/companion/dispatch') {
+            companionBridge
+              .dispatchCommand(parsed)
+              .then((result) => send(200, result, { 'Access-Control-Allow-Origin': '*' }))
+              .catch((err) => send(500, { ok: false, error: err.message }, { 'Access-Control-Allow-Origin': '*' }));
+            return;
+          }
+          return send(404, { ok: false, error: 'Not found' });
+        } catch (err) {
+          return send(500, { ok: false, error: err.message }, { 'Access-Control-Allow-Origin': '*' });
+        }
+      }
+
       if (pathname === '/video-state') {
         try {
           if (onVideoState) onVideoState(parsed);

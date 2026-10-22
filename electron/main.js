@@ -26,6 +26,7 @@ app.commandLine.appendSwitch('gpu-rasterization-msaa-sample-count', '0');
 const { Store } = require('./store');
 const { Scheduler } = require('./scheduler');
 const { createNotifyServer, DEFAULT_PORT } = require('./notify-server');
+const { CompanionBridge } = require('./companion-bridge');
 const { MediaWatcher } = require('./media');
 const { FullscreenWatcher } = require('./fullscreen');
 const { RealtimeSessionBroker } = require('./realtime');
@@ -57,6 +58,7 @@ let scheduler = null;
 let media = null;
 let notifyServer = null;
 let notifyPort = DEFAULT_PORT;
+let companionBridge = null;
 let fullscreenWatcher = null;
 let inbox = [];
 let mediaState = { active: false };
@@ -715,7 +717,26 @@ function wireMedia() {
 }
 
 function wireNotifyServer() {
+  companionBridge = new CompanionBridge();
+  companionBridge.on('connection-change', (data) => {
+    send('companion:status-changed', data);
+  });
+  companionBridge.on('state-update', (data) => {
+    if (data.event === 'playing' && data.track) {
+      if (mediaState) {
+        mediaState.active = true;
+        mediaState.status = 'playing';
+        if (data.track.title) mediaState.title = data.track.title;
+        if (data.track.artist) mediaState.artist = data.track.artist;
+        if (data.track.videoId) mediaState.youtubeId = data.track.videoId;
+        send('media:update', mediaState);
+      }
+    }
+    send('companion:playback-state', data);
+  });
+
   notifyServer = createNotifyServer({
+    companionBridge,
     onNotify: (n) => pushNotification({ ...n, source: 'api' }),
     onVideoState: (state) => {
       if (mediaState) {
@@ -742,7 +763,11 @@ function wireIpc() {
     port: notifyPort,
     hotkey: HUB_SHORTCUT_LABEL,
     systemAccent: getSystemAccentColor(),
+    companion: companionBridge ? companionBridge.getStatus() : { connected: false },
   }));
+
+  handle('companion:get-status', () => (companionBridge ? companionBridge.getStatus() : { connected: false }));
+  handle('companion:dispatch', (cmd) => (companionBridge ? companionBridge.dispatchCommand(cmd) : Promise.reject(new Error('Companion bridge unavailable'))));
 
   handle('scheduler:add-alarm', (input) => guard(() => ({ item: scheduler.addAlarm(input) })));
   handle('scheduler:add-timer', (input) => guard(() => ({ item: scheduler.addTimer(input) })));

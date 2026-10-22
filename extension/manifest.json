@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Dynamic Island Companion",
-  "version": "1.0.0",
-  "description": "Seamlessly sends real-time video playback and YouTube ambient lighting to Dynamic Island.",
+  "version": "1.1.0",
+  "description": "Seamlessly syncs YouTube ambient lighting and enables exact YouTube Music favorites playback for Dynamic Island.",
   "permissions": [],
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://m.youtube.com/*",
+    "https://music.youtube.com/*",
     "http://127.0.0.1:47823/*"
   ],
   "content_scripts": [
@@ -16,6 +17,13 @@
         "https://m.youtube.com/*"
       ],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://music.youtube.com/*"
+      ],
+      "js": ["ytmusic-companion.js"],
       "run_at": "document_idle"
     }
   ],

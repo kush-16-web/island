@@ -163,13 +163,60 @@ export default function NowPlaying({
     }
   };
 
+  const [companionState, setCompanionState] = useState(() => (typeof window !== 'undefined' && window.__islandCompanionState) || null);
+  const [playbackFeedback, setPlaybackFeedback] = useState(null);
+
+  useEffect(() => {
+    if (window.island?.companion?.getStatus) {
+      window.island.companion
+        .getStatus()
+        .then((status) => {
+          setCompanionState(status);
+          if (typeof window !== 'undefined') window.__islandCompanionState = status;
+        })
+        .catch(() => {});
+    }
+
+    const unsubStatus = window.island?.on?.('companion:status-changed', (data) => {
+      const nextStatus = data?.info || data;
+      setCompanionState(nextStatus);
+      if (typeof window !== 'undefined') window.__islandCompanionState = nextStatus;
+    });
+
+    const unsubPlayback = window.island?.on?.('companion:playback-state', (data) => {
+      if (data?.event === 'playing') {
+        setPlaybackFeedback({ state: 'confirmed_playing', text: 'Confirmed playing' });
+      } else if (data?.event === 'autoplay_blocked') {
+        setPlaybackFeedback({ state: 'autoplay_blocked', text: 'Autoplay blocked by browser. Click Play in YouTube Music.' });
+      } else if (data?.event === 'failed') {
+        setPlaybackFeedback({ state: 'failed', text: data.error || 'Playback failed' });
+      }
+    });
+
+    return () => {
+      unsubStatus?.();
+      unsubPlayback?.();
+    };
+  }, []);
+
   const handlePlayFavoriteTrack = (item) => {
-    return playFavoriteTrack(item, {
+    const res = playFavoriteTrack(item, {
       media,
+      companion: companionState,
       onControl,
       onOpenUrl: (url) => window.island?.media?.openUrl?.(url),
+      onDispatchCompanion: (cmd) => window.island?.companion?.dispatchCommand?.(cmd),
       storage: typeof window !== 'undefined' ? window.localStorage : null,
     });
+
+    if (res && res.playbackState) {
+      if (res.playbackState === 'playback_requested') {
+        setPlaybackFeedback({ state: 'playback_requested', text: `Requesting ${item.title} on YouTube Music...` });
+      } else if (res.playbackState === 'opening_provider') {
+        setPlaybackFeedback({ state: 'opening_provider', text: `Opening ${item.title} in YouTube Music...` });
+      }
+    }
+    return res;
   };
 
   // Update view mode when active track or source changes
@@ -236,11 +283,25 @@ export default function NowPlaying({
   }
 
   if (!media.active) {
+    let emptyTitle = 'Nothing playing';
+    let emptyHint = 'Start audio or video in Spotify, your browser, or any media player and it will show up here.';
+
+    if (playbackFeedback?.state === 'autoplay_blocked') {
+      emptyTitle = 'Autoplay Paused';
+      emptyHint = 'YouTube Music loaded the song, but your browser requires a single click to start audio. Please click Play in YouTube Music.';
+    } else if (playbackFeedback?.state === 'playback_requested') {
+      emptyTitle = 'Connecting to Player...';
+      emptyHint = playbackFeedback.text;
+    } else if (playbackFeedback?.state === 'opening_provider') {
+      emptyTitle = 'Opening Provider...';
+      emptyHint = playbackFeedback.text;
+    }
+
     return (
       <Empty
         icon={Icon.Music}
-        title="Nothing playing"
-        hint="Start audio or video in Spotify, your browser, or any media player and it will show up here."
+        title={emptyTitle}
+        hint={emptyHint}
         action={
           <button
             type="button"

@@ -44,6 +44,16 @@ export const ALLOWED_ACTIONS = Object.freeze([
   'show_favorites',
 ]);
 
+export const PLAYBACK_STATES = Object.freeze({
+  RESOLVING: 'resolving',
+  OPENING_PROVIDER: 'opening_provider',
+  WAITING_FOR_PLAYER: 'waiting_for_player',
+  PLAYBACK_REQUESTED: 'playback_requested',
+  CONFIRMED_PLAYING: 'confirmed_playing',
+  AUTOPLAY_BLOCKED: 'autoplay_blocked',
+  FAILED: 'failed',
+});
+
 /**
  * Normalize string for resilient phonetic/spoken comparison.
  * Strips accents (e.g. "São Paulo" -> "sao paulo"), removes punctuation, normalizes whitespace.
@@ -247,6 +257,16 @@ export function executeMusicAction(intent, env = {}) {
           if (typeof window !== 'undefined' && window.island?.media?.openUrl) {
             window.island.media.openUrl(url);
           }
+        };
+  const companion = env.companion || (typeof window !== 'undefined' ? window.__islandCompanionState : null);
+  const onDispatchCompanion =
+    typeof env.onDispatchCompanion === 'function'
+      ? env.onDispatchCompanion
+      : (cmd) => {
+          if (typeof window !== 'undefined' && window.island?.companion?.dispatchCommand) {
+            return window.island.companion.dispatchCommand(cmd);
+          }
+          return null;
         };
   const storage = env.customStorage || null;
   const turnId = env.turnId || Date.now();
@@ -484,8 +504,10 @@ export function executeMusicAction(intent, env = {}) {
         return handlePlaybackExecution(track, {
           action: 'play_favorite',
           media,
+          companion,
           onControl,
           onOpenUrl,
+          onDispatchCompanion,
           turnId,
         });
       }
@@ -507,8 +529,10 @@ export function executeMusicAction(intent, env = {}) {
           return handlePlaybackExecution(found, {
             action: 'play_favorite',
             media,
+            companion,
             onControl,
             onOpenUrl,
+            onDispatchCompanion,
             turnId,
           });
         }
@@ -580,8 +604,10 @@ export function executeMusicAction(intent, env = {}) {
       return handlePlaybackExecution(match, {
         action: 'play_favorite',
         media,
+        companion,
         onControl,
         onOpenUrl,
+        onDispatchCompanion,
         turnId,
       });
     }
@@ -624,8 +650,10 @@ export function executeMusicAction(intent, env = {}) {
           return handlePlaybackExecution(match, {
             action: 'play_track',
             media,
+            companion,
             onControl,
             onOpenUrl,
+            onDispatchCompanion,
             turnId,
           });
         }
@@ -654,12 +682,24 @@ export function executeMusicAction(intent, env = {}) {
  * Handle playback execution with provider awareness and truth-grounded confirmation.
  * Resolves the "Attention vs Pashmina" bug where sending SMTC 'play' blindly resumed the wrong song.
  */
-export function handlePlaybackExecution(track, { action = 'play_favorite', media = { active: false }, onControl = () => {}, onOpenUrl = () => {}, turnId = Date.now() } = {}) {
+export function handlePlaybackExecution(
+  track,
+  {
+    action = 'play_favorite',
+    media = { active: false },
+    companion = null,
+    onControl = () => {},
+    onOpenUrl = () => {},
+    onDispatchCompanion = () => {},
+    turnId = Date.now(),
+  } = {}
+) {
   if (!track || !track.title) {
     return {
       ok: false,
       action,
       reason: 'invalid_track',
+      playbackState: PLAYBACK_STATES.FAILED,
       spokenConfirmation: "I couldn't identify that track.",
     };
   }
@@ -681,6 +721,7 @@ export function handlePlaybackExecution(track, { action = 'play_favorite', media
       ok: true,
       action,
       status: 'resumed_current',
+      playbackState: PLAYBACK_STATES.CONFIRMED_PLAYING,
       track: { title: track.title, artist: track.artist, provider: track.provider },
       spokenConfirmation: `Resuming ${track.title}${artistText}.`,
     };
@@ -695,6 +736,7 @@ export function handlePlaybackExecution(track, { action = 'play_favorite', media
       ok: false,
       action,
       reason: 'ambiguous_provider_source',
+      playbackState: PLAYBACK_STATES.FAILED,
       track: { title: track.title, artist: track.artist, provider: track.provider },
       spokenConfirmation: `Found ${track.title} in your favorites, but its music source needs to be confirmed. Please select YouTube Music or Spotify in your Favorites menu.`,
     };
@@ -718,6 +760,7 @@ export function handlePlaybackExecution(track, { action = 'play_favorite', media
       ok: false,
       action,
       reason: 'apple_music_manual_start_required',
+      playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
       track: { title: track.title, artist: track.artist, provider: track.provider },
       spokenConfirmation: `Found ${track.title} in your favorites and opened it in Apple Music, but automatic playback is not supported by Apple Music. Please start playback in Apple Music.`,
     };
@@ -732,8 +775,86 @@ export function handlePlaybackExecution(track, { action = 'play_favorite', media
     return res;
   }
 
-  // 4. YouTube Music / Spotify / Browser playback:
-  // NEVER send generic SMTC 'play' when track is NOT current (that would resume an unrelated paused track!)
+  // 4. YouTube Music provider playback:
+  if (track.provider === SUPPORTED_PROVIDERS.YOUTUBE) {
+    const compState = companion || (typeof window !== 'undefined' ? window.__islandCompanionState : null);
+    const isCompanionActive = compState && compState.connected && compState.isYtMusicActive;
+    let targetVideoId = track.youtubeId || (typeof track.providerTrackId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(track.providerTrackId) ? track.providerTrackId : null);
+
+    if (!targetVideoId && track.playableUrl) {
+      try {
+        const u = new URL(track.playableUrl);
+        targetVideoId = u.searchParams.get('v') || (u.pathname.startsWith('/shorts/') ? u.pathname.split('/shorts/')[1] : null);
+      } catch {}
+    }
+
+    // Case 4A: Companion is connected to YouTube Music and we have an exact video ID -> request exact playback
+    if (isCompanionActive && targetVideoId) {
+      if (typeof onDispatchCompanion === 'function') {
+        onDispatchCompanion({
+          action: 'play_track',
+          videoId: targetVideoId,
+          title: track.title,
+          artist: track.artist,
+        });
+      }
+
+      const res = {
+        ok: true,
+        action,
+        track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId },
+        status: 'playback_requested',
+        playbackState: PLAYBACK_STATES.PLAYBACK_REQUESTED,
+        spokenConfirmation: `Requesting ${track.title} on YouTube Music.`,
+      };
+
+      logActionDiagnostic({
+        turnId,
+        action,
+        ok: true,
+        track: track.title,
+        status: 'playback_requested',
+        provider: track.provider,
+        videoId: targetVideoId,
+      });
+
+      return res;
+    }
+
+    // Case 4B: Exact videoId is available, but companion is not yet connected -> open exact watch URL
+    const playableUrl = track.playableUrl || (
+      targetVideoId
+        ? `https://music.youtube.com/watch?v=${targetVideoId}`
+        : `https://music.youtube.com/search?q=${encodeURIComponent(track.title + ' ' + (track.artist || ''))}`
+    );
+
+    if (typeof onOpenUrl === 'function') {
+      onOpenUrl(playableUrl);
+    }
+
+    const res = {
+      ok: true,
+      action,
+      track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId },
+      status: 'opened_provider',
+      playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
+      spokenConfirmation: `Opening ${track.title} in YouTube Music.`,
+    };
+
+    logActionDiagnostic({
+      turnId,
+      action,
+      ok: true,
+      track: track.title,
+      status: 'opened_provider',
+      provider: track.provider,
+      url: playableUrl,
+    });
+
+    return res;
+  }
+
+  // 5. Spotify & generic providers:
   const playableUrl = track.playableUrl || (
     track.provider === SUPPORTED_PROVIDERS.SPOTIFY
       ? `spotify:search:${encodeURIComponent(track.title + ' ' + (track.artist || ''))}`
@@ -749,6 +870,7 @@ export function handlePlaybackExecution(track, { action = 'play_favorite', media
     action,
     track: { title: track.title, artist: track.artist, provider: track.provider },
     status: 'opened_provider',
+    playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
     spokenConfirmation: `Opening ${track.title} in ${providerName}.`,
   };
 
@@ -773,8 +895,10 @@ export function playFavoriteTrack(track, env = {}) {
   return handlePlaybackExecution(track, {
     action: 'play_favorite',
     media: env.media || { active: false },
+    companion: env.companion || (typeof window !== 'undefined' ? window.__islandCompanionState : null),
     onControl: env.onControl || (() => {}),
     onOpenUrl: env.onOpenUrl || ((url) => (typeof window !== 'undefined' ? window.island?.media?.openUrl?.(url) : null)),
+    onDispatchCompanion: env.onDispatchCompanion || ((cmd) => (typeof window !== 'undefined' ? window.island?.companion?.dispatchCommand?.(cmd) : null)),
     turnId: env.turnId || Date.now(),
   });
 }
