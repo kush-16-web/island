@@ -128,6 +128,7 @@ contextBridge.exposeInMainWorld('island', {
 
   companion: {
     getStatus: () => ipcRenderer.invoke('companion:get-status'),
+    getDiagnostics: () => ipcRenderer.invoke('companion:get-diagnostics'),
     dispatchCommand: (cmd) => ipcRenderer.invoke('companion:dispatch', cmd),
   },
 

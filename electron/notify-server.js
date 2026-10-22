@@ -35,12 +35,15 @@ function parseNotification(body) {
 
 function createNotifyServer({ port = DEFAULT_PORT, onNotify, onVideoState, companionBridge, maxBodyBytes = 16 * 1024 } = {}) {
   const server = http.createServer((req, res) => {
-    // CORS preflight support for companion browser extension
+    const origin = req.headers.origin || '*';
+
+    // CORS preflight support for companion browser extension & Private Network Access
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Island-Client, X-Island-Token',
+        'Access-Control-Allow-Private-Network': 'true',
         'Access-Control-Max-Age': '86400',
       });
       return res.end();
@@ -51,6 +54,8 @@ function createNotifyServer({ port = DEFAULT_PORT, onNotify, onVideoState, compa
         'Content-Type': 'application/json; charset=utf-8',
         'Content-Length': Buffer.byteLength(text),
         'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Private-Network': 'true',
         ...extraHeaders,
       });
       res.end(text);
@@ -61,16 +66,25 @@ function createNotifyServer({ port = DEFAULT_PORT, onNotify, onVideoState, compa
 
     const pathname = String(req.url || '').split('?')[0];
     if (pathname === '/health' && req.method === 'GET') {
-      return send(200, { ok: true, app: 'island' }, { 'Access-Control-Allow-Origin': '*' });
+      return send(200, { ok: true, app: 'island' });
     }
 
     if (companionBridge && pathname.startsWith('/companion/')) {
       if (pathname === '/companion/status' && req.method === 'GET') {
-        return send(200, { ok: true, ...companionBridge.getStatus() }, { 'Access-Control-Allow-Origin': '*' });
+        return send(200, { ok: true, ...companionBridge.getStatus() });
+      }
+      if (pathname === '/companion/diagnostics' && req.method === 'GET') {
+        return send(200, {
+          ok: true,
+          serverListening: true,
+          port,
+          status: companionBridge.getStatus(),
+          diagnostics: companionBridge.getDiagnostics(),
+        });
       }
       if (pathname === '/companion/command' && req.method === 'GET') {
         const command = companionBridge.pullNextCommand();
-        return send(200, { ok: true, command }, { 'Access-Control-Allow-Origin': '*' });
+        return send(200, { ok: true, command });
       }
     }
 

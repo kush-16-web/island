@@ -73,12 +73,13 @@
 
   async function postToIsland(payload) {
     try {
-      await fetch('http://127.0.0.1:47823/video-state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        mode: 'cors',
-      });
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ type: 'ISLAND_VIDEO_STATE', payload }, () => {
+          if (chrome.runtime.lastError) {
+            // Service worker asleep or inactive
+          }
+        });
+      }
     } catch {
       // Dynamic Island local server might be closed
     }

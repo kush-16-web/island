@@ -530,4 +530,140 @@ test('Pass 2.2 Proof of Concept - Browser Companion Bridge & Scenarios', async (
     assert.equal(after[0].youtubeId, 'nfs8NYg7yQM');
     assert.equal(after[0].isUnresolvedIdentity, false);
   });
+
+  // --- Scenario 15: Diagnostics endpoint and Private Network Access CORS ---
+  await t.test('Scenario 15: Diagnostics endpoint returns server and bridge health with Private Network Access headers', async () => {
+    // OPTIONS preflight check
+    const optionsRes = await new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port,
+          path: '/companion/ping',
+          method: 'OPTIONS',
+          headers: {
+            Origin: 'chrome-extension://abcdefghijklmno',
+            'Access-Control-Request-Method': 'POST',
+            'Access-Control-Request-Headers': 'Content-Type, X-Island-Client',
+          },
+        },
+        (res) => {
+          resolve({
+            statusCode: res.statusCode,
+            headers: res.headers,
+          });
+        }
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    assert.equal(optionsRes.statusCode, 204);
+    assert.equal(optionsRes.headers['access-control-allow-private-network'], 'true');
+    assert.equal(optionsRes.headers['access-control-allow-origin'], 'chrome-extension://abcdefghijklmno');
+
+    // Service worker ping with multi-tab metadata
+    const pingRes = await postJson('/companion/ping', {
+      source: 'service_worker',
+      version: '1.2.0',
+      isYtMusic: true,
+      tabsCount: 2,
+      status: 'paused',
+      currentTrack: { videoId: 'nfs8NYg7yQM', title: 'Attention', artist: 'Charlie Puth' },
+    });
+    assert.equal(pingRes.ok, true);
+    assert.equal(pingRes.diagnostics.connectionState, 'connected');
+    assert.equal(pingRes.diagnostics.tabsCount, 2);
+
+    // Diagnostics endpoint check
+    const diag = await getJson('/companion/diagnostics');
+    assert.equal(diag.ok, true);
+    assert.equal(diag.serverListening, true);
+    assert.equal(diag.status.connected, true);
+    assert.equal(diag.status.tabsCount, 2);
+    assert.equal(diag.diagnostics.connectionState, 'connected');
+  });
+
+  // --- Scenario 16: Multi-tab isolation and primary tab tracking ---
+  await t.test('Scenario 16: Companion bridge tracks tabsCount and isolates command dispatch', async () => {
+    // Ping with 3 tabs open
+    await postJson('/companion/ping', {
+      source: 'service_worker',
+      isYtMusic: true,
+      tabsCount: 3,
+      currentTrack: { videoId: 'nfs8NYg7yQM', title: 'Attention' },
+    });
+
+    const status = bridge.getStatus();
+    assert.equal(status.tabsCount, 3);
+    assert.equal(status.isYtMusicActive, true);
+
+    // Dispatch command
+    const dispatchPromise = bridge.dispatchCommand({
+      action: 'play_track',
+      videoId: 'nfs8NYg7yQM',
+      title: 'Attention',
+    });
+
+    // Verify command pulled exactly once
+    const cmd1 = await getJson('/companion/command');
+    assert.equal(cmd1.command?.videoId, 'nfs8NYg7yQM');
+
+    // Second pull returns null (ensuring duplicate tabs do not consume command)
+    const cmd2 = await getJson('/companion/command');
+    assert.equal(cmd2.command, null);
+
+    // Ack from primary tab
+    await postJson('/companion/ack', {
+      commandId: cmd1.command.id,
+      status: 'confirmed_playing',
+      videoId: 'nfs8NYg7yQM',
+    });
+
+    const result = await dispatchPromise;
+    assert.equal(result.status, 'confirmed_playing');
+  });
+
+  // --- Scenario 17: Confirmed playback vs mere navigation ---
+  await t.test('Scenario 17: Bridge distinguishes confirmed_playing from mere navigation and autoplay_blocked', async () => {
+    // Ensure companion is connected
+    await postJson('/companion/ping', { isYtMusic: true, status: 'paused' });
+
+    // 1. Navigation ack does not claim playing
+    const cmdNavPromise = bridge.dispatchCommand({ action: 'play_track', title: 'Unknown' });
+    const pulledNav = await getJson('/companion/command');
+    await postJson('/companion/ack', { commandId: pulledNav.command.id, status: 'navigated' });
+    const navResult = await cmdNavPromise;
+    assert.equal(navResult.status, 'navigated');
+    assert.equal(bridge.getStatus().playbackState, 'waiting_for_player');
+
+    // 2. Autoplay blocked ack reports autoplay_blocked truthfully
+    const cmdBlockPromise = bridge.dispatchCommand({ action: 'play_track', videoId: 'abc12345678' });
+    const pulledBlock = await getJson('/companion/command');
+    await postJson('/companion/ack', {
+      commandId: pulledBlock.command.id,
+      status: 'autoplay_blocked',
+      error: 'Autoplay blocked by browser policy',
+    });
+    const blockResult = await cmdBlockPromise;
+    assert.equal(blockResult.status, 'autoplay_blocked');
+    assert.equal(bridge.getStatus().playbackState, 'autoplay_blocked');
+  });
+
+  // --- Scenario 18: Service worker dormancy & reconnection resilience ---
+  await t.test('Scenario 18: Bridge gracefully handles service-worker restart and reconnects seamlessly', async () => {
+    // Initial active connection
+    await postJson('/companion/ping', { isYtMusic: true, status: 'playing' });
+    assert.equal(bridge.isConnected(), true);
+
+    // Simulate inactivity past ping expiry (3000ms configured in test)
+    bridge.lastPingTimestamp = Date.now() - 3500;
+    assert.equal(bridge.isConnected(), false);
+    assert.equal(bridge.getDiagnostics().connectionState, 'disconnected');
+
+    // New heartbeat arrives when service worker wakes up
+    await postJson('/companion/ping', { isYtMusic: true, status: 'playing' });
+    assert.equal(bridge.isConnected(), true);
+    assert.equal(bridge.getDiagnostics().connectionState, 'connected');
+  });
 });

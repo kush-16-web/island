@@ -805,6 +805,7 @@ function wireIpc() {
   }));
 
   handle('companion:get-status', () => (companionBridge ? companionBridge.getStatus() : { connected: false }));
+  handle('companion:get-diagnostics', () => (companionBridge ? companionBridge.getDiagnostics() : { connectionState: 'bridge_unavailable' }));
   handle('companion:dispatch', (cmd) => (companionBridge ? companionBridge.dispatchCommand(cmd) : Promise.reject(new Error('Companion bridge unavailable'))));
 
   handle('scheduler:add-alarm', (input) => guard(() => ({ item: scheduler.addAlarm(input) })));

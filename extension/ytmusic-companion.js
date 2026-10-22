@@ -1,28 +1,61 @@
 // Dynamic Island Companion - YouTube Music Playback & State Controller
-// Event-driven, low-overhead Manifest V3 companion for https://music.youtube.com/*
+// Manifest V3 Content Script for https://music.youtube.com/*
+// Communicates with background service worker via chrome.runtime messaging (NO direct localhost fetch)
 (function () {
   'use strict';
-  console.log('[Dynamic Island] YouTube Music companion initialized');
+  console.log('[Dynamic Island] YouTube Music companion content script active');
 
-  const ISLAND_ENDPOINT = 'http://127.0.0.1:47823';
   let activeVideoElement = null;
-  let pollTimer = null;
+  let heartbeatTimer = null;
   let isAutoplayBlocked = false;
   let lastReportedState = null;
+  let isBridgeConnected = false;
+  let pageBridgeVideoData = null;
 
+  // ----------------------------------------------------------------- Page Bridge Handshake
+  function setupPageBridge() {
+    window.addEventListener('message', (event) => {
+      if (event.source !== window || !event.data || event.data.source !== 'ISLAND_PAGE_BRIDGE') {
+        return;
+      }
+
+      isBridgeConnected = true;
+
+      if (event.data.videoData) {
+        pageBridgeVideoData = event.data.videoData;
+      }
+    });
+
+    // Ping page bridge
+    window.postMessage({ source: 'ISLAND_CONTENT_SCRIPT', action: 'PING_BRIDGE' }, '*');
+
+    // Fallback injection if MAIN world content script is not yet injected
+    setTimeout(() => {
+      if (!isBridgeConnected) {
+        try {
+          const script = document.createElement('script');
+          script.src = chrome.runtime.getURL('ytmusic-player-bridge.js');
+          (document.head || document.documentElement).appendChild(script);
+          script.onload = () => script.remove();
+        } catch {}
+      }
+    }, 500);
+  }
+
+  setupPageBridge();
+
+  // ----------------------------------------------------------------- Video & Track Identification
   function getVideoId() {
     try {
-      // 1. URL search param ?v=
+      // 1. From Page Bridge if available
+      if (pageBridgeVideoData?.videoId && /^[a-zA-Z0-9_-]{11}$/.test(pageBridgeVideoData.videoId)) {
+        return pageBridgeVideoData.videoId;
+      }
+
+      // 2. URL search param ?v=
       const url = new URL(window.location.href);
       const urlId = url.searchParams.get('v');
       if (urlId && /^[a-zA-Z0-9_-]{11}$/.test(urlId)) return urlId;
-
-      // 2. Official YouTube Player API on DOM element
-      const player = document.querySelector('#movie_player');
-      if (player && typeof player.getVideoData === 'function') {
-        const pId = player.getVideoData()?.video_id;
-        if (pId && /^[a-zA-Z0-9_-]{11}$/.test(pId)) return pId;
-      }
 
       // 3. Player bar watch anchor
       const barLink = document.querySelector('ytmusic-player-bar a[href*="watch?v="]');
@@ -67,263 +100,264 @@
     return 'playing';
   }
 
-  async function postJson(endpoint, data) {
-    try {
-      const res = await fetch(`${ISLAND_ENDPOINT}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-        mode: 'cors',
-      });
-      return await res.json();
-    } catch {
-      return null;
-    }
-  }
-
-  async function fetchJson(endpoint) {
-    try {
-      const res = await fetch(`${ISLAND_ENDPOINT}${endpoint}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        mode: 'cors',
-      });
-      return await res.json();
-    } catch {
-      return null;
-    }
-  }
-
-  async function sendHeartbeat() {
+  // ----------------------------------------------------------------- Service Worker Messaging
+  function sendHeartbeat() {
     const info = getTrackInfo();
     const status = getPlaybackStatus();
 
-    await postJson('/companion/ping', {
-      isYtMusic: true,
-      url: window.location.href,
-      currentTrack: info.videoId ? { ...info, duration: activeVideoElement ? activeVideoElement.duration : 0 } : null,
-      status,
-    });
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage(
+          {
+            type: 'ISLAND_HEARTBEAT',
+            url: window.location.href,
+            title: document.title,
+            currentTrack: info,
+            status,
+          },
+          () => {
+            // Ignore runtime errors if service worker is waking up
+            if (chrome.runtime.lastError) {
+              // Expected occasionally during background suspension
+            }
+          }
+        );
+      }
+    } catch {}
   }
 
-  async function reportState(eventName, extra = {}) {
+  function notifyStateUpdate(event, extra = {}) {
     const info = getTrackInfo();
-    const video = activeVideoElement || document.querySelector('video');
-    const status = isAutoplayBlocked ? 'autoplay_blocked' : (video && !video.paused ? 'playing' : 'paused');
+    const status = getPlaybackStatus();
+    const stateKey = `${event}:${info.videoId}:${status}`;
 
-    lastReportedState = eventName;
-    await postJson('/companion/state', {
-      event: eventName,
-      status,
-      videoId: info.videoId,
-      title: info.title,
-      artist: info.artist,
-      currentTime: video ? video.currentTime : 0,
-      duration: video ? video.duration : 0,
-      ...extra,
-    });
-  }
-
-  async function ackCommand(commandId, status, extra = {}) {
-    await postJson('/companion/ack', {
-      commandId,
-      status,
-      ...extra,
-    });
-  }
-
-  // Hook HTMLMediaElement events on the video player
-  function hookVideoEvents(video) {
-    if (!video || video.__islandHooked) return;
-    video.__islandHooked = true;
-    activeVideoElement = video;
-
-    video.addEventListener('playing', () => {
-      isAutoplayBlocked = false;
-      reportState('playing');
-    });
-
-    video.addEventListener('pause', () => {
-      if (!isAutoplayBlocked) {
-        reportState('paused');
-      }
-    });
-
-    video.addEventListener('ended', () => {
-      reportState('ended');
-    });
-
-    video.addEventListener('error', (err) => {
-      reportState('failed', { error: 'Media element error' });
-    });
-  }
-
-  // Handle commands arriving from Island
-  async function handleCommand(cmd) {
-    if (!cmd || !cmd.action) return;
-    console.log('[Dynamic Island] Received companion command:', cmd);
-
-    const video = activeVideoElement || document.querySelector('video');
-    const currentVideoId = getVideoId();
-
-    switch (cmd.action) {
-      case 'play_track': {
-        const targetVideoId = cmd.videoId;
-
-        // Case A: exact track is already active on this tab
-        if (targetVideoId && currentVideoId === targetVideoId) {
-          if (video) {
-            try {
-              const playPromise = video.play();
-              if (playPromise !== undefined) {
-                await playPromise;
-              }
-              isAutoplayBlocked = false;
-              await ackCommand(cmd.id, 'playing', { videoId: targetVideoId });
-              reportState('playing', { videoId: targetVideoId });
-            } catch (err) {
-              if (err.name === 'NotAllowedError') {
-                isAutoplayBlocked = true;
-                await ackCommand(cmd.id, 'autoplay_blocked', { error: 'Autoplay blocked by browser policy' });
-                reportState('autoplay_blocked');
-              } else {
-                await ackCommand(cmd.id, 'failed', { error: err.message });
-              }
-            }
-          } else {
-            await ackCommand(cmd.id, 'failed', { error: 'No video element' });
-          }
-          return;
-        }
-
-        // Case B: different track requested -> play in existing tab!
-        if (targetVideoId) {
-          const targetUrl = `/watch?v=${targetVideoId}`;
-          const player = document.querySelector('#movie_player');
-
-          // Strategy 1: YouTube Music embedded player API (instant track switch, zero page reload)
-          if (player && typeof player.loadVideoById === 'function') {
-            try {
-              player.loadVideoById(targetVideoId);
-              isAutoplayBlocked = false;
-              await ackCommand(cmd.id, 'playing', { targetUrl, videoId: targetVideoId });
-              reportState('playing', { videoId: targetVideoId });
-              return;
-            } catch (e) {
-              console.warn('[Dynamic Island] loadVideoById error, falling back to router:', e);
-            }
-          }
-
-          // Strategy 2: SPA router via synthetic anchor click (preserves tab and user gesture)
-          let spaTriggered = false;
-          try {
-            const anchor = document.createElement('a');
-            anchor.href = targetUrl;
-            anchor.style.display = 'none';
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            spaTriggered = true;
-          } catch (e) {}
-
-          if (spaTriggered) {
-            await ackCommand(cmd.id, 'navigated', { targetUrl, videoId: targetVideoId });
-            return;
-          }
-
-          // Strategy 3: Tab location update (remains in the existing tab!)
-          await ackCommand(cmd.id, 'navigated', { targetUrl, videoId: targetVideoId });
-          window.location.href = targetUrl;
-          return;
-        }
-
-        // Case C: No videoId, fallback URL or query on existing tab
-        if (cmd.url || cmd.query) {
-          const targetUrl = cmd.url || `/search?q=${encodeURIComponent(cmd.query)}`;
-          await ackCommand(cmd.id, 'navigated', { targetUrl });
-          window.location.href = targetUrl;
-          return;
-        }
-
-        await ackCommand(cmd.id, 'failed', { error: 'Missing track videoId or URL' });
-        break;
-      }
-
-      case 'resume': {
-        if (video) {
-          try {
-            await video.play();
-            isAutoplayBlocked = false;
-            await ackCommand(cmd.id, 'playing');
-            reportState('playing');
-          } catch (err) {
-            if (err.name === 'NotAllowedError') {
-              isAutoplayBlocked = true;
-              await ackCommand(cmd.id, 'autoplay_blocked');
-              reportState('autoplay_blocked');
-            } else {
-              await ackCommand(cmd.id, 'failed', { error: err.message });
-            }
-          }
-        }
-        break;
-      }
-
-      case 'pause': {
-        if (video) {
-          video.pause();
-          await ackCommand(cmd.id, 'paused');
-          reportState('paused');
-        }
-        break;
-      }
-
-      default:
-        await ackCommand(cmd.id, 'failed', { error: 'Unknown action' });
+    if (lastReportedState === stateKey && event !== 'playing') {
+      return;
     }
+    lastReportedState = stateKey;
+
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({
+          type: 'ISLAND_STATE_UPDATE',
+          payload: {
+            event,
+            status,
+            videoId: info.videoId,
+            title: info.title,
+            artist: info.artist,
+            currentTime: activeVideoElement ? activeVideoElement.currentTime : 0,
+            duration: activeVideoElement ? activeVideoElement.duration : 0,
+            ...extra,
+          },
+        });
+      }
+    } catch {}
   }
 
-  // Periodic command polling loop (every 1.5s)
-  async function pollCommands() {
-    const video = document.querySelector('video');
-    if (video) hookVideoEvents(video);
+  // ----------------------------------------------------------------- Command Execution & Verification
+  async function executePlayTrack(command, sendResponse) {
+    const targetVideoId = command.videoId;
+    console.log('[Dynamic Island Content] executePlayTrack:', targetVideoId, command.title);
 
-    const resp = await fetchJson('/companion/command');
-    if (resp && resp.ok && resp.command) {
-      await handleCommand(resp.command);
+    // Case A: Unresolved favorite (no exact video ID) -> navigate existing tab to search URL
+    if (!targetVideoId) {
+      const searchUrl =
+        command.url ||
+        `https://music.youtube.com/search?q=${encodeURIComponent((command.title || '') + ' ' + (command.artist || ''))}`;
+      console.log('[Dynamic Island Content] Navigating existing tab to search URL:', searchUrl);
+      window.location.href = searchUrl;
+
+      sendResponse({
+        commandId: command.id,
+        status: 'navigated',
+        url: searchUrl,
+        isUnresolved: true,
+      });
+      return;
     }
-  }
 
-  // Listen for user click anywhere on page to recover from autoplay block
-  document.addEventListener('click', () => {
-    if (isAutoplayBlocked) {
-      setTimeout(() => {
-        const video = activeVideoElement || document.querySelector('video');
-        if (video && !video.paused) {
-          isAutoplayBlocked = false;
-          reportState('playing');
-        }
-      }, 200);
-    }
-  }, { capture: true, passive: true });
-
-  // YouTube Music SPA navigation finished event
-  window.addEventListener('yt-navigate-finish', () => {
+    // Case B: Exact video ID -> Load and play in existing tab
     isAutoplayBlocked = false;
+
+    // Send load command to page bridge (MAIN world)
+    window.postMessage(
+      {
+        source: 'ISLAND_CONTENT_SCRIPT',
+        action: 'LOAD_VIDEO',
+        videoId: targetVideoId,
+        commandId: command.id,
+      },
+      '*'
+    );
+
+    // Fallback: Also try direct anchor click in YouTube Music SPA if movie_player takes time
     setTimeout(() => {
-      const video = document.querySelector('video');
-      if (video) hookVideoEvents(video);
-      reportState('trackchange');
-      sendHeartbeat();
-    }, 500);
+      const currentId = getVideoId();
+      if (currentId !== targetVideoId) {
+        const watchLink = document.querySelector(`a[href*="${targetVideoId}"]`);
+        if (watchLink) {
+          console.log('[Dynamic Island Content] Triggering SPA anchor click fallback for:', targetVideoId);
+          watchLink.click();
+        }
+      }
+    }, 400);
+
+    // Strict Verification Loop:
+    // We do NOT acknowledge 'confirmed_playing' until:
+    // 1. Target video ID is matched in the player
+    // 2. The <video> element is actively playing (!paused, !ended, currentTime > 0)
+    const startTime = Date.now();
+    const VERIFY_TIMEOUT_MS = 8000;
+    let pollInterval = null;
+
+    const cleanup = () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+
+    pollInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const video = activeVideoElement || document.querySelector('video');
+      if (video) activeVideoElement = video;
+
+      const currentVidId = getVideoId();
+
+      // Check for genuine audible playback
+      if (video && !video.paused && !video.ended && video.currentTime > 0) {
+        // If currentVidId matches targetVideoId (or if we are playing and title matches)
+        if (currentVidId === targetVideoId || !currentVidId) {
+          cleanup();
+          const info = getTrackInfo();
+          console.log('[Dynamic Island Content] Playback confirmed for:', targetVideoId, info.title);
+          sendResponse({
+            commandId: command.id,
+            status: 'confirmed_playing',
+            videoId: targetVideoId,
+            title: info.title,
+            artist: info.artist,
+          });
+          notifyStateUpdate('playing', { videoId: targetVideoId });
+          return;
+        }
+      }
+
+      // Check for Autoplay block
+      if (video && video.paused && elapsed > 2500) {
+        // Try triggering video.play() in case of user gesture permission
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch((err) => {
+            if (err.name === 'NotAllowedError') {
+              cleanup();
+              isAutoplayBlocked = true;
+              console.warn('[Dynamic Island Content] Autoplay blocked by browser policy');
+              sendResponse({
+                commandId: command.id,
+                status: 'autoplay_blocked',
+                error: 'Autoplay blocked by browser policy. Click Play in YouTube Music.',
+              });
+              notifyStateUpdate('autoplay_blocked');
+            }
+          });
+        }
+      }
+
+      // Timeout check
+      if (elapsed >= VERIFY_TIMEOUT_MS) {
+        cleanup();
+        console.warn('[Dynamic Island Content] Playback verification timed out after 8s');
+        sendResponse({
+          commandId: command.id,
+          status: 'failed',
+          error: 'Playback verification timed out. Player did not start within 8 seconds.',
+        });
+      }
+    }, 250);
+  }
+
+  // ----------------------------------------------------------------- Extension Message Receiver
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message || message.type !== 'ISLAND_COMMAND') return;
+
+    const command = message.command;
+    console.log('[Dynamic Island Content] Received command:', command.action, command.id);
+
+    if (command.action === 'play_track') {
+      executePlayTrack(command, sendResponse);
+      return true; // Keep channel open for async response
+    }
+
+    if (command.action === 'pause') {
+      window.postMessage({ source: 'ISLAND_CONTENT_SCRIPT', action: 'PAUSE', commandId: command.id }, '*');
+      if (activeVideoElement) activeVideoElement.pause();
+      sendResponse({ commandId: command.id, status: 'paused' });
+      notifyStateUpdate('paused');
+      return true;
+    }
+
+    if (command.action === 'resume') {
+      window.postMessage({ source: 'ISLAND_CONTENT_SCRIPT', action: 'PLAY', commandId: command.id }, '*');
+      if (activeVideoElement) activeVideoElement.play().catch(() => {});
+      sendResponse({ commandId: command.id, status: 'confirmed_playing' });
+      notifyStateUpdate('playing');
+      return true;
+    }
+
+    sendResponse({ commandId: command.id, status: 'failed', error: `Unknown action: ${command.action}` });
+    return true;
   });
 
-  // Attach to existing video element if ready
-  const initialVideo = document.querySelector('video');
-  if (initialVideo) hookVideoEvents(initialVideo);
+  // ----------------------------------------------------------------- Event Listeners on <video>
+  function bindVideoListeners() {
+    const video = document.querySelector('video');
+    if (video && video !== activeVideoElement) {
+      activeVideoElement = video;
 
-  // Initial heartbeat and command loop
+      video.addEventListener('play', () => {
+        isAutoplayBlocked = false;
+        notifyStateUpdate('play');
+      });
+
+      video.addEventListener('playing', () => {
+        isAutoplayBlocked = false;
+        notifyStateUpdate('playing');
+      });
+
+      video.addEventListener('pause', () => {
+        notifyStateUpdate('paused');
+      });
+
+      video.addEventListener('ended', () => {
+        notifyStateUpdate('ended');
+      });
+    }
+  }
+
+  // Monitor DOM for player changes & SPA navigation
+  const observer = new MutationObserver(() => {
+    bindVideoListeners();
+  });
+
+  observer.observe(document.body || document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
+
+  window.addEventListener('yt-page-data-updated', () => {
+    notifyStateUpdate('track_changed');
+  });
+
+  window.addEventListener('yt-navigate-finish', () => {
+    notifyStateUpdate('navigated');
+  });
+
+  // Heartbeat loop (every 2.5 seconds)
+  bindVideoListeners();
   sendHeartbeat();
-  pollTimer = setInterval(pollCommands, 1500);
-  setInterval(sendHeartbeat, 6000);
+  heartbeatTimer = setInterval(sendHeartbeat, 2500);
+
+  window.addEventListener('beforeunload', () => {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    observer.disconnect();
+  });
 })();

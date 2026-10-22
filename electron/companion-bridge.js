@@ -41,6 +41,9 @@ class CompanionBridge extends EventEmitter {
     this.pendingCommands = [];
     this.inFlightCommands = new Map();
     this.commandCounter = 0;
+    this.lastDispatchedCommand = null;
+    this.lastAck = null;
+    this.lastError = null;
   }
 
   /**
@@ -52,25 +55,68 @@ class CompanionBridge extends EventEmitter {
   }
 
   /**
-   * Get the current snapshot of companion connection and playback status.
+   * Return comprehensive diagnostics to distinguish extension state:
+   * 'connected', 'service_worker_active', 'disconnected', 'playback_failed', 'autoplay_blocked'
    */
-  getStatus() {
+  getDiagnostics() {
     const now = Date.now();
-    const connected = this.isConnected();
+    const isConnected = this.isConnected();
     const lastSeenMs = this.lastPingTimestamp ? now - this.lastPingTimestamp : Infinity;
 
+    let connectionState = 'disconnected';
+    let detail = 'Extension not detected or heartbeat timed out';
+
+    if (isConnected) {
+      if (this.companionInfo.isYtMusicActive) {
+        connectionState = 'connected';
+        detail = `Connected to YouTube Music (${this.companionInfo.tabsCount || 1} tab(s))`;
+      } else {
+        connectionState = 'service_worker_active';
+        detail = 'Extension service worker active, but no YouTube Music tab is open';
+      }
+    } else if (this.lastPingTimestamp > 0) {
+      connectionState = 'disconnected';
+      detail = `Lost companion connection ${Math.round(lastSeenMs / 1000)}s ago`;
+    }
+
     return {
-      connected,
-      isYtMusicActive: connected && Boolean(this.companionInfo.isYtMusicActive),
-      tabUrl: connected ? this.companionInfo.tabUrl : null,
-      currentTrack: connected ? this.companionInfo.currentTrack : null,
-      playbackState: connected ? this.companionInfo.playbackState : 'disconnected',
+      connectionState,
+      detail,
+      connected: isConnected,
+      isYtMusicActive: Boolean(this.companionInfo.isYtMusicActive),
+      tabsCount: this.companionInfo.tabsCount || (this.companionInfo.isYtMusicActive ? 1 : 0),
+      playbackState: isConnected ? this.companionInfo.playbackState : 'disconnected',
       lastSeenMs,
+      pendingCommandsCount: this.pendingCommands.length,
+      inFlightCommandsCount: this.inFlightCommands.size,
+      lastCommand: this.lastDispatchedCommand,
+      lastAck: this.lastAck,
+      lastError: this.lastError,
+      currentTrack: this.companionInfo.currentTrack,
     };
   }
 
   /**
-   * Handle incoming heartbeat ping from browser companion.
+   * Get the current snapshot of companion connection and playback status.
+   */
+  getStatus() {
+    const diag = this.getDiagnostics();
+
+    return {
+      connected: diag.connected,
+      connectionState: diag.connectionState,
+      connectionDetail: diag.detail,
+      isYtMusicActive: diag.isYtMusicActive,
+      tabsCount: diag.tabsCount,
+      tabUrl: diag.connected ? this.companionInfo.tabUrl : null,
+      currentTrack: diag.connected ? this.companionInfo.currentTrack : null,
+      playbackState: diag.playbackState,
+      lastSeenMs: diag.lastSeenMs,
+    };
+  }
+
+  /**
+   * Handle incoming heartbeat ping from browser companion service worker.
    */
   handlePing(payload = {}) {
     const now = Date.now();
@@ -82,9 +128,12 @@ class CompanionBridge extends EventEmitter {
     this.companionInfo = {
       connected: true,
       isYtMusicActive,
+      tabsCount: Number(payload.tabsCount) || (isYtMusicActive ? 1 : 0),
       tabUrl: typeof payload.url === 'string' ? payload.url : this.companionInfo.tabUrl,
       currentTrack: payload.currentTrack || this.companionInfo.currentTrack,
       playbackState: payload.status || this.companionInfo.playbackState || 'idle',
+      source: payload.source || 'service_worker',
+      version: payload.version || '1.2.0',
       lastSeenMs: 0,
     };
 
@@ -93,7 +142,7 @@ class CompanionBridge extends EventEmitter {
     }
 
     this.emit('ping', this.getStatus());
-    return { ok: true, status: this.getStatus() };
+    return { ok: true, status: this.getStatus(), diagnostics: this.getDiagnostics() };
   }
 
   /**
@@ -163,6 +212,7 @@ class CompanionBridge extends EventEmitter {
         reject(err);
       }, effectiveTimeout);
 
+      this.lastDispatchedCommand = command;
       this.inFlightCommands.set(id, { command, resolve, reject, timer });
       this.pendingCommands.push(command);
 
@@ -186,6 +236,9 @@ class CompanionBridge extends EventEmitter {
    */
   handleAck(ack = {}) {
     const { commandId, status, error } = ack;
+    this.lastAck = ack;
+    if (error) this.lastError = error;
+
     if (!commandId || !this.inFlightCommands.has(commandId)) {
       return { ok: false, error: 'Unknown or expired commandId' };
     }
@@ -228,9 +281,13 @@ class CompanionBridge extends EventEmitter {
     this.inFlightCommands.clear();
     this.pendingCommands = [];
     this.lastPingTimestamp = 0;
+    this.lastDispatchedCommand = null;
+    this.lastAck = null;
+    this.lastError = null;
     this.companionInfo = {
       connected: false,
       isYtMusicActive: false,
+      tabsCount: 0,
       tabUrl: null,
       currentTrack: null,
       playbackState: 'idle',
