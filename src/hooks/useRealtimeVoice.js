@@ -125,6 +125,7 @@ export function useRealtimeVoice(options = {}) {
   const animFrameRef = useRef(null);
   const historyRef = useRef([]);
   const handledTurnsRef = useRef(new Set());
+  const activeUtteranceRef = useRef(null);
 
   // Deterministic Turn Controller
   const controllerRef = useRef(null);
@@ -198,6 +199,15 @@ export function useRealtimeVoice(options = {}) {
       currentSourceRef.current = null;
     }
 
+    if (activeUtteranceRef.current) {
+      activeUtteranceRef.current.onend = null;
+      activeUtteranceRef.current.onerror = null;
+      activeUtteranceRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
+
     if (window.island?.kokoro?.cancel) {
       try { window.island.kokoro.cancel(); } catch {}
     }
@@ -263,6 +273,14 @@ export function useRealtimeVoice(options = {}) {
       } catch {}
       currentSourceRef.current = null;
     }
+    if (activeUtteranceRef.current) {
+      activeUtteranceRef.current.onend = null;
+      activeUtteranceRef.current.onerror = null;
+      activeUtteranceRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch {}
+    }
     if (window.island?.kokoro?.cancel) {
       try { window.island.kokoro.cancel(); } catch {}
     }
@@ -282,76 +300,247 @@ export function useRealtimeVoice(options = {}) {
     }
   }, []);
 
-  // Play audio buffer received from TTS with real-time waveform connection
-  const playAssistantSpeech = useCallback(async (audioBase64, text, turnId, onSpeechComplete = null) => {
-    const audioCtx = audioContextRef.current;
-    if (!audioCtx) return;
-
-    try {
-      const arrayBuffer = base64ToArrayBuffer(audioBase64);
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-      // Verify turn is still active before starting playback
-      if (!controller.isTurnActive(turnId)) {
+  // Play audio buffer received from TTS with real-time waveform connection and explicit Promise completion
+  const playAssistantSpeech = useCallback((audioBase64, text, turnId, isIntermediate = false) => {
+    return new Promise(async (resolve) => {
+      const audioCtx = audioContextRef.current;
+      if (!audioCtx) {
+        logDevStage(9, 'Audio playback rejected', {
+          reason: 'No AudioContext available',
+          turnId,
+        });
+        resolve({ ok: false, error: 'AudioContext unavailable' });
         return;
       }
 
-      // Stop any existing playback
-      if (currentSourceRef.current) {
-        try {
-          currentSourceRef.current.onended = null;
-          currentSourceRef.current.stop();
-          currentSourceRef.current.disconnect();
-        } catch {}
-        currentSourceRef.current = null;
-      }
-
-      const source = audioCtx.createBufferSource();
-      source.buffer = audioBuffer;
-
-      // Connect source to speaker analyser -> destination for actual output-driven waveform
-      let speakerAnalyser = speakerAnalyserRef.current;
-      if (!speakerAnalyser) {
-        speakerAnalyser = audioCtx.createAnalyser();
-        speakerAnalyser.fftSize = 64;
-        speakerAnalyser.smoothingTimeConstant = 0.75;
-        speakerAnalyserRef.current = speakerAnalyser;
-      }
-
-      source.connect(speakerAnalyser);
-      speakerAnalyser.connect(audioCtx.destination);
-      currentSourceRef.current = source;
-
-      controller.beginSpeaking(turnId);
-      setStatus('speaking');
-      window.island?.setVoiceMood?.('speaking');
-
-      // Update transcript with assistant reply
-      setTranscript((prev) => [
-        ...prev,
-        { role: 'assistant', text, isLive: false },
-      ]);
-      historyRef.current.push({ role: 'model', text });
-
-      source.onended = () => {
-        if (currentSourceRef.current === source) {
-          currentSourceRef.current = null;
-          controller.finishSpeaking(turnId, 'listening');
-          if (typeof onSpeechComplete === 'function') {
-            try { onSpeechComplete(); } catch {}
+      try {
+        if (audioCtx.state === 'suspended') {
+          try {
+            await audioCtx.resume();
+          } catch (e) {
+            console.warn('[AudioContext Resume Error]', e);
           }
         }
+
+        const arrayBuffer = base64ToArrayBuffer(audioBase64);
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+        // Verify turn is still active before starting playback
+        if (!controller.isTurnActive(turnId)) {
+          resolve({ ok: false, error: 'Turn superseded before audio start' });
+          return;
+        }
+
+        // Stop any existing playback
+        if (currentSourceRef.current) {
+          try {
+            currentSourceRef.current.onended = null;
+            currentSourceRef.current.stop();
+            currentSourceRef.current.disconnect();
+          } catch {}
+          currentSourceRef.current = null;
+        }
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+
+        // Connect source to speaker analyser -> destination for actual output-driven waveform
+        let speakerAnalyser = speakerAnalyserRef.current;
+        if (!speakerAnalyser) {
+          speakerAnalyser = audioCtx.createAnalyser();
+          speakerAnalyser.fftSize = 64;
+          speakerAnalyser.smoothingTimeConstant = 0.75;
+          speakerAnalyserRef.current = speakerAnalyser;
+        }
+
+        source.connect(speakerAnalyser);
+        speakerAnalyser.connect(audioCtx.destination);
+        currentSourceRef.current = source;
+
+        controller.beginSpeaking(turnId);
+        setStatus('speaking');
+        window.island?.setVoiceMood?.('speaking');
+
+        const startTime = Date.now();
+
+        logDevStage(9, 'Audio playback started', {
+          method: 'audio_buffer',
+          durationMs: Math.round(audioBuffer.duration * 1000),
+          audioCtxState: audioCtx.state,
+          effectiveVolume: audioCoordinator.effectiveVolume,
+          controllerState: controller.state,
+          turnId,
+        });
+
+        source.onended = () => {
+          if (currentSourceRef.current === source) {
+            currentSourceRef.current = null;
+          }
+          logDevStage(9, 'Audio playback ended', {
+            method: 'audio_buffer',
+            durationMs: Date.now() - startTime,
+            turnId,
+          });
+          resolve({ ok: true });
+        };
+
+        source.start(0);
+      } catch (err) {
+        console.warn('[Audio Playback Error]', err);
+        logDevStage(9, 'Audio playback rejected', {
+          reason: err.message || 'Error decoding or playing audio buffer',
+          audioCtxState: audioCtx?.state,
+          turnId,
+        });
+        resolve({ ok: false, error: err.message || 'Audio playback error' });
+      }
+    });
+  }, [controller]);
+
+  // Fallback: Speak via local Web Speech API (window.speechSynthesis)
+  const playWebSpeech = useCallback((text, turnId, isIntermediate = false) => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        logDevStage(9, 'Audio playback rejected', {
+          reason: 'window.speechSynthesis is not available',
+          turnId,
+        });
+        resolve({ ok: false, error: 'Web Speech API unavailable' });
+        return;
+      }
+
+      if (!controller.isTurnActive(turnId)) {
+        resolve({ ok: false, error: 'Turn superseded before Web Speech playback' });
+        return;
+      }
+
+      try {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+      } catch {}
+
+      const cleanText = text.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '').trim();
+      if (!cleanText) {
+        resolve({ ok: true });
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      activeUtteranceRef.current = utterance; // Prevent garbage collection bug in Chromium
+
+      const prefLang = localStorage.getItem('island_speech_language') || 'en';
+      utterance.lang = prefLang === 'hi' ? 'hi-IN' : 'en-US';
+
+      // Pick user preferred Windows voice if available
+      const savedVoiceURI = localStorage.getItem('island_windows_voice_uri');
+      const allVoices = window.speechSynthesis.getVoices?.() || [];
+      if (savedVoiceURI && allVoices.length > 0) {
+        const matchingVoice = allVoices.find((v) => v.voiceURI === savedVoiceURI);
+        if (matchingVoice) utterance.voice = matchingVoice;
+      } else if (allVoices.length > 0 && prefLang === 'en') {
+        const englishVoice = allVoices.find((v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('David') || v.name.includes('Zira') || v.name.includes('Mark')));
+        if (englishVoice) utterance.voice = englishVoice;
+      }
+
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      const startTime = Date.now();
+
+      utterance.onstart = () => {
+        if (!controller.isTurnActive(turnId)) {
+          try { window.speechSynthesis.cancel(); } catch {}
+          resolve({ ok: false, error: 'Turn superseded at onstart' });
+          return;
+        }
+        controller.beginSpeaking(turnId);
+        setStatus('speaking');
+        window.island?.setVoiceMood?.('speaking');
+
+        logDevStage(9, 'Audio playback started', {
+          method: 'web_speech',
+          voice: utterance.voice?.name || 'default',
+          lang: utterance.lang,
+          effectiveVolume: audioCoordinator.effectiveVolume,
+          controllerState: controller.state,
+          turnId,
+        });
       };
 
-      source.start(0);
-    } catch (err) {
-      console.warn('[Audio Playback Error]', err);
-      controller.finishSpeaking(turnId, 'listening');
-      if (typeof onSpeechComplete === 'function') {
-        try { onSpeechComplete(); } catch {}
+      utterance.onend = () => {
+        activeUtteranceRef.current = null;
+        logDevStage(9, 'Audio playback ended', {
+          method: 'web_speech',
+          durationMs: Date.now() - startTime,
+          turnId,
+        });
+        resolve({ ok: true });
+      };
+
+      utterance.onerror = (e) => {
+        activeUtteranceRef.current = null;
+        logDevStage(9, 'Audio playback rejected', {
+          reason: e?.error || 'SpeechSynthesisUtterance error',
+          turnId,
+        });
+        resolve({ ok: false, error: e?.error || 'SpeechSynthesisUtterance error' });
+      };
+
+      // Small timeout avoids Chromium race condition between cancel() and speak()
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          window.speechSynthesis.speak(utterance);
+        }
+      }, 30);
+    });
+  }, [controller]);
+
+  // Unified Assistant Speech Coordinator:
+  // Starts music ducking -> plays AudioBuffer or falls back to Web Speech -> awaits playback end -> restores music -> transitions to listening
+  const speakAssistantResponse = useCallback(async ({ audioBase64, text, turnId, isIntermediate = false }) => {
+    if (!text || typeof text !== 'string') return false;
+
+    // 1. Protect music playback: duck background music smoothly
+    audioCoordinator.startDucking({ duckLevel: 0.22, durationMs: 250 });
+
+    let played = false;
+
+    // 2. Try AudioBuffer playback if synthesized audio is present
+    if (audioBase64) {
+      const res = await playAssistantSpeech(audioBase64, text, turnId, isIntermediate);
+      if (res.ok) {
+        played = true;
+      } else {
+        logDevStage(9, 'Audio buffer playback failed, falling back to Web Speech', {
+          turnId,
+          error: res.error,
+        });
       }
     }
-  }, [controller]);
+
+    // 3. Fall back to local Web Speech API (window.speechSynthesis)
+    if (!played && typeof window !== 'undefined' && window.speechSynthesis) {
+      const res = await playWebSpeech(text, turnId, isIntermediate);
+      if (res.ok) {
+        played = true;
+      }
+    }
+
+    // 4. Lifecycle completion (only when this is the final speech in the turn)
+    if (!isIntermediate) {
+      audioCoordinator.restoreVolume({ durationMs: 1100 });
+      controller.finishSpeaking(turnId, 'listening');
+      setStatus('listening');
+      window.island?.setVoiceMood?.('listening');
+      logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
+    }
+
+    if (!played) {
+      setErrorMessage('Speech output was unavailable. Speaking was skipped.');
+    }
+
+    return played;
+  }, [controller, playAssistantSpeech, playWebSpeech]);
 
   // Submit recorded user utterance through modular AI pipeline: STT -> Conversational LLM -> Island Action -> TTS
   const submitUserSpeech = useCallback(async (samples, sampleRate, turnId) => {
@@ -583,12 +772,18 @@ export function useRealtimeVoice(options = {}) {
 
       const synthesizeSpeechText = async (textToSynthesize) => {
         if (!textToSynthesize || typeof textToSynthesize !== 'string') return null;
-        logDevStage(9, 'TTS language and voice', {
+
+        const startTime = Date.now();
+        logDevStage(9, 'TTS synthesis started', {
           engine: ttsEngine,
           voice: ttsEngine === 'kokoro' ? kokoroVoice : (ttsEngine === 'gemini' ? 'Despina' : 'windows-default'),
           language: speechLanguage,
+          textLength: textToSynthesize.length,
         });
+
         let audioBase64 = null;
+        let ttsError = null;
+
         if (ttsEngine === 'kokoro') {
           if (window.island?.kokoro?.synthesize) {
             try {
@@ -599,11 +794,11 @@ export function useRealtimeVoice(options = {}) {
               });
               if (kRes?.ok && kRes.audioBase64) {
                 audioBase64 = kRes.audioBase64;
-              } else if (!allowCloudFallback) {
-                console.warn('[Kokoro synthesis unavailable, cloud fallback disallowed]:', kRes?.error);
+              } else {
+                ttsError = kRes?.error || 'Kokoro model weights not installed';
               }
             } catch (kErr) {
-              console.warn('[Kokoro synthesis error]:', kErr);
+              ttsError = kErr.message;
             }
           }
           if (!audioBase64 && allowCloudFallback && window.island?.gemini?.synthesizeSpeech) {
@@ -614,13 +809,16 @@ export function useRealtimeVoice(options = {}) {
               });
               if (synthRes?.ok && synthRes.audioBase64) {
                 audioBase64 = synthRes.audioBase64;
+                ttsError = null;
+              } else if (synthRes?.error) {
+                ttsError = synthRes.error;
               }
             } catch (e) {
-              console.warn('[Cloud fallback synthesis failed]:', e);
+              ttsError = e.message;
             }
           }
         } else if (ttsEngine === 'gemini') {
-          if (geminiAudioBase64 && textToSynthesize === turnResult.spokenText) {
+          if (geminiAudioBase64 && textToSynthesize === turnResult?.spokenText) {
             audioBase64 = geminiAudioBase64;
           } else if (window.island?.gemini?.synthesizeSpeech) {
             try {
@@ -630,12 +828,32 @@ export function useRealtimeVoice(options = {}) {
               });
               if (synthRes?.ok && synthRes.audioBase64) {
                 audioBase64 = synthRes.audioBase64;
+              } else {
+                ttsError = synthRes?.error || 'Gemini TTS synthesis failed';
+                if (synthRes?.isDailyQuota || synthRes?.error?.includes('exceeded your current quota')) {
+                  ttsError = 'Gemini TTS daily quota reached (10/10 requests)';
+                }
               }
             } catch (e) {
-              console.warn('[Synthesize spoken action failed]:', e);
+              ttsError = e.message;
             }
           }
+        } else if (ttsEngine === 'windows') {
+          // Native Windows speech synthesis handled directly by Web Speech API, no base64 needed
+          audioBase64 = null;
         }
+
+        logDevStage(9, 'TTS synthesis result', {
+          engine: ttsEngine,
+          ok: Boolean(audioBase64),
+          durationMs: Date.now() - startTime,
+          error: ttsError,
+        });
+
+        if (ttsError && !audioBase64) {
+          setErrorMessage(`${ttsError}. Using Windows Voice fallback.`);
+        }
+
         return audioBase64;
       };
 
@@ -652,15 +870,17 @@ export function useRealtimeVoice(options = {}) {
         ]);
         historyRef.current.push({ role: 'assistant', text: initialText });
 
-        // Start ducking audio softly
-        audioCoordinator.startDucking({ duckLevel: 0.22, durationMs: 250 });
-
         // Transition to acknowledging state
         controller.setState('acknowledging', { turnId, text: initialText });
         const initialAudio = await synthesizeSpeechText(initialText);
 
-        if (initialAudio && controller.isTurnActive(turnId)) {
-          await playAssistantSpeech(initialAudio, initialText, turnId);
+        if (controller.isTurnActive(turnId)) {
+          await speakAssistantResponse({
+            audioBase64: initialAudio,
+            text: initialText,
+            turnId,
+            isIntermediate: true,
+          });
         }
 
         // Check if turn was superseded during initial speech
@@ -784,11 +1004,12 @@ export function useRealtimeVoice(options = {}) {
 
         const completionAudio = await synthesizeSpeechText(completionText);
 
-        if (completionAudio && controller.isTurnActive(turnId)) {
-          await playAssistantSpeech(completionAudio, completionText, turnId, () => {
-            audioCoordinator.restoreVolume({ durationMs: 1100 });
-            controller.finishSpeaking(turnId, 'listening');
-            logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
+        if (controller.isTurnActive(turnId)) {
+          await speakAssistantResponse({
+            audioBase64: completionAudio,
+            text: completionText,
+            turnId,
+            isIntermediate: false,
           });
         } else {
           audioCoordinator.restoreVolume({ durationMs: 1100 });
@@ -806,24 +1027,19 @@ export function useRealtimeVoice(options = {}) {
         ]);
         historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
 
-        if (isPlaybackAction) {
-          audioCoordinator.startDucking({ duckLevel: 0.22, durationMs: 250 });
-        }
-
-        const handleSpeechComplete = () => {
-          if (isPlaybackAction) {
-            audioCoordinator.restoreVolume({ durationMs: 1100 });
-          }
-          controller.finishSpeaking(turnId, 'listening');
-          logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
-        };
-
         const spokenAudioBase64 = await synthesizeSpeechText(finalSpokenText);
 
-        if (spokenAudioBase64 && controller.isTurnActive(turnId)) {
-          await playAssistantSpeech(spokenAudioBase64, finalSpokenText, turnId, handleSpeechComplete);
+        if (controller.isTurnActive(turnId)) {
+          await speakAssistantResponse({
+            audioBase64: spokenAudioBase64,
+            text: finalSpokenText,
+            turnId,
+            isIntermediate: false,
+          });
         } else {
-          handleSpeechComplete();
+          audioCoordinator.restoreVolume({ durationMs: 1100 });
+          controller.finishSpeaking(turnId, 'listening');
+          logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
         }
       }
     } catch (err) {
@@ -831,7 +1047,7 @@ export function useRealtimeVoice(options = {}) {
       audioCoordinator.cancelDucking();
       controller.handleTurnFailure(turnId, err.message || 'Error processing speech turn.');
     }
-  }, [controller, playAssistantSpeech]);
+  }, [controller, speakAssistantResponse]);
 
   // Wire turn submission handler to controller
   useEffect(() => {
