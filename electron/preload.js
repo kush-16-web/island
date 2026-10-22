@@ -10,6 +10,7 @@ const CHANNELS = new Set([
   'scheduler:state',
   'inbox:state',
   'hub:toggle',
+  'hub:open',
   'window:blur',
   'window:pos-changed',
   'window:dock-changed',
@@ -23,6 +24,9 @@ const CHANNELS = new Set([
 
 contextBridge.exposeInMainWorld('island', {
   getState: () => ipcRenderer.invoke('state:get'),
+
+  // Sanitized window & UI lifecycle diagnostics
+  logLifecycle: (event, extra) => ipcRenderer.send('window:log-lifecycle', { event, ...extra }),
 
   // Window behaviour: the window is click-through except over the island and pet.
   setIgnoreMouse: (ignore) => ipcRenderer.send('win:ignore-mouse', Boolean(ignore)),

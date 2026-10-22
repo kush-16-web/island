@@ -252,15 +252,42 @@ export default function Island() {
     setHubOpen(true);
   }, [s.media?.active, tab]);
 
+  const expandedAtRef = useRef(0);
+  const prevHubOpenRef = useRef(hubOpen);
+
   // Sync expanded state with Electron window focus
   useEffect(() => {
+    if (hubOpen) {
+      expandedAtRef.current = Date.now();
+    }
     window.island?.setIslandExpanded?.(hubOpen);
   }, [hubOpen]);
+
+  // Voice session dismissal cleanup: if the hub closes while voice is active, stop session cleanly
+  useEffect(() => {
+    if (prevHubOpenRef.current && !hubOpen) {
+      window.island?.logLifecycle?.('hub:dismissed', {
+        voiceStatus: voice.status,
+      });
+      if (voice.status !== 'idle' && voice.status !== 'error') {
+        voice.stopSession();
+      }
+    }
+    prevHubOpenRef.current = hubOpen;
+  }, [hubOpen, voice]);
 
   // Click-outside dismissal: when the OS window blurs (user clicked Chrome, desktop, taskbar)
   useEffect(() => {
     if (!window.island?.on) return undefined;
     return window.island.on('window:blur', () => {
+      // Grace period: ignore blur events that arrive right as the window is expanding (within 450ms)
+      if (Date.now() - expandedAtRef.current < 450) {
+        window.island?.logLifecycle?.('window:blur:ignored_grace_period', {
+          deltaMs: Date.now() - expandedAtRef.current,
+        });
+        return;
+      }
+      window.island?.logLifecycle?.('window:blur:dismiss_hub');
       setHubOpen(false);
     });
   }, []);
@@ -270,11 +297,13 @@ export default function Island() {
     if (!hubOpen) return undefined;
     const onWindowPointerDown = (e) => {
       if (!e.target.closest('.island') && !e.target.closest('.pet-container')) {
+        window.island?.logLifecycle?.('hub:dismiss_pointerdown_outside');
         setHubOpen(false);
       }
     };
     const onWindowKeyDown = (e) => {
       if (e.key === 'Escape') {
+        window.island?.logLifecycle?.('hub:dismiss_escape_key');
         setHubOpen(false);
       }
     };
@@ -286,26 +315,51 @@ export default function Island() {
     };
   }, [hubOpen]);
 
-  // Hotkey / tray / second launch.
-  useEffect(
-    () =>
-      window.island
-        ? window.island.on('hub:toggle', () => setHubOpen((open) => !open))
-        : undefined,
-    [],
-  );
+  // Hotkey / tray / second launch listeners (supports both hub:toggle and hub:open)
+  useEffect(() => {
+    if (!window.island?.on) return undefined;
 
-  // Global voice shortcut listener (Ctrl+Shift+Space)
+    const unregToggle = window.island.on('hub:toggle', () => {
+      window.island?.logLifecycle?.('hub:toggle:received', { hubOpen });
+      setHubOpen((open) => !open);
+    });
+
+    const unregOpen = window.island.on('hub:open', (preferredTab) => {
+      window.island?.logLifecycle?.('hub:open:received', { preferredTab, hubOpen });
+      openHub(typeof preferredTab === 'string' ? preferredTab : undefined);
+    });
+
+    return () => {
+      unregToggle?.();
+      unregOpen?.();
+    };
+  }, [openHub, hubOpen]);
+
+  // Global voice shortcut listener (Ctrl+Shift+Space) & Tray "Talk to Island"
   useEffect(() => {
     if (!window.island?.on) return undefined;
     return window.island.on('voice:toggle', () => {
-      if (voice.status === 'idle' || voice.status === 'error') {
+      window.island?.logLifecycle?.('voice:toggle:received', {
+        hubOpen,
+        tab,
+        voiceStatus: voice.status,
+      });
+      if (!hubOpen) {
         openHub('voice');
-      } else {
+        if (voice.status === 'idle' || voice.status === 'error') {
+          voice.startSession();
+        }
+      } else if (tab === 'voice') {
+        voice.stopSession();
         setHubOpen(false);
+      } else {
+        openHub('voice');
+        if (voice.status === 'idle' || voice.status === 'error') {
+          voice.startSession();
+        }
       }
     });
-  }, [voice.status, openHub]);
+  }, [hubOpen, tab, voice, openHub]);
 
   // Toasts: auto-dismiss (paused while hovered); skip them while the hub is already open.
   useEffect(() => {

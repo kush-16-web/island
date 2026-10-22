@@ -64,6 +64,30 @@ let visible = true;
 
 // ---------------------------------------------------------------- helpers
 
+function logWindowLifecycle(event, extra = {}) {
+  try {
+    const logDir = (app && typeof app.getPath === 'function')
+      ? app.getPath('userData')
+      : path.join(__dirname, '..');
+    const logPath = path.join(logDir, 'window-lifecycle.jsonl');
+    const record = {
+      timestamp: new Date().toISOString(),
+      event,
+      isDestroyed: win ? win.isDestroyed() : true,
+      isVisible: (win && !win.isDestroyed()) ? win.isVisible() : false,
+      isMinimized: (win && !win.isDestroyed()) ? win.isMinimized() : false,
+      isFocused: (win && !win.isDestroyed()) ? win.isFocused() : false,
+      isFocusable: (win && !win.isDestroyed() && typeof win.isFocusable === 'function') ? win.isFocusable() : null,
+      bounds: (win && !win.isDestroyed()) ? win.getBounds() : null,
+      opacity: (win && !win.isDestroyed()) ? win.getOpacity() : null,
+      alwaysOnTop: (win && !win.isDestroyed()) ? win.isAlwaysOnTop() : null,
+      visibleState: visible,
+      ...extra,
+    };
+    fs.appendFileSync(logPath, JSON.stringify(record) + '\n', 'utf8');
+  } catch {}
+}
+
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   if (petWin && !petWin.isDestroyed()) petWin.webContents.send(channel, payload);
@@ -482,6 +506,7 @@ function createWindow() {
 
   // Click-outside dismissal: when the expanded island window loses OS focus, notify the renderer
   win.on('blur', () => {
+    logWindowLifecycle('window:blur:electron');
     send('window:blur');
   });
 
@@ -556,11 +581,28 @@ function createPetWindow() {
   });
 }
 
+function restoreAndShowWindow() {
+  if (!win || win.isDestroyed()) return;
+  visible = true;
+  if (win.isMinimized()) {
+    win.restore();
+  }
+  if (!win.isVisible()) {
+    win.show();
+  }
+  win.setAlwaysOnTop(true, 'screen-saver');
+  placeWindow();
+  buildTrayMenu();
+}
+
 function toggleVisible() {
   visible = !visible;
-  if (win && !win.isDestroyed()) {
-    if (visible) win.showInactive();
-    else win.hide();
+  logWindowLifecycle('toggleVisible:invoked', { newVisible: visible });
+  if (visible) {
+    restoreAndShowWindow();
+    send('hub:open');
+  } else if (win && !win.isDestroyed()) {
+    win.hide();
   }
   if (petWin && !petWin.isDestroyed()) {
     const petVisible = store ? store.get('island_pet_visible', false) : false;
@@ -570,21 +612,19 @@ function toggleVisible() {
   buildTrayMenu();
 }
 
-function openHub() {
-  if (!visible) {
-    visible = true;
-    win.showInactive();
-    buildTrayMenu();
+function openHub(preferredTab) {
+  logWindowLifecycle('openHub:invoked', { preferredTab: typeof preferredTab === 'string' ? preferredTab : null });
+  restoreAndShowWindow();
+  if (typeof preferredTab === 'string') {
+    send('hub:open', preferredTab);
+  } else {
+    send('hub:open');
   }
-  send('hub:toggle');
 }
 
 function toggleVoice() {
-  if (!visible && win && !win.isDestroyed()) {
-    visible = true;
-    win.showInactive();
-    buildTrayMenu();
-  }
+  logWindowLifecycle('toggleVoice:invoked');
+  restoreAndShowWindow();
   send('voice:toggle');
 }
 
@@ -718,15 +758,18 @@ function wireIpc() {
     else targetWin.setIgnoreMouseEvents(false);
   });
 
-  // The window never takes focus on its own. It becomes focusable only while you type in a field.
+  // Window lifecycle telemetry from renderer
+  listen('window:log-lifecycle', (payload) => {
+    if (payload && payload.event) {
+      logWindowLifecycle(payload.event, payload);
+    }
+  });
+
+  // The window is focusable while active
   listen('win:focusable', (focusable) => {
     if (!win || win.isDestroyed()) return;
     if (focusable) {
-      win.setFocusable(true);
       win.focus();
-    } else {
-      win.blur();
-      win.setFocusable(false);
     }
   });
 
@@ -859,9 +902,9 @@ function wireIpc() {
 
   // Focus management for manual expansion (enabling click-outside blur dismissal)
   listen('island:expand', (expanded) => {
+    logWindowLifecycle('island:expand', { expanded });
     if (!win || win.isDestroyed()) return;
     if (expanded) {
-      win.setFocusable(true);
       win.focus();
       const saved = getSavedDock();
       if (saved.edge === 'free') {
@@ -880,8 +923,6 @@ function wireIpc() {
         }
       }
     } else {
-      win.blur();
-      win.setFocusable(false);
       const saved = getSavedDock();
       if (saved.edge === 'free' && Number.isFinite(saved.pillY)) {
         const [currX] = win.getPosition();
@@ -1125,12 +1166,9 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (win && !win.isDestroyed()) {
-      visible = true;
-      win.showInactive();
-      placeWindow();
-      send('hub:open');
-    }
+    logWindowLifecycle('second-instance:invoked');
+    restoreAndShowWindow();
+    send('hub:open');
   });
 
   // Keep running in the tray even though the window can't be closed.

@@ -16,8 +16,32 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('Island render error caught by boundary:', error, errorInfo);
+    island?.logLifecycle?.('renderer:error_boundary_caught', {
+      error: error?.message,
+      componentStack: errorInfo?.componentStack,
+    });
     // Ensure transparent window NEVER captures clicks when an error occurs
     island?.setIgnoreMouse?.(true);
+  }
+
+  componentDidMount() {
+    if (island?.on) {
+      this.unsubOpen = island.on('hub:open', () => {
+        if (this.state.hasError) {
+          this.setState({ hasError: false, error: null });
+        }
+      });
+      this.unsubToggle = island.on('hub:toggle', () => {
+        if (this.state.hasError) {
+          this.setState({ hasError: false, error: null });
+        }
+      });
+    }
+  }
+
+  componentWillUnmount() {
+    this.unsubOpen?.();
+    this.unsubToggle?.();
   }
 
   render() {

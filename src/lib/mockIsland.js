@@ -97,6 +97,7 @@ export function createMockIsland() {
       hotkey: 'Ctrl+Alt+Space',
       systemAccent: '#38bdf8',
     }),
+    logLifecycle() {},
     setIgnoreMouse() {},
     setFocusable() {},
     startWindowDrag() {},

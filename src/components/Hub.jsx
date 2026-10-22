@@ -130,6 +130,7 @@ export default function Hub({
                   voice.startSession();
                   setTab('voice');
                 } else if (tab === 'voice') {
+                  voice.stopSession();
                   setTab(s.media?.active ? 'playing' : 'launcher');
                 } else {
                   setTab('voice');
@@ -189,7 +190,11 @@ export default function Hub({
             {tab === 'voice' && voice && (
               <VoicePanel
                 voice={voice}
-                onClose={() => setTab(s.media?.active ? 'playing' : 'launcher')}
+                onClose={() => {
+                  voice.stopSession();
+                  setTab(s.media?.active ? 'playing' : 'launcher');
+                  onClose?.();
+                }}
                 onOpenSettings={() => setTab('settings')}
                 accentColor={accentColor}
               />
