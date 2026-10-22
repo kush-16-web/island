@@ -12,11 +12,33 @@
 
   function getVideoId() {
     try {
+      // 1. URL search param ?v=
       const url = new URL(window.location.href);
-      return url.searchParams.get('v') || null;
-    } catch {
-      return null;
-    }
+      const urlId = url.searchParams.get('v');
+      if (urlId && /^[a-zA-Z0-9_-]{11}$/.test(urlId)) return urlId;
+
+      // 2. Official YouTube Player API on DOM element
+      const player = document.querySelector('#movie_player');
+      if (player && typeof player.getVideoData === 'function') {
+        const pId = player.getVideoData()?.video_id;
+        if (pId && /^[a-zA-Z0-9_-]{11}$/.test(pId)) return pId;
+      }
+
+      // 3. Player bar watch anchor
+      const barLink = document.querySelector('ytmusic-player-bar a[href*="watch?v="]');
+      if (barLink && barLink.href) {
+        const match = barLink.href.match(/watch\?v=([a-zA-Z0-9_-]{11})/);
+        if (match) return match[1];
+      }
+
+      // 4. Meta tag og:url
+      const ogUrl = document.querySelector('meta[property="og:url"]')?.content;
+      if (ogUrl) {
+        const match = ogUrl.match(/watch\?v=([a-zA-Z0-9_-]{11})/);
+        if (match) return match[1];
+      }
+    } catch {}
+    return null;
   }
 
   function getTrackInfo() {
@@ -157,8 +179,8 @@
                 await playPromise;
               }
               isAutoplayBlocked = false;
-              await ackCommand(cmd.id, 'playing');
-              reportState('playing');
+              await ackCommand(cmd.id, 'playing', { videoId: targetVideoId });
+              reportState('playing', { videoId: targetVideoId });
             } catch (err) {
               if (err.name === 'NotAllowedError') {
                 isAutoplayBlocked = true;
@@ -174,36 +196,52 @@
           return;
         }
 
-        // Case B: different track requested -> navigate to track
+        // Case B: different track requested -> play in existing tab!
         if (targetVideoId) {
           const targetUrl = `/watch?v=${targetVideoId}`;
-          await ackCommand(cmd.id, 'navigated', { targetUrl });
+          const player = document.querySelector('#movie_player');
 
-          // YouTube Music SPA navigation
-          if (window.location.pathname === '/watch' && window.location.search.includes(`v=${targetVideoId}`)) {
-            // Already there, just attempt play
-            if (video) {
-              try {
-                await video.play();
-                isAutoplayBlocked = false;
-                reportState('playing');
-              } catch (err) {
-                if (err.name === 'NotAllowedError') {
-                  isAutoplayBlocked = true;
-                  reportState('autoplay_blocked');
-                }
-              }
+          // Strategy 1: YouTube Music embedded player API (instant track switch, zero page reload)
+          if (player && typeof player.loadVideoById === 'function') {
+            try {
+              player.loadVideoById(targetVideoId);
+              isAutoplayBlocked = false;
+              await ackCommand(cmd.id, 'playing', { targetUrl, videoId: targetVideoId });
+              reportState('playing', { videoId: targetVideoId });
+              return;
+            } catch (e) {
+              console.warn('[Dynamic Island] loadVideoById error, falling back to router:', e);
             }
-          } else {
-            window.location.href = targetUrl;
           }
+
+          // Strategy 2: SPA router via synthetic anchor click (preserves tab and user gesture)
+          let spaTriggered = false;
+          try {
+            const anchor = document.createElement('a');
+            anchor.href = targetUrl;
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            spaTriggered = true;
+          } catch (e) {}
+
+          if (spaTriggered) {
+            await ackCommand(cmd.id, 'navigated', { targetUrl, videoId: targetVideoId });
+            return;
+          }
+
+          // Strategy 3: Tab location update (remains in the existing tab!)
+          await ackCommand(cmd.id, 'navigated', { targetUrl, videoId: targetVideoId });
+          window.location.href = targetUrl;
           return;
         }
 
-        // Case C: No videoId, fallback URL or query
-        if (cmd.url) {
-          await ackCommand(cmd.id, 'navigated', { targetUrl: cmd.url });
-          window.location.href = cmd.url;
+        // Case C: No videoId, fallback URL or query on existing tab
+        if (cmd.url || cmd.query) {
+          const targetUrl = cmd.url || `/search?q=${encodeURIComponent(cmd.query)}`;
+          await ackCommand(cmd.id, 'navigated', { targetUrl });
+          window.location.href = targetUrl;
           return;
         }
 

@@ -429,7 +429,7 @@ export function executeMusicAction(intent, env = {}) {
           spokenConfirmation: `${media.title} is already in your favorites.`,
         };
       }
-      const added = addFavorite(media, storage);
+      const added = addFavorite(media, storage, companion);
       const res = {
         ok: true,
         action,
@@ -788,37 +788,76 @@ export function handlePlaybackExecution(
       } catch {}
     }
 
-    // Case 4A: Companion is connected to YouTube Music and we have an exact video ID -> request exact playback
-    if (isCompanionActive && targetVideoId) {
-      if (typeof onDispatchCompanion === 'function') {
-        onDispatchCompanion({
-          action: 'play_track',
+    // Case 4A: Companion is connected to YouTube Music
+    if (isCompanionActive) {
+      if (targetVideoId) {
+        // Exact video ID available -> request exact playback in existing tab
+        if (typeof onDispatchCompanion === 'function') {
+          onDispatchCompanion({
+            action: 'play_track',
+            videoId: targetVideoId,
+            title: track.title,
+            artist: track.artist,
+          });
+        }
+
+        const res = {
+          ok: true,
+          action,
+          track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId },
+          status: 'playback_requested',
+          playbackState: PLAYBACK_STATES.PLAYBACK_REQUESTED,
+          spokenConfirmation: `Requesting ${track.title} on YouTube Music.`,
+        };
+
+        logActionDiagnostic({
+          turnId,
+          action,
+          ok: true,
+          track: track.title,
+          status: 'playback_requested',
+          provider: track.provider,
           videoId: targetVideoId,
-          title: track.title,
-          artist: track.artist,
         });
+
+        return res;
+      } else {
+        // Unresolved video ID, but companion tab is open -> reuse existing tab rather than spawning a new tab!
+        const searchUrl =
+          track.playableUrl ||
+          `https://music.youtube.com/search?q=${encodeURIComponent(track.title + ' ' + (track.artist || ''))}`;
+
+        if (typeof onDispatchCompanion === 'function') {
+          onDispatchCompanion({
+            action: 'play_track',
+            url: searchUrl,
+            query: `${track.title} ${track.artist || ''}`.trim(),
+            title: track.title,
+            artist: track.artist,
+          });
+        }
+
+        const res = {
+          ok: true,
+          action,
+          track: { title: track.title, artist: track.artist, provider: track.provider, isUnresolvedIdentity: true },
+          status: 'opened_provider',
+          playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
+          spokenConfirmation: `Opening search for ${track.title} in your YouTube Music tab. Please select your version.`,
+        };
+
+        logActionDiagnostic({
+          turnId,
+          action,
+          ok: true,
+          track: track.title,
+          status: 'opened_provider_existing_tab',
+          provider: track.provider,
+          url: searchUrl,
+        });
+
+        return res;
       }
-
-      const res = {
-        ok: true,
-        action,
-        track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId },
-        status: 'playback_requested',
-        playbackState: PLAYBACK_STATES.PLAYBACK_REQUESTED,
-        spokenConfirmation: `Requesting ${track.title} on YouTube Music.`,
-      };
-
-      logActionDiagnostic({
-        turnId,
-        action,
-        ok: true,
-        track: track.title,
-        status: 'playback_requested',
-        provider: track.provider,
-        videoId: targetVideoId,
-      });
-
-      return res;
     }
 
     // Case 4B: Exact videoId is available, but companion is not yet connected -> open exact watch URL

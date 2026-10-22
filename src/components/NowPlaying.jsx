@@ -9,7 +9,7 @@ import MiniLyrics from './MiniLyrics';
 import FullLyrics from './FullLyrics';
 import VideoPiP from './VideoPiP';
 import FavoritesMenu from './FavoritesMenu';
-import { isTrackFavorite, addFavorite, removeFavorite } from '../lib/favorites';
+import { isTrackFavorite, addFavorite, removeFavorite, healFavoriteWithExactId } from '../lib/favorites';
 import { playFavoriteTrack } from '../lib/music-actions';
 
 export default function NowPlaying({
@@ -158,7 +158,7 @@ export default function NowPlaying({
       removeFavorite(media);
       setIsFavorite(false);
     } else {
-      addFavorite(media);
+      addFavorite(media, null, companionState);
       setIsFavorite(true);
     }
   };
@@ -186,6 +186,10 @@ export default function NowPlaying({
     const unsubPlayback = window.island?.on?.('companion:playback-state', (data) => {
       if (data?.event === 'playing') {
         setPlaybackFeedback({ state: 'confirmed_playing', text: 'Confirmed playing' });
+        if (data.videoId && (data.title || data.raw?.title)) {
+          const trackTitle = data.title || data.raw?.title;
+          healFavoriteWithExactId(trackTitle, data.videoId);
+        }
       } else if (data?.event === 'autoplay_blocked') {
         setPlaybackFeedback({ state: 'autoplay_blocked', text: 'Autoplay blocked by browser. Click Play in YouTube Music.' });
       } else if (data?.event === 'failed') {

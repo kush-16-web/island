@@ -402,4 +402,132 @@ test('Pass 2.2 Proof of Concept - Browser Companion Bridge & Scenarios', async (
     assert.equal(dispatchedCmd, null);
     assert.match(res.spokenConfirmation, /Opening Attention in YouTube Music/i);
   });
+
+  // --- Scenario 11: Saving active song while playing captures exact video ID ---
+  await t.test('Scenario 11: Saving active song while playing correlates with companion and captures exact video ID', () => {
+    const { addFavorite, getAllFavorites } = require('../src/lib/favorites');
+    const store = new Map();
+    const mockStorage = {
+      getItem: (k) => store.get(k) || null,
+      setItem: (k, v) => store.set(k, String(v)),
+    };
+
+    // SMTC only has title and artist (Windows limitation)
+    const smtcMedia = {
+      active: true,
+      title: 'Attention',
+      artist: 'Charlie Puth',
+      app: 'Google Chrome',
+    };
+
+    // Connected companion on YouTube Music has exact videoId
+    const companionState = {
+      connected: true,
+      isYtMusicActive: true,
+      currentTrack: {
+        videoId: 'nfs8NYg7yQM',
+        title: 'Attention',
+        artist: 'Charlie Puth',
+      },
+    };
+
+    const saved = addFavorite(smtcMedia, mockStorage, companionState);
+    assert.ok(saved);
+    assert.equal(saved.provider, 'youtube');
+    assert.equal(saved.youtubeId, 'nfs8NYg7yQM');
+    assert.equal(saved.providerTrackId, 'nfs8NYg7yQM');
+    assert.equal(saved.playableUrl, 'https://music.youtube.com/watch?v=nfs8NYg7yQM');
+    assert.equal(saved.isUnresolvedIdentity, false);
+
+    // Verify stored list in mockStorage
+    const all = getAllFavorites(mockStorage);
+    assert.equal(all.length, 1);
+    assert.equal(all[0].youtubeId, 'nfs8NYg7yQM');
+  });
+
+  // --- Scenario 12: Reusing existing tab when switching songs ---
+  await t.test('Scenario 12: Reusing existing YouTube Music tab dispatches to companion without opening new tab', () => {
+    let openedUrl = null;
+    let dispatchedCmd = null;
+
+    const savedFavorite = {
+      id: 'youtube:Attention__Charlie Puth',
+      title: 'Attention',
+      artist: 'Charlie Puth',
+      provider: 'youtube',
+      youtubeId: 'nfs8NYg7yQM',
+      playableUrl: 'https://music.youtube.com/watch?v=nfs8NYg7yQM',
+    };
+
+    const res = playFavoriteTrack(savedFavorite, {
+      media: { active: true, title: 'Some Other Song' },
+      companion: { connected: true, isYtMusicActive: true },
+      onOpenUrl: (url) => { openedUrl = url; },
+      onDispatchCompanion: (cmd) => { dispatchedCmd = cmd; },
+    });
+
+    // Exactly dispatches play_track to companion on existing tab
+    assert.equal(res.status, 'playback_requested');
+    assert.equal(dispatchedCmd?.action, 'play_track');
+    assert.equal(dispatchedCmd?.videoId, 'nfs8NYg7yQM');
+    // Does NOT call onOpenUrl (which would open a new tab!)
+    assert.equal(openedUrl, null);
+  });
+
+  // --- Scenario 13: Unresolved favorite reuses existing tab ---
+  await t.test('Scenario 13: Unresolved favorite dispatches search to existing tab without spawning new tab', () => {
+    let openedUrl = null;
+    let dispatchedCmd = null;
+
+    const unresolvedFavorite = {
+      id: 'youtube:Rare Track__Unknown',
+      title: 'Rare Track',
+      artist: 'Unknown',
+      provider: 'youtube',
+      isUnresolvedIdentity: true,
+      playableUrl: 'https://music.youtube.com/search?q=Rare%20Track',
+    };
+
+    const res = playFavoriteTrack(unresolvedFavorite, {
+      media: { active: false },
+      companion: { connected: true, isYtMusicActive: true },
+      onOpenUrl: (url) => { openedUrl = url; },
+      onDispatchCompanion: (cmd) => { dispatchedCmd = cmd; },
+    });
+
+    assert.equal(res.status, 'opened_provider');
+    // Dispatches to companion to search on existing tab!
+    assert.ok(dispatchedCmd);
+    assert.match(dispatchedCmd.url, /music\.youtube\.com\/search/);
+    // Never calls onOpenUrl to spawn a duplicate tab!
+    assert.equal(openedUrl, null);
+  });
+
+  // --- Scenario 14: Auto-healing on confirmed playback ---
+  await t.test('Scenario 14: healFavoriteWithExactId updates unresolved favorite with exact video ID', () => {
+    const { addFavorite, getAllFavorites, healFavoriteWithExactId } = require('../src/lib/favorites');
+    const store = new Map();
+    const mockStorage = {
+      getItem: (k) => store.get(k) || null,
+      setItem: (k, v) => store.set(k, String(v)),
+    };
+
+    // Initially saved without video ID (legacy or offline)
+    addFavorite({ title: 'Attention', artist: 'Charlie Puth', provider: 'youtube' }, mockStorage, null);
+    const initial = getAllFavorites(mockStorage);
+    assert.equal(initial[0].youtubeId, null);
+    assert.equal(initial[0].isUnresolvedIdentity, true);
+
+    // Player begins playing Attention with confirmed video ID -> heals record
+    const healed = healFavoriteWithExactId('Attention', 'nfs8NYg7yQM', mockStorage);
+    assert.ok(healed);
+    assert.equal(healed.youtubeId, 'nfs8NYg7yQM');
+    assert.equal(healed.playableUrl, 'https://music.youtube.com/watch?v=nfs8NYg7yQM');
+    assert.equal(healed.isUnresolvedIdentity, false);
+
+    // Storage is updated permanently
+    const after = getAllFavorites(mockStorage);
+    assert.equal(after[0].youtubeId, 'nfs8NYg7yQM');
+    assert.equal(after[0].isUnresolvedIdentity, false);
+  });
 });

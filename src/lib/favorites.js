@@ -282,6 +282,23 @@ export function migrateLegacyFavorites(storage = null) {
       };
     }
 
+    // Case 5: YouTube favorite with watch?v= URL missing explicit youtubeId / providerTrackId
+    if (item.provider === SUPPORTED_PROVIDERS.YOUTUBE && (!item.youtubeId || !item.providerTrackId) && item.playableUrl) {
+      try {
+        const u = new URL(item.playableUrl);
+        const vid = u.searchParams.get('v');
+        if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) {
+          repairedAny = true;
+          return {
+            ...item,
+            youtubeId: vid,
+            providerTrackId: vid,
+            isUnresolvedIdentity: false,
+          };
+        }
+      } catch {}
+    }
+
     return item;
   });
 
@@ -398,18 +415,81 @@ export function isTrackFavorite(track, storage = null) {
 }
 
 /**
- * Add a track to unified favorites.
+ * Add a track to unified favorites with companion correlation and exact identity preservation.
  */
-export function addFavorite(track, storage = null) {
+export function addFavorite(track, storage = null, companion = null) {
   if (!track || !track.title) return null;
 
   const list = getAllFavorites(storage);
-  const provider = track.provider || detectProvider(track);
-  const id = track.id || createFavoriteId(track.title, track.artist, provider, track.providerTrackId);
+  const detectedProvider = track.provider || detectProvider(track);
 
-  // Check for duplicate ID
-  const existingIndex = list.findIndex((f) => f.id === id);
+  // Check companion for active verified YouTube Music identity
+  const comp = companion || (typeof window !== 'undefined' ? window.__islandCompanionState : null);
+  let resolvedYoutubeId =
+    track.youtubeId ||
+    (typeof track.providerTrackId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(track.providerTrackId)
+      ? track.providerTrackId
+      : null);
+  let resolvedUrl = track.playableUrl || null;
+
+  // Extract from playableUrl if present
+  if (!resolvedYoutubeId && resolvedUrl) {
+    try {
+      const u = new URL(resolvedUrl);
+      const v = u.searchParams.get('v');
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
+        resolvedYoutubeId = v;
+      }
+    } catch {}
+  }
+
+  // Correlate with connected companion if available
+  if (!resolvedYoutubeId && comp && comp.isYtMusicActive && comp.currentTrack?.videoId) {
+    const normTrack = normalizeText(track.title);
+    const normComp = normalizeText(comp.currentTrack.title || '');
+    if (normTrack && normComp && (normTrack.includes(normComp) || normComp.includes(normTrack))) {
+      resolvedYoutubeId = comp.currentTrack.videoId;
+      resolvedUrl = `https://music.youtube.com/watch?v=${resolvedYoutubeId}`;
+    }
+  }
+
+  const finalProvider = resolvedYoutubeId
+    ? SUPPORTED_PROVIDERS.YOUTUBE
+    : detectedProvider === SUPPORTED_PROVIDERS.APPLE && !isVerifiedApple(track)
+      ? SUPPORTED_PROVIDERS.YOUTUBE
+      : detectedProvider;
+
+  const finalPlayableUrl =
+    resolvedUrl ||
+    buildPlayableReference(track.title, track.artist, finalProvider, {
+      youtubeId: resolvedYoutubeId,
+      providerTrackId: resolvedYoutubeId,
+    });
+
+  const isUnresolvedIdentity = finalProvider === SUPPORTED_PROVIDERS.YOUTUBE && !resolvedYoutubeId;
+  const id = track.id || createFavoriteId(track.title, track.artist, finalProvider, resolvedYoutubeId);
+
+  // Check for duplicate ID or matching title/artist
+  const normTitle = normalizeText(track.title);
+  const normArtist = normalizeText(track.artist || '');
+  const existingIndex = list.findIndex(
+    (f) => f.id === id || (normalizeText(f.title) === normTitle && (!normArtist || normalizeText(f.artist) === normArtist))
+  );
+
   if (existingIndex >= 0) {
+    // If existing record was missing exact video ID and we now have one, heal it!
+    if (resolvedYoutubeId && !list[existingIndex].youtubeId) {
+      list[existingIndex] = {
+        ...list[existingIndex],
+        provider: finalProvider,
+        providerTrackId: resolvedYoutubeId,
+        youtubeId: resolvedYoutubeId,
+        playableUrl: `https://music.youtube.com/watch?v=${resolvedYoutubeId}`,
+        isUnresolvedIdentity: false,
+      };
+      setAllFavorites(list, storage);
+      return list[existingIndex];
+    }
     return list[existingIndex];
   }
 
@@ -419,20 +499,47 @@ export function addFavorite(track, storage = null) {
     artist: track.artist || '',
     album: track.album || '',
     artwork: track.artwork || track.art || null,
-    provider,
-    providerTrackId: track.providerTrackId || track.youtubeId || null,
-    playableUrl:
-      track.playableUrl ||
-      buildPlayableReference(track.title, track.artist, provider, {
-        youtubeId: track.youtubeId,
-        providerTrackId: track.providerTrackId,
-      }),
+    provider: finalProvider,
+    providerTrackId: resolvedYoutubeId || null,
+    youtubeId: resolvedYoutubeId || null,
+    playableUrl: finalPlayableUrl,
+    isUnresolvedIdentity,
     addedAt: Date.now(),
   };
 
   const nextList = [newFavorite, ...list];
   setAllFavorites(nextList, storage);
   return newFavorite;
+}
+
+/**
+ * Heal an existing favorite record with an exact video ID and canonical playable URL.
+ */
+export function healFavoriteWithExactId(idOrTitle, exactVideoId, storage = null) {
+  if (!idOrTitle || !exactVideoId || !/^[a-zA-Z0-9_-]{11}$/.test(exactVideoId)) return null;
+  const list = getAllFavorites(storage);
+  const normTarget = normalizeText(idOrTitle);
+
+  let updatedTrack = null;
+  const nextList = list.map((item) => {
+    if (item.id === idOrTitle || normalizeText(item.title) === normTarget) {
+      updatedTrack = {
+        ...item,
+        provider: SUPPORTED_PROVIDERS.YOUTUBE,
+        providerTrackId: exactVideoId,
+        youtubeId: exactVideoId,
+        playableUrl: `https://music.youtube.com/watch?v=${exactVideoId}`,
+        isUnresolvedIdentity: false,
+      };
+      return updatedTrack;
+    }
+    return item;
+  });
+
+  if (updatedTrack) {
+    setAllFavorites(nextList, storage);
+  }
+  return updatedTrack;
 }
 
 /**

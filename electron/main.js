@@ -710,6 +710,20 @@ function wireMedia() {
       if (directMatch) {
         state.youtubeId = directMatch[1];
       }
+
+      // Correlate with connected YouTube Music companion if active
+      if (!state.youtubeId && companionBridge && companionBridge.isConnected()) {
+        const compStatus = companionBridge.getStatus();
+        if (compStatus.isYtMusicActive && compStatus.currentTrack?.videoId) {
+          const normSmtc = state.title.toLowerCase().trim();
+          const normComp = (compStatus.currentTrack.title || '').toLowerCase().trim();
+          if (normSmtc && normComp && (normSmtc.includes(normComp) || normComp.includes(normSmtc))) {
+            state.youtubeId = compStatus.currentTrack.videoId;
+            state.provider = 'youtube';
+            state.playableUrl = `https://music.youtube.com/watch?v=${compStatus.currentTrack.videoId}`;
+          }
+        }
+      }
     }
     send('media', state);
   });
@@ -722,17 +736,41 @@ function wireNotifyServer() {
     send('companion:status-changed', data);
   });
   companionBridge.on('state-update', (data) => {
-    if (data.event === 'playing' && data.track) {
+    if (data.track && data.track.videoId) {
       if (mediaState) {
-        mediaState.active = true;
-        mediaState.status = 'playing';
-        if (data.track.title) mediaState.title = data.track.title;
-        if (data.track.artist) mediaState.artist = data.track.artist;
-        if (data.track.videoId) mediaState.youtubeId = data.track.videoId;
-        send('media:update', mediaState);
+        const normSmtc = (mediaState.title || '').toLowerCase().trim();
+        const normComp = (data.track.title || '').toLowerCase().trim();
+        if (!normSmtc || (normComp && (normSmtc.includes(normComp) || normComp.includes(normSmtc)))) {
+          mediaState.active = true;
+          if (data.event === 'playing') mediaState.status = 'playing';
+          else if (data.event === 'paused') mediaState.status = 'paused';
+          if (data.track.title) mediaState.title = data.track.title;
+          if (data.track.artist) mediaState.artist = data.track.artist;
+          mediaState.youtubeId = data.track.videoId;
+          mediaState.provider = 'youtube';
+          mediaState.playableUrl = `https://music.youtube.com/watch?v=${data.track.videoId}`;
+          send('media', mediaState);
+        }
       }
     }
     send('companion:playback-state', data);
+  });
+
+  companionBridge.on('ping', (status) => {
+    if (status.isYtMusicActive && status.currentTrack?.videoId) {
+      if (mediaState && mediaState.active) {
+        const normSmtc = (mediaState.title || '').toLowerCase().trim();
+        const normComp = (status.currentTrack.title || '').toLowerCase().trim();
+        if (normSmtc && normComp && (normSmtc.includes(normComp) || normComp.includes(normSmtc))) {
+          if (!mediaState.youtubeId) {
+            mediaState.youtubeId = status.currentTrack.videoId;
+            mediaState.provider = 'youtube';
+            mediaState.playableUrl = `https://music.youtube.com/watch?v=${status.currentTrack.videoId}`;
+            send('media', mediaState);
+          }
+        }
+      }
+    }
   });
 
   notifyServer = createNotifyServer({
