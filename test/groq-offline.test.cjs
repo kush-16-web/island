@@ -434,7 +434,7 @@ test('GroqService: Music tool calling with openai/gpt-oss-20b', async () => {
       reqEmitter.end = () => {
         const parsed = JSON.parse(sentPayload);
         assert.strictEqual(parsed.model, 'openai/gpt-oss-20b');
-        assert.strictEqual(parsed.tools.length, 11);
+        assert.strictEqual(parsed.tools.length, 12);
 
         const resEmitter = new EventEmitter();
         resEmitter.statusCode = 200;

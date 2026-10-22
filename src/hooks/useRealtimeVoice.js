@@ -501,8 +501,8 @@ export function useRealtimeVoice(options = {}) {
   const speakAssistantResponse = useCallback(async ({ audioBase64, text, turnId, isIntermediate = false }) => {
     if (!text || typeof text !== 'string') return false;
 
-    // 1. Protect music playback: duck background music smoothly
-    audioCoordinator.startDucking({ duckLevel: 0.22, durationMs: 250 });
+    // 1. Protect music playback: duck background music smoothly (~10% level)
+    audioCoordinator.startDucking({ duckLevel: 0.10, durationMs: 250, media: mediaRef.current });
 
     let played = false;
 
@@ -1053,6 +1053,15 @@ export function useRealtimeVoice(options = {}) {
             turnId,
             isIntermediate: false,
           });
+
+          // Priority 2: Natural Music Handoff & Transient Dismissal
+          if (finalOutcomeStatus === 'confirmed_playing' || finalOutcomeStatus === 'playing') {
+            controller.stopSession();
+            setStatus('idle');
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('island:dismiss-voice'));
+            }
+          }
         } else {
           audioCoordinator.restoreVolume({ durationMs: 1100 });
           controller.finishSpeaking(turnId, 'listening');
@@ -1078,6 +1087,27 @@ export function useRealtimeVoice(options = {}) {
             turnId,
             isIntermediate: false,
           });
+
+          // Priority 2: Transient dismissal for confirmed music playback commands
+          const action = turnResult.actionResult?.action;
+          const isPlaybackHandoff =
+            action === 'play_favorite' ||
+            action === 'play_track' ||
+            action === 'compound_pause_play' ||
+            action === 'next_track' ||
+            action === 'previous_track';
+          const isSuccessful = turnResult.actionResult?.ok;
+          const needsClarification = Boolean(
+            turnResult.actionResult?.clarificationNeeded || turnResult.actionResult?.ambiguous
+          );
+
+          if (isPlaybackHandoff && isSuccessful && !needsClarification) {
+            controller.stopSession();
+            setStatus('idle');
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('island:dismiss-voice'));
+            }
+          }
         } else {
           audioCoordinator.restoreVolume({ durationMs: 1100 });
           controller.finishSpeaking(turnId, 'listening');
@@ -1113,6 +1143,9 @@ export function useRealtimeVoice(options = {}) {
     setStatus('connecting');
     setErrorMessage(null);
     setIsMuted(false);
+
+    // Priority 1: Immediately duck music as soon as Voice Agent begins listening
+    audioCoordinator.startDucking({ duckLevel: 0.10, durationMs: 250, media: mediaRef.current });
 
     try {
       // 1. Verify provider status from main process

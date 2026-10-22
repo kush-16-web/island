@@ -23,6 +23,7 @@
 
 import { normalizeText, stringSimilarity } from './music-actions.js';
 import { getAllFavorites, SUPPORTED_PROVIDERS } from './favorites.js';
+import { musicContext } from './music-conversation-context.js';
 
 // Common phonetic and orthographic Whisper replacements for music queries
 const WHISPER_NORMALIZATIONS = [
@@ -43,9 +44,9 @@ export function cleanSpokenQuery(text) {
 }
 
 /**
- * Score a favorite item against a spoken query, title, and optional artist.
+ * Score a favorite item against a spoken query, title, optional artist, and language hint.
  */
-export function scoreFavoriteCandidate(favorite, queryTitle, queryArtist = '') {
+export function scoreFavoriteCandidate(favorite, queryTitle, queryArtist = '', languageHint = null) {
   if (!favorite || !favorite.title) return 0;
 
   const favTitle = normalizeText(favorite.title);
@@ -66,9 +67,28 @@ export function scoreFavoriteCandidate(favorite, queryTitle, queryArtist = '') {
   }
 
   // 2. Title similarity
-  const titleSim = stringSimilarity(cleanQTitle, favTitle);
+  let titleSim = stringSimilarity(cleanQTitle, favTitle);
 
-  // 3. If explicit artist was provided, check artist match
+  // Check for common transliterated Hindi / phonetic variations (e.g. "tuu" vs "tu")
+  if (cleanQTitle.replace(/u+/g, 'u') === favTitle.replace(/u+/g, 'u')) {
+    titleSim = Math.max(titleSim, 0.92);
+  }
+  if (cleanQTitle.replace(/e+/g, 'e') === favTitle.replace(/e+/g, 'e')) {
+    titleSim = Math.max(titleSim, 0.92);
+  }
+  if (cleanQTitle.replace(/a+/g, 'a') === favTitle.replace(/a+/g, 'a')) {
+    titleSim = Math.max(titleSim, 0.92);
+  }
+
+  // 3. Language hint boost: If user mentions "Hindi", boost Indian / Hindi titles or artists
+  if (languageHint && (languageHint === 'hindi' || languageHint === 'hinglish' || languageHint === 'punjabi')) {
+    const isIndianArtist = /arijit|pritam|atif|shreya|ar\s+rahman|diljit|badshah|honey|neha|jubin|sidhu|vishal|shekhar|amit|trivedi|salim|sulaiman/i.test(favArtist);
+    if (isIndianArtist) {
+      titleSim = Math.min(1.0, titleSim + 0.15);
+    }
+  }
+
+  // 4. If explicit artist was provided, check artist match
   if (cleanQArtist) {
     const artistSim = stringSimilarity(cleanQArtist, favArtist);
     if (artistSim < 0.45 && !favArtist.includes(cleanQArtist) && !cleanQArtist.includes(favArtist)) {
@@ -78,7 +98,7 @@ export function scoreFavoriteCandidate(favorite, queryTitle, queryArtist = '') {
     return titleSim * 0.65 + artistSim * 0.35;
   }
 
-  // 4. Combined query against title + artist
+  // 5. Combined query against title + artist
   const favCombined = `${favTitle} ${favArtist}`.trim();
   const combinedSim = stringSimilarity(cleanQTitle, favCombined);
 
@@ -92,6 +112,7 @@ export function scoreFavoriteCandidate(favorite, queryTitle, queryArtist = '') {
  * @param {string} params.query - Spoken search string
  * @param {string} [params.title] - Extracted song title if parsed
  * @param {string} [params.artist] - Extracted artist name if parsed
+ * @param {string} [params.languageHint] - Language hint if parsed (e.g. 'hindi')
  * @param {string} [params.provider] - Optional provider filter ('youtube' | 'spotify' | 'apple')
  * @param {boolean} [params.mostRecent] - If true, returns the most recently added favorite
  * @param {boolean} [params.random] - If true, picks a random playable favorite
@@ -102,6 +123,7 @@ export function resolveFavoriteTrack({
   query = '',
   title = '',
   artist = '',
+  languageHint = null,
   provider = null,
   mostRecent = false,
   random = false,
@@ -137,6 +159,21 @@ export function resolveFavoriteTrack({
   let effectiveTitle = cleanSpokenQuery(title || query);
   let effectiveArtist = cleanSpokenQuery(artist);
 
+  // Check if title is spelled out: "T-U-U" or "T U U" -> "tuu"
+  const spelled = musicContext.normalizeSpelledLetters(effectiveTitle);
+  if (spelled) {
+    effectiveTitle = spelled;
+  }
+
+  // Check learned persistent aliases: e.g. user previously confirmed "two" means "Tuu"
+  const aliasId = musicContext.getLearnedAlias(effectiveTitle, storage);
+  if (aliasId) {
+    const aliasMatch = list.find((f) => f.id === aliasId);
+    if (aliasMatch) {
+      return { match: aliasMatch, ambiguous: false, candidates: [aliasMatch] };
+    }
+  }
+
   if (!effectiveArtist && /\s+by\s+/i.test(effectiveTitle)) {
     const parts = effectiveTitle.split(/\s+by\s+/i);
     effectiveTitle = parts[0].trim();
@@ -146,9 +183,9 @@ export function resolveFavoriteTrack({
   const scored = list
     .map((item) => ({
       track: item,
-      score: scoreFavoriteCandidate(item, effectiveTitle, effectiveArtist),
+      score: scoreFavoriteCandidate(item, effectiveTitle, effectiveArtist, languageHint),
     }))
-    .filter((item) => item.score >= 0.58)
+    .filter((item) => item.score >= 0.55)
     .sort((a, b) => b.score - a.score);
 
   if (scored.length === 0) {
@@ -183,3 +220,4 @@ export function resolveFavoriteTrack({
     candidates: scored.slice(0, 3).map((s) => s.track),
   };
 }
+

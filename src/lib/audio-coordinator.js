@@ -28,7 +28,7 @@
 
 const STORAGE_KEY = 'island_user_volume';
 const DEFAULT_USER_VOLUME = 0.70;
-const DEFAULT_DUCK_LEVEL = 0.22;
+const DEFAULT_DUCK_LEVEL = 0.10; // Strong ducking (~10%) for clear voice capture
 const DEFAULT_FADE_DOWN_MS = 250;
 const DEFAULT_FADE_UP_MS = 1100;
 
@@ -42,6 +42,12 @@ class AudioCoordinator {
     this.listeners = new Set();
     this.connectedGainNode = null;
     this.connectedAudioCtx = null;
+
+    // External browser companion & media tracking
+    this.isExternalDucked = false;
+    this.pausedForDucking = false;
+    this.explicitPauseDuringDuck = false;
+    this.preDuckMediaState = null;
   }
 
   _loadBaseVolume() {
@@ -70,6 +76,8 @@ class AudioCoordinator {
       duckingMultiplier: this.duckingMultiplier,
       effectiveVolume: this.effectiveVolume,
       duckState: this.duckState,
+      isExternalDucked: this.isExternalDucked,
+      pausedForDucking: this.pausedForDucking,
     };
   }
 
@@ -88,23 +96,78 @@ class AudioCoordinator {
       } catch {}
     }
 
+    // Inform browser companion of explicit user volume setting if connected
+    if (typeof window !== 'undefined' && window.island?.companion?.dispatchCommand) {
+      window.island.companion.dispatchCommand({ action: 'set_volume', level: clamped, volume: clamped }).catch(() => {});
+    }
+
     this._applyGain();
     this._notify();
   }
 
+  setUserVolume(volume) {
+    this.setBaseVolume(volume);
+  }
+
+  getUserVolume() {
+    return this.baseVolume;
+  }
+
   /**
-   * Start ducking the volume down smoothly when assistant starts speaking.
+   * Mark that the user explicitly issued a pause/stop command during this turn,
+   * so restoreVolume will NEVER accidentally resume music.
    */
-  startDucking({ duckLevel = DEFAULT_DUCK_LEVEL, durationMs = DEFAULT_FADE_DOWN_MS } = {}) {
+  markExplicitPause() {
+    this.explicitPauseDuringDuck = true;
+  }
+
+  /**
+   * Start ducking the volume down smoothly when assistant begins listening or speaking.
+   * Controls internal gain nodes and dispatches audible volume ducking to the YouTube Music tab.
+   * If companion is unavailable, falls back to a safe temporary pause.
+   */
+  startDucking({ duckLevel = DEFAULT_DUCK_LEVEL, durationMs = DEFAULT_FADE_DOWN_MS, media = null } = {}) {
+    // If already ducked or actively ducking to the same level, do not re-trigger
+    if (this.duckState === 'ducked' || (this.duckState === 'ducking' && Math.abs(this.duckingMultiplier - duckLevel) < 0.02)) {
+      return;
+    }
+
     this._cancelActiveAnimation();
     const seq = ++this.transitionSeq;
     this.duckState = 'ducking';
+    this.explicitPauseDuringDuck = false;
+
+    if (media) {
+      this.preDuckMediaState = media;
+    } else if (typeof window !== 'undefined' && window.__islandMediaState) {
+      this.preDuckMediaState = window.__islandMediaState;
+    }
 
     const startMultiplier = this.duckingMultiplier;
     const targetMultiplier = Math.max(0, Math.min(1, duckLevel));
     const startTime = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-    // Hardware/WebAudio gain automation if connected
+    // 1. Dispatch real audible ducking to YouTube Music Chrome extension
+    if (typeof window !== 'undefined' && window.island?.companion?.dispatchCommand) {
+      this.isExternalDucked = true;
+      window.island.companion.dispatchCommand({
+        action: 'duck',
+        level: targetMultiplier,
+      }).catch(() => {
+        this.isExternalDucked = false;
+      });
+    }
+
+    // 2. Safe fallback when companion is not connected but external media is currently playing
+    const activeMedia = this.preDuckMediaState;
+    if (activeMedia && activeMedia.active && activeMedia.status === 'playing' && !this.isExternalDucked && !this.pausedForDucking) {
+      this.pausedForDucking = true;
+      if (typeof window !== 'undefined' && window.island?.media?.control) {
+        window.island.media.control('pause');
+      }
+    }
+
+    // 3. Hardware/WebAudio gain automation for internal Island audio
     if (this.connectedGainNode && this.connectedAudioCtx) {
       try {
         const now = this.connectedAudioCtx.currentTime;
@@ -153,9 +216,14 @@ class AudioCoordinator {
   }
 
   /**
-   * Restore volume smoothly back to 100% user volume after assistant finishes speaking.
+   * Restore volume smoothly back to 100% user volume after interaction finishes.
+   * Restores YouTube Music tab volume and safely resumes temporary pause if appropriate.
    */
   restoreVolume({ durationMs = DEFAULT_FADE_UP_MS } = {}) {
+    if (this.duckState === 'idle' && this.duckingMultiplier >= 0.99 && !this.isExternalDucked && !this.pausedForDucking) {
+      return;
+    }
+
     this._cancelActiveAnimation();
     const seq = ++this.transitionSeq;
     this.duckState = 'restoring';
@@ -164,7 +232,24 @@ class AudioCoordinator {
     const targetMultiplier = 1.0;
     const startTime = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-    // Hardware/WebAudio gain automation if connected
+    // 1. Dispatch volume restoration to YouTube Music Chrome extension
+    if (typeof window !== 'undefined' && window.island?.companion?.dispatchCommand) {
+      window.island.companion.dispatchCommand({ action: 'restore_volume' }).catch(() => {});
+    }
+    this.isExternalDucked = false;
+
+    // 2. Safe resume of temporary pause (ONLY if not explicitly paused by user during turn!)
+    if (this.pausedForDucking) {
+      if (!this.explicitPauseDuringDuck) {
+        if (typeof window !== 'undefined' && window.island?.media?.control) {
+          window.island.media.control('play');
+        }
+      }
+      this.pausedForDucking = false;
+      this.explicitPauseDuringDuck = false;
+    }
+
+    // 3. Hardware/WebAudio gain automation for internal Island audio
     if (this.connectedGainNode && this.connectedAudioCtx) {
       try {
         const now = this.connectedAudioCtx.currentTime;
@@ -221,9 +306,26 @@ class AudioCoordinator {
     this.transitionSeq++;
     this.duckingMultiplier = 1.0;
     this.duckState = 'idle';
+
+    if (typeof window !== 'undefined' && window.island?.companion?.dispatchCommand) {
+      window.island.companion.dispatchCommand({ action: 'restore_volume' }).catch(() => {});
+    }
+    this.isExternalDucked = false;
+
+    if (this.pausedForDucking) {
+      if (!this.explicitPauseDuringDuck) {
+        if (typeof window !== 'undefined' && window.island?.media?.control) {
+          window.island.media.control('play');
+        }
+      }
+      this.pausedForDucking = false;
+      this.explicitPauseDuringDuck = false;
+    }
+
     this._applyGain();
     this._notify();
   }
+
 
   _cancelActiveAnimation() {
     if (this.activeAnimFrame && typeof cancelAnimationFrame === 'function') {

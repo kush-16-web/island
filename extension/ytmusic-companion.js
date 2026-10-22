@@ -10,6 +10,7 @@
   let isAutoplayBlocked = false;
   let lastReportedState = null;
   let isBridgeConnected = false;
+  let savedPreDuckVolume = null;
 
   // ----------------------------------------------------------------- Page Bridge Handshake
   function setupPageBridge() {
@@ -310,6 +311,82 @@
       if (activeVideoElement) activeVideoElement.play().catch(() => {});
       sendResponse({ commandId: command.id, status: 'confirmed_playing' });
       notifyStateUpdate('playing');
+      return true;
+    }
+
+    if (command.action === 'duck') {
+      const targetLevel = Number.isFinite(Number(command.level))
+        ? Math.max(0, Math.min(1, Number(command.level)))
+        : 0.10; // Default 10% volume
+
+      const video = activeVideoElement || document.querySelector('video');
+      if (video) {
+        if (savedPreDuckVolume === null) {
+          savedPreDuckVolume = Number.isFinite(video.volume) ? video.volume : 1.0;
+        }
+        video.volume = targetLevel;
+      }
+      window.postMessage({
+        source: 'ISLAND_CONTENT_SCRIPT',
+        action: 'DUCK',
+        level: targetLevel,
+        commandId: command.id,
+      }, '*');
+
+      console.log('[Dynamic Island Content] Ducked volume to:', targetLevel, 'original was:', savedPreDuckVolume);
+      sendResponse({
+        commandId: command.id,
+        status: 'ducked',
+        duckLevel: targetLevel,
+        originalVolume: savedPreDuckVolume,
+      });
+      return true;
+    }
+
+    if (command.action === 'restore_volume') {
+      const video = activeVideoElement || document.querySelector('video');
+      const restored = savedPreDuckVolume !== null ? savedPreDuckVolume : 1.0;
+      savedPreDuckVolume = null;
+
+      if (video) {
+        video.volume = restored;
+      }
+      window.postMessage({
+        source: 'ISLAND_CONTENT_SCRIPT',
+        action: 'RESTORE_VOLUME',
+        volume: restored,
+        commandId: command.id,
+      }, '*');
+
+      console.log('[Dynamic Island Content] Restored volume to:', restored);
+      sendResponse({
+        commandId: command.id,
+        status: 'restored',
+        volume: restored,
+      });
+      return true;
+    }
+
+    if (command.action === 'set_volume') {
+      const vol = Math.max(0, Math.min(1, Number(command.volume)));
+      savedPreDuckVolume = null; // Explicit volume change overwrites pre-duck state
+      const video = activeVideoElement || document.querySelector('video');
+      if (video) {
+        video.volume = vol;
+      }
+      window.postMessage({
+        source: 'ISLAND_CONTENT_SCRIPT',
+        action: 'SET_VOLUME',
+        volume: vol,
+        commandId: command.id,
+      }, '*');
+
+      console.log('[Dynamic Island Content] Set volume to:', vol);
+      sendResponse({
+        commandId: command.id,
+        status: 'volume_set',
+        volume: vol,
+      });
       return true;
     }
 

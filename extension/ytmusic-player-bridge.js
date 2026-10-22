@@ -125,6 +125,36 @@
       sendToIsolated('PAUSE_REQUESTED', { commandId });
       return;
     }
+
+    if (action === 'SET_VOLUME') {
+      const player = getMoviePlayer();
+      if (player && typeof player.setVolume === 'function') {
+        const pct = Math.max(0, Math.min(100, Math.round(Number(event.data.volume) * 100)));
+        player.setVolume(pct);
+      }
+      sendToIsolated('VOLUME_SET', { commandId });
+      return;
+    }
+
+    if (action === 'DUCK') {
+      const player = getMoviePlayer();
+      if (player && typeof player.setVolume === 'function') {
+        const pct = Math.max(0, Math.min(100, Math.round(Number(event.data.level) * 100)));
+        player.setVolume(pct);
+      }
+      sendToIsolated('DUCK_APPLIED', { commandId });
+      return;
+    }
+
+    if (action === 'RESTORE_VOLUME') {
+      const player = getMoviePlayer();
+      if (player && typeof player.setVolume === 'function') {
+        const pct = Math.max(0, Math.min(100, Math.round(Number(event.data.volume) * 100)));
+        player.setVolume(pct);
+      }
+      sendToIsolated('VOLUME_RESTORED', { commandId });
+      return;
+    }
   });
 
   // Announce bridge ready

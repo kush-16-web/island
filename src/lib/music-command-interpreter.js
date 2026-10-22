@@ -21,6 +21,8 @@ import { cleanSpokenQuery, resolveFavoriteTrack } from './favorites-resolver.js'
 import { executeMusicAction, normalizeText } from './music-actions.js';
 import { SUPPORTED_PROVIDERS, getAllFavorites } from './favorites.js';
 import { getAssistantName } from './assistant.js';
+import { parseMultiActionPlan, executeActionPlan } from './action-plan.js';
+import { musicContext } from './music-conversation-context.js';
 
 // Conversational phrases containing "play" that are NOT music commands
 const NON_MUSIC_PLAY_PATTERNS = [
@@ -84,115 +86,195 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
   const storage = env.customStorage || null;
   const turnId = env.turnId || Date.now();
 
-  // 0. Compound Voice Commands: e.g. "Pause the current song and play Pashmina from my favorites"
-  const compoundMatch = cleaned.match(
-    /^(pause(?:\s+(?:the\s+)?(?:current\s+)?(?:song|track|music|playback))?|stop(?:\s+(?:the\s+)?(?:music|playback))?|halt)\s+(?:and\s+then|then|and|after\s+that)\s+(play\s+.+)$/i
-  );
-  if (compoundMatch) {
-    const playPart = compoundMatch[2].trim();
-    // 1. Preserve intended order: Pause current playback source first
-    if (media.active && media.status !== 'paused') {
-      const onCtrl = typeof env.onControl === 'function' ? env.onControl : () => {};
-      onCtrl('pause');
+  // Helper to record context on handled results
+  const wrapResult = (res, query) => {
+    if (!res || !res.handledLocally || !res.actionResult) return res;
+    const r = res.actionResult;
+    if (r.ok) {
+      musicContext.recordSuccess(r.action, r.track);
+    } else if (r.reason === 'ambiguous_match') {
+      musicContext.setPreviousCandidates(r.matches || []);
+    } else {
+      musicContext.recordFailure(r.action, query || cleaned, r.reason, r.matches || []);
     }
-    // 2. Interpret and execute the target playback action
-    const playEval = interpretLocalMusicCommand(playPart, env);
-    if (playEval.handledLocally && playEval.actionResult) {
-      const playRes = playEval.actionResult;
-      if (!playRes.ok) {
-        return playEval;
-      }
-      const targetTitle = playRes.track?.title || 'the song';
-      const initialAck = `Pausing and opening ${targetTitle}.`;
+    return res;
+  };
+
+  // 0A. Contextual Corrections (Priority 4 & 5)
+  const correction = musicContext.detectCorrection(rawText);
+  if (correction && correction.isCorrection) {
+    if (correction.selectedTrack) {
+      const res = executeMusicAction({ action: 'play_favorite', track: correction.selectedTrack }, env);
+      if (res.ok) musicContext.recordSuccess('play_favorite', res.track);
       return {
-        ...playEval,
-        isCompound: true,
+        handledLocally: true,
+        actionResult: res,
+      };
+    }
+
+    const candidateTitle = correction.candidateTitle;
+    const languageHint = correction.languageHint;
+    const artistHint = correction.artistHint;
+
+    const resolution = resolveFavoriteTrack({
+      query: candidateTitle,
+      title: candidateTitle,
+      artist: artistHint,
+      languageHint: languageHint,
+      storage,
+    });
+
+    if (resolution.match) {
+      if (correction.previousQuery && resolution.match.id) {
+        musicContext.learnAlias(correction.previousQuery, resolution.match.id, storage);
+      }
+      const res = executeMusicAction({ action: 'play_favorite', track: resolution.match, query: resolution.match.title }, env);
+      if (res.ok) musicContext.recordSuccess('play_favorite', res.track);
+      return {
+        handledLocally: true,
+        actionResult: res,
+      };
+    }
+
+    if (resolution.ambiguous) {
+      musicContext.setPreviousCandidates(resolution.candidates);
+      const candidateList = resolution.candidates
+        .map((c) => `"${c.title}"${c.artist ? ` by ${c.artist}` : ''}`)
+        .join(' or ');
+      return {
+        handledLocally: true,
         actionResult: {
-          ...playRes,
-          action: 'compound_pause_play',
-          subActions: ['pause', playRes.action],
-          initialAcknowledgment: initialAck,
-          spokenConfirmation: initialAck,
-          isCompound: true,
+          ok: false,
+          action: 'play_favorite',
+          reason: 'ambiguous_match',
+          matches: resolution.candidates,
+          spokenConfirmation: `I found multiple matching songs in your favorites: ${candidateList}. Which one would you like?`,
         },
       };
     }
+
+    // Graceful feedback
+    const prompt = candidateTitle
+      ? `I couldn't find "${candidateTitle}" in your Favorites${languageHint ? ` under ${languageHint}` : ''}. Did you mean a different title?`
+      : `I couldn't find that title in your Favorites.`;
+    return {
+      handledLocally: true,
+      actionResult: {
+        ok: false,
+        action: 'play_favorite',
+        reason: 'not_found',
+        spokenConfirmation: prompt,
+      },
+    };
+  }
+
+  // 0B. Multi-Action Commands (Priority 3)
+  const plan = parseMultiActionPlan(rawText, env);
+  if (plan && plan.steps.length > 1) {
+    const planResult = executeActionPlan(plan, env);
+    if (planResult.ok) {
+      musicContext.recordSuccess(planResult.actionResult?.action || 'multi_action', planResult.track);
+    } else {
+      musicContext.recordFailure(
+        planResult.actionResult?.action || 'multi_action',
+        rawText,
+        planResult.actionResult?.reason || 'action_plan_failed'
+      );
+    }
+    return {
+      handledLocally: true,
+      isCompound: true,
+      actionResult: planResult,
+    };
+  }
+
+  // 0C. Volume Adjustments
+  const volMatch = cleaned.match(/^(?:set|turn|change)?\s*(?:the\s+)?volume\s+(?:to\s+)?(\d+)%?$/i) ||
+                   cleaned.match(/^(?:turn|turn\s+the\s+music)\s+(down|up|lower|higher)$/i) ||
+                   cleaned.match(/^(?:make\s+it)\s+(quieter|louder)$/i) ||
+                   cleaned.match(/^(?:volume)\s+(down|up|lower|higher)$/i);
+  if (volMatch) {
+    const res = executeMusicAction({ action: 'set_volume', level: volMatch[1] }, env);
+    return wrapResult({
+      handledLocally: true,
+      actionResult: res,
+    });
   }
 
   // 1. Basic Transport Commands
   if (/^(pause|pause music|pause the music|stop music|stop the music|pause playback|halt)$/i.test(cleaned)) {
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'pause' }, env),
-    };
+    });
   }
 
   if (/^(resume|resume music|resume the music|resume playback|unpause|unpause music|continue playing)$/i.test(cleaned)) {
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'resume' }, env),
-    };
+    });
   }
 
   // Generic "play" or "play music" when already active and paused -> resume
   if (/^(play|play music|start music)$/i.test(cleaned)) {
     if (media.active && media.status === 'paused') {
-      return {
+      return wrapResult({
         handledLocally: true,
         actionResult: executeMusicAction({ action: 'resume' }, env),
-      };
+      });
     }
     // If nothing playing, play a random favorite
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'play_random_favorite' }, env),
-    };
+    });
   }
 
   if (/^(next|next song|next track|skip|skip track|skip song|play the next song|play the next track)$/i.test(cleaned)) {
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'next_track' }, env),
-    };
+    });
   }
 
   if (/^(previous|previous song|previous track|prev song|prev track|go back|go back to the previous track|go back to the previous song)$/i.test(cleaned)) {
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'previous_track' }, env),
-    };
+    });
   }
 
   if (/^(what is playing|whats playing|what's playing|what song is this|what track is this|current song|current track|which song is playing)$/i.test(cleaned)) {
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'get_current_track' }, env),
-    };
+    });
   }
 
   if (/^(show|open|browse|view|display)\s+(my\s+)?favorites(\s+menu)?$/i.test(cleaned) ||
       /^(show|open|view)\s+my\s+saved\s+songs$/i.test(cleaned)) {
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'show_favorites' }, env),
-    };
+    });
   }
 
   if (/^(add\s+(this\s+song|this\s+track|this)?\s*to\s+favorites|favorite\s+this(\s+song)?|like\s+this(\s+song)?)$/i.test(cleaned)) {
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'add_current_to_favorites' }, env),
-    };
+    });
   }
 
   // 2. Favorites Commands: Shuffle / Something / Saved songs
   if (/^play\s+(something|anything|a\s+song|random)\s+from\s+(my\s+)?favorites$/i.test(cleaned) ||
       /^play\s+my\s+(saved\s+songs|favorites)$/i.test(cleaned) ||
       /^shuffle\s+(my\s+)?favorites$/i.test(cleaned)) {
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'play_random_favorite' }, env),
-    };
+    });
   }
 
   // 3. Favorites Command: Most recently liked song ("Play the song I just liked / saved")
@@ -200,7 +282,7 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
       /^play\s+(my\s+)?(recently|latest|last)\s+(liked|saved|favorited)\s+song$/i.test(cleaned)) {
     const resolution = resolveFavoriteTrack({ mostRecent: true, storage });
     if (!resolution.match) {
-      return {
+      return wrapResult({
         handledLocally: true,
         actionResult: {
           ok: false,
@@ -208,12 +290,12 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
           reason: 'empty_favorites',
           spokenConfirmation: "You don't have any saved favorites yet.",
         },
-      };
+      });
     }
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'play_favorite', track: resolution.match, query: resolution.match.title }, env),
-    };
+    });
   }
 
   // 4. Targeted Favorites Commands: e.g. "Play Die For You from my favorites"
@@ -224,7 +306,6 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
 
   if (favMatch) {
     const rawSongTarget = favMatch[1].trim();
-    // Check if artist is specified: "[song] by [artist]"
     let title = rawSongTarget;
     let artist = '';
     const byMatch = rawSongTarget.match(/^(.+?)\s+by\s+(.+)$/i);
@@ -244,7 +325,7 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
       const candidateList = resolution.candidates
         .map((c) => `"${c.title}"${c.artist ? ` by ${c.artist}` : ''}`)
         .join(' or ');
-      return {
+      return wrapResult({
         handledLocally: true,
         actionResult: {
           ok: false,
@@ -253,18 +334,18 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
           matches: resolution.candidates,
           spokenConfirmation: `I found multiple matching songs in your favorites: ${candidateList}. Which one would you like?`,
         },
-      };
+      });
     }
 
     if (resolution.match) {
-      return {
+      return wrapResult({
         handledLocally: true,
         actionResult: executeMusicAction({ action: 'play_favorite', track: resolution.match, query: resolution.match.title }, env),
-      };
+      });
     }
 
     // Honest negative feedback: Never fabricate or search internet if user asked for a favorite
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: {
         ok: false,
@@ -272,7 +353,7 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
         reason: 'not_found',
         spokenConfirmation: `I couldn't find "${title}" in your favorites.`,
       },
-    };
+    }, title);
   }
 
   // 5. General "Play [song] by [artist]" or "Play [song]"
@@ -296,17 +377,17 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     });
 
     if (favRes.match) {
-      return {
+      return wrapResult({
         handledLocally: true,
         actionResult: executeMusicAction({ action: 'play_favorite', track: favRes.match, query: favRes.match.title }, env),
-      };
+      });
     }
 
     if (favRes.ambiguous) {
       const candidateList = favRes.candidates
         .map((c) => `"${c.title}"${c.artist ? ` by ${c.artist}` : ''}`)
         .join(' or ');
-      return {
+      return wrapResult({
         handledLocally: true,
         actionResult: {
           ok: false,
@@ -315,15 +396,15 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
           matches: favRes.candidates,
           spokenConfirmation: `I found multiple matching songs: ${candidateList}. Which one did you mean?`,
         },
-      };
+      });
     }
 
     // If query has clear music structure ("song by artist" or "track") but is not in favorites:
     // Execute play_track to search SMTC / launch provider
-    return {
+    return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'play_track', query: candidateQuery }, env),
-    };
+    });
   }
 
   // Not a deterministic music command -> pass to Groq chat

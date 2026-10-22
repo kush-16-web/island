@@ -292,5 +292,39 @@ This document provides the complete root cause analysis, architecture specificat
 - **External Links**: Safe `shell.openExternal` handling in `electron/main.js`.
 
 
+---
 
+## 8. Pass 2.2.5: Conversational Music Intelligence, Contextual Corrections & Seamless Audio Handoff
+
+### A. Architectural Overview & Core Achievements
+Pass 2.2.5 transforms Island from a rigid command parser into an adaptive conversational AI companion with reliable music-control abilities:
+1. **Audible External Music Ducking (~10% level)**:
+   - Controls physical audio volume in the YouTube Music Chrome tab via extension bridge (`action: 'duck'`, `level: 0.10`).
+   - Ducking activates immediately when listening starts (via mic button or `Ctrl+Shift+Space`), remains active while user speaks, while AI processes, and while Island speaks.
+   - Smoothly restores volume upon turn completion or session dismissal via `restore_volume` and Web Audio ease-in-out curve.
+   - Safe fallback when companion is not connected: temporary pause via SMTC (`pausedForDucking = true`) with strict guard `explicitPauseDuringDuck` preventing accidental auto-resumption if the user requested a pause.
+2. **Natural Music Handoff & Transient Dismissal**:
+   - Verification before speaking: Never claims "Playing" before `confirmed_playing` is verified from companion or SMTC.
+   - Concise, grounded acknowledgments ("Playing Pashmina. Enjoy!").
+   - Upon confirmed playback and completion of spoken confirmation, automatically dismisses transient Voice Agent (`island:dismiss-voice`) returning focus to the compact music pill without robotic repetition.
+   - Guards against premature dismissal while speaking or when clarification is required.
+3. **Structured Ordered Action Planning (`action-plan.js`)**:
+   - Replaced brittle string splitting with an ordered `ActionPlan` engine.
+   - Compound commands ("Pause this and play Pashmina", "Stop the current song and play Starboy", "Turn the music down and play Tuu") preserve every requested action in order.
+   - Handles partial failures explicitly without dropping secondary actions.
+4. **Contextual Track Resolution & Corrections (`music-conversation-context.js`)**:
+   - Detects corrections across conversational turns ("No, T-U-U. It's a Hindi song").
+   - Normalizes spelled-out letter sequences (`T-U-U` -> `tuu`).
+   - Uses language clues (`hindi`, `punjabi`, etc.) and artist hints (`by Arijit Singh`) to re-search Favorites with weighted phonetic scoring.
+   - Resolves candidate references ("No, the other one", "the second one", "the previous one").
+   - Confirmed Title Alias Learning: Persists verified user aliases to `island_music_aliases` in storage only upon successful playback confirmation.
+5. **Deterministic Execution + AI Intent Hybrid**:
+   - Retains deterministic execution for state transitions, track verification, volume safety, and timeouts.
+   - Retains native Windows SAPI speech playback pipeline (`native-audio-player.js`).
+   - Retains English Whisper speech recognition preference.
+
+### B. Automated Verification
+- **Test Suite**: `test/pass2-2-5-conversational-music.test.cjs` covering all 17 requirements specified in Pass 2.2.5 Priority 8.
+- **Full Project Tests**: 271 passed, 0 failed, 1 skipped (272 total tests).
+- **Production Bundle**: `npm run build` completed cleanly in 2.04s.
 

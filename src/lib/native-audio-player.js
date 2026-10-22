@@ -127,3 +127,11 @@ export async function playNativeWavBase64(audioBase64, { onStart, onEnded, onErr
     return { ok: false, error: err.message || 'Error playing native audio buffer' };
   }
 }
+
+/**
+ * Check if native audio playback is currently running.
+ */
+export function isNativePlaybackActive() {
+  return Boolean(currentSourceNode);
+}
+

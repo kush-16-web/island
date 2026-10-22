@@ -29,6 +29,7 @@ import {
   isTrackFavorite,
   SUPPORTED_PROVIDERS,
 } from './favorites.js';
+import { audioCoordinator } from './audio-coordinator.js';
 
 export const ALLOWED_ACTIONS = Object.freeze([
   'play_track',
@@ -43,6 +44,7 @@ export const ALLOWED_ACTIONS = Object.freeze([
   'remove_current_from_favorites',
   'show_favorites',
   'compound_pause_play',
+  'set_volume',
 ]);
 
 export const PLAYBACK_STATES = Object.freeze({
@@ -362,6 +364,7 @@ export function executeMusicAction(intent, env = {}) {
     }
 
     case 'pause': {
+      audioCoordinator.markExplicitPause();
       if (!media.active) {
         return {
           ok: false,
@@ -386,6 +389,35 @@ export function executeMusicAction(intent, env = {}) {
         spokenConfirmation: 'Paused music playback.',
       };
       logActionDiagnostic({ turnId, action, ok: true, track: media.title });
+      return res;
+    }
+
+    case 'set_volume': {
+      let targetLevel = intent.level ?? intent.volume ?? 0.5;
+      if (typeof targetLevel === 'string') {
+        const match = targetLevel.match(/(\d+)/);
+        if (match) targetLevel = parseInt(match[1], 10) / 100;
+        else if (/down|lower/i.test(targetLevel)) targetLevel = Math.max(0.1, audioCoordinator.getUserVolume() - 0.2);
+        else if (/up|higher/i.test(targetLevel)) targetLevel = Math.min(1.0, audioCoordinator.getUserVolume() + 0.2);
+      }
+      if (targetLevel > 1) {
+        targetLevel = targetLevel / 100;
+      }
+      targetLevel = Math.max(0, Math.min(1, targetLevel));
+      audioCoordinator.setUserVolume(targetLevel);
+      if (typeof onDispatchCompanion === 'function') {
+        try {
+          onDispatchCompanion({ action: 'set_volume', level: targetLevel });
+        } catch {}
+      }
+      const pct = Math.round(targetLevel * 100);
+      const res = {
+        ok: true,
+        action,
+        level: pct,
+        spokenConfirmation: `Set music volume to ${pct}%.`,
+      };
+      logActionDiagnostic({ turnId, action, ok: true, level: pct });
       return res;
     }
 
@@ -779,7 +811,7 @@ export function handlePlaybackExecution(
       action,
       status: 'resumed_current',
       playbackState: PLAYBACK_STATES.CONFIRMED_PLAYING,
-      track: { title: track.title, artist: track.artist, provider: track.provider },
+      track: { title: track.title, artist: track.artist, provider: track.provider, id: track.id },
       spokenConfirmation: `Resuming ${track.title}${artistText}.`,
     };
     logActionDiagnostic({ turnId, action, ok: true, track: track.title, status: 'resumed_current' });
@@ -868,7 +900,7 @@ export function handlePlaybackExecution(
         const res = {
           ok: true,
           action,
-          track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId },
+          track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId, id: track.id },
           status: 'playback_requested',
           playbackState: PLAYBACK_STATES.PLAYBACK_REQUESTED,
           initialAcknowledgment: `Opening ${track.title}.`,
@@ -913,7 +945,7 @@ export function handlePlaybackExecution(
         const res = {
           ok: true,
           action,
-          track: { title: track.title, artist: track.artist, provider: track.provider, isUnresolvedIdentity: true },
+          track: { title: track.title, artist: track.artist, provider: track.provider, isUnresolvedIdentity: true, id: track.id },
           status: 'opened_provider',
           subStatus: 'search_results_opened',
           playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
@@ -951,7 +983,7 @@ export function handlePlaybackExecution(
     const res = {
       ok: true,
       action,
-      track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId },
+      track: { title: track.title, artist: track.artist, provider: track.provider, videoId: targetVideoId, id: track.id },
       status: 'opened_provider',
       subStatus: targetVideoId ? 'opened_provider' : 'search_results_opened',
       playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
@@ -988,7 +1020,7 @@ export function handlePlaybackExecution(
   const res = {
     ok: true,
     action,
-    track: { title: track.title, artist: track.artist, provider: track.provider },
+    track: { title: track.title, artist: track.artist, provider: track.provider, id: track.id },
     status: 'opened_provider',
     playbackState: PLAYBACK_STATES.OPENING_PROVIDER,
     spokenConfirmation: `Opening ${track.title} in ${providerName}.`,

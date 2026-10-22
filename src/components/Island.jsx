@@ -351,8 +351,15 @@ export default function Island() {
         }
       }
     };
+    const handleDismissVoice = () => {
+      setHubOpen(false);
+    };
     window.addEventListener('island:navigate', handleNav);
-    return () => window.removeEventListener('island:navigate', handleNav);
+    window.addEventListener('island:dismiss-voice', handleDismissVoice);
+    return () => {
+      window.removeEventListener('island:navigate', handleNav);
+      window.removeEventListener('island:dismiss-voice', handleDismissVoice);
+    };
   }, [hubOpen]);
 
   // Hotkey / tray / second launch listeners (supports both hub:toggle and hub:open)

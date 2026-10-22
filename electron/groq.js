@@ -126,6 +126,20 @@ const ISLAND_MUSIC_TOOLS = [
       parameters: { type: 'object', properties: {} },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'set_volume',
+      description: 'Set or change the music playback volume level (0-100%)',
+      parameters: {
+        type: 'object',
+        properties: {
+          level: { type: 'number', description: 'Volume level from 0 to 100 or decimal 0.0 to 1.0' },
+        },
+        required: ['level'],
+      },
+    },
+  },
 ];
 
 class GroqService {
