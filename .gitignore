@@ -2,10 +2,31 @@ node_modules/
 dist/
 release/
 .DS_Store
+
+# Environment & Credentials (NEVER commit secrets!)
 .env
 .env.*
+.env*.local
 !.env.example
+*.pem
+*.key
+*.cert
+*.pfx
+credentials.json
+token.json
+
+# Build & System logs
 *.zip
 *-diagnostics.jsonl
 *.jsonl
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 scratch_logs/
+
+# IDE & Editor caches
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

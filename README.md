@@ -1,103 +1,177 @@
-# Island
+# 🏝️ Island — Dynamic Island for Windows
 
-A Dynamic Island for Windows, built with Electron + React. It floats at the top of your screen, shows what's playing, pops up notifications, runs timers and alarms, and has a little cat living next to it.
+A modern, fluid **Dynamic Island** desktop experience for Windows, built with **Electron + React + Vite + Three.js**.
 
-This is phase 1: the island is fully working, the pet is UI only (it reacts to the island and follows your cursor with its eyes, but doesn't do anything yet).
+Island floats unobtrusively at the top of your screen, morphing organically to show active media playback, synchronized karaoke lyrics, an intelligent real-time conversational voice assistant, unified cross-provider music favorites, alarms, timers, system notifications, and an interactive 3D desktop companion.
 
-## Run it
+---
 
-You need Node.js 20.19+ or 22.12+ (https://nodejs.org).
+## ✨ Features
 
-```
+### 🎵 1. Music & Full Synchronous Lyrics Engine
+- **Universal Media Controls**: Reads and controls active Windows media sessions (Spotify, YouTube Music, Apple Music, Media Player, VLC) via native SMTC integration.
+- **Synchronized & Syllable-Level Karaoke Lyrics**:
+  - Live synced lyrics integration powered by LRCLIB with ELRC karaoke timestamp support.
+  - Interactive click-to-seek: Jump instantly to any part of the track by clicking a lyric line.
+  - Smooth inertia auto-scroll with user-scroll pause detection and gentle resumption.
+  - Precision 5-second forward and backward skip controls.
+  - High-res artwork upgrade pipeline (auto-upgrades Spotify, Apple Music, YouTube thumbnails to 640×640 / 1200×1200 HD master art).
+  - Elegant ambient dynamic gradient backdrop derived from artwork color palette.
+  - Plain lyrics fallback badge when unsynchronized lyrics are delivered.
+
+### ⭐ 2. Cross-Provider Music Foundation & Unified Favorites
+- **Multi-Provider Identity & Isolation**:
+  - Preserves exact source provider identity (`Spotify`, `YouTube Music`, `Apple Music`).
+  - **Spotify Isolation Guarantee**: Verified Spotify tracks strictly maintain Spotify URIs (`spotify:search:...` or direct track URIs) without unwanted YouTube Music substitution.
+  - **Identical Titles Coexist**: Songs with the same title across different providers coexist without collision.
+  - Recognizable provider badges (`Spotify`, `YouTube Music`, `Apple Music`, `Unknown`) with tailored theme palettes.
+  - Compact source filter pills (`All`, `Spotify`, `YouTube Music`, and dynamically rendered `Unknown` for legacy entries).
+- **Interactive Inline Favorites in Agent Chat**:
+  - Asking `"Show my favorite songs"`, `"Name all of them"`, or `"Show my Spotify favorites"` renders rich interactive song cards directly within the voice assistant transcript without navigating away.
+  - Supports conversational ordinal follow-ups: `"Play the third one"` or `"Play number 2"`.
+
+### 🎙️ 3. Conversational AI Voice Companion
+- **Modular Multi-Provider AI Architecture**:
+  - **Speech-to-Text (STT)**: High-precision Groq Whisper (`whisper-large-v3-turbo`) or Gemini multimodal STT.
+  - **Conversational Intelligence**: Google Gemini or Groq Llama / Mixtral models.
+  - **Speech Synthesis (TTS)**: Hardware-verified Native Windows SAPI speech engine, Kokoro offline neural TTS, or Gemini voice synthesis.
+  - **Zero-Quota Local Deterministic Actions**: High-confidence music commands (pause, resume, skip, like, play favorites, volume control) execute deterministically with 0 LLM API quota spent.
+- **Physical Music Audio Ducking**:
+  - External YouTube Music tab volume automatically ducks down smoothly (~10% level) via companion extension when the assistant begins listening or speaking.
+  - Volume is restored smoothly via ease-in-out curve upon turn completion.
+- **Natural Voice Lifecycle**:
+  - Completed playback handoff confirms the song, restores music volume, and dismisses the transient assistant panel cleanly without re-arming the microphone.
+  - Polite closings (*"Thanks"*, *"No, that's all"*, *"Bye"*) acknowledge and dismiss.
+  - Clarification loops stay active when candidate options need selection.
+
+### 🐾 4. 3D Desktop Pet Companion & Pet Studio
+- **Three.js WebGL Engine**: Transparent desktop overlay with stylized soft 3-point studio lighting.
+- **Interactive Procedural Rigging**: Real-time 4-legged quadruped locomotion, 3D cursor head tracking, breathing cycles, and expressive animations.
+- **Integrated Pet Studio & Settings**:
+  - Configure companion name with dynamic wake phrase preview (*"Hey [Name]"*).
+  - Select species (*Cat*, *Dog*, *Both*), adjust scale (50% – 150%), toggle roaming, and toggle cursor tracking.
+
+### 🖥️ 5. Desktop Integration & Window Ergonomics
+- **Horizontal Desktop Dragging**: Grab and reposition Island anywhere along your top display edge, with quick screen presets (**Left**, **Center**, **Right**) and persistent coordinates across restarts.
+- **Click-Outside Dismissal**: Intuitive collapse on Windows OS blur, clicking external apps/taskbar, or pressing `Escape`. Manual panels stay open until deliberately dismissed.
+- **Transparent Click-Through**: Outside the interactive pill and pet, the overlay window is fully click-through and never obstructs underlying applications.
+- **Local Notification Server**: Built-in HTTP endpoint (`http://127.0.0.1:47823/notify`) for CLI tools, builds, or scripts to push toast notifications to the Island inbox.
+- **Persistent Alarms & Quick Timers**: Set alarms with customizable repeat days, audio chimes, and snooze; quick 1/5/10/15/25/45 min timers.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- **Node.js**: `20.19+` or `22.12+` ([Download Node.js](https://nodejs.org))
+- **OS**: Windows 10 / 11
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/kush-16-web/island.git
+cd island
+
+# Install dependencies
 npm install
+```
+
+### Configuration
+
+Copy `.env.example` to `.env` and insert your API keys:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+```env
+# Google Gemini API Key (Multimodal Intelligence & Speech)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Groq API Key (Ultra-fast Whisper STT & Llama / Mixtral Models)
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+> **Note**: Real API keys should never be committed to git. `.env` and credentials are excluded by `.gitignore`.
+
+### Running in Development
+
+```bash
+# Launch the full Electron desktop app
 npm run dev
 ```
 
-The island appears at the top-center of your primary monitor. A tray icon (bottom right) lets you hide it, open the hub, toggle launch-at-startup, send a test notification, or quit.
+Alternatively, to iterate on UI components in your browser without Electron:
+```bash
+npm run dev:web
+# Open http://127.0.0.1:5173
+```
 
-**Design in the browser first (no Electron):** `npm run dev:web` and open http://127.0.0.1:5173. A small dev bar at the bottom lets you fake notifications, music, timers and alarms, so you can iterate on the look quickly.
+---
 
-## What it does
+## ⌨️ Keyboard Shortcuts
 
-| Feature | How it works |
+| Shortcut | Action |
 | --- | --- |
-| Now playing | Reads the Windows media session (Spotify, YouTube in a browser, Media Player, VLC...) through a small PowerShell helper. Shows the cover, controls play/pause/next/previous. |
-| Notifications | Any tool can send one to a local endpoint. They toast on the island and are kept in the Inbox tab. |
-| Timers | Quick buttons (1/5/10/15/25/45 min) or any number of minutes. Shows in the pill while running. |
-| Alarms | Time, repeat days, label, on/off switch. Rings with a chime; Snooze (5 min) or Stop. Saved between restarts. |
-| Hub | Click the island, press **Ctrl+Alt+Space**, or click the tray icon. Auto-collapses when you move away. |
-| Click-through | The window is transparent and never blocks the apps below. It only catches the mouse over the island and the pet. |
+| `Ctrl + Alt + Space` | Toggle Dynamic Island Hub (Now Playing, Clock, Inbox, Pet Studio, Settings) |
+| `Ctrl + Shift + Space` | Toggle Real-Time AI Voice Assistant |
+| `Escape` | Collapse Island Hub or return from Full Lyrics to Player |
 
-### Send a notification from anywhere
+---
 
-From this project:
+## 🧪 Testing & Verification
 
-```
-npm run notify -- "Build finished" "42 tests passed" --kind success --app Terminal
-```
+Island includes an automated test suite verifying music controls, scheduler, turn controllers, favorites integrity, provider isolation, and window lifecycle.
 
-From PowerShell:
-
-```
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:47823/notify -ContentType 'application/json' -Body (@{ title = 'Build finished'; body = '42 tests passed'; app = 'Terminal'; kind = 'success' } | ConvertTo-Json)
-```
-
-Fields: `title` (required), `body`, `app`, `kind` (`info`, `success`, `warning`, `error`), `timeoutMs`.
-
-The endpoint only listens on 127.0.0.1, only accepts `application/json`, checks the Host header and limits request size, so websites in your browser can't push notifications to it.
-
-### Known limits (on purpose, for now)
-
-- **It can't read Windows' own notification toasts** (WhatsApp, Outlook...). Windows only lets packaged apps do that. Planned for a later phase with a small helper. Until then, notifications come from the endpoint above and from the island's own alarms and timers.
-- Now playing and its controls are Windows only. On other systems the island still runs; that tab just says nothing is playing.
-- The overlay sits on the primary monitor.
-- While you type in a text field (alarm label), the window briefly takes keyboard focus, then hands it back.
-
-## Tests
-
-```
+```bash
+# Run the complete test suite (295+ tests across 77 suites)
 npm test
-```
 
-Covers the scheduler (alarm and timer maths, repeats, missed alarms, snooze, persistence), the notification endpoint (validation, size limits, host checks) and the media parsing.
+# Build production bundle
+npm run build
 
-## Build an installer
-
-```
+# Package desktop installer
 npm run dist
 ```
 
-Creates a Windows installer in `release/`.
+---
 
-## Project layout
+## 📁 Project Architecture
 
 ```
-electron/
-  main.js            window, tray, hotkey, IPC, wiring
-  preload.js         the only bridge between UI and OS
-  scheduler.js       alarms + timers (pure Node, tested)
-  notify-server.js   local HTTP endpoint for notifications
-  media.js           runs the PowerShell helper, restarts it if it dies
-  ps/smtc.ps1        reads/controls the Windows media session
-  media-parse.js     turns helper output into UI state
-  store.js           small JSON file store
-src/
-  components/
-    Island.jsx       the pill: picks what to show and morphs between sizes
-    Hub.jsx          tabs: Playing / Clock / Inbox
-    Pet.jsx          the cat (SVG + CSS, no assets)
-  hooks/             state from the main process
-  lib/mockIsland.js  fake backend for browser-only design
-  styles.css         all styling and the pet animations
-scripts/
-  island-notify.js   CLI for notifications
-  make-icons.js      regenerates the tray and app icons
-test/                unit tests
+island/
+├── electron/                   # Main Process (Node.js & Native OS Bridges)
+│   ├── main.js                 # Window management, tray, global shortcuts, IPC
+│   ├── preload.js              # Context-isolated secure bridge
+│   ├── gemini.js               # Google Gemini voice & vision service
+│   ├── groq.js                 # Groq Whisper STT & conversational engine
+│   ├── windows-tts.js          # Native Windows SAPI speech synthesis service
+│   ├── media.js                # SMTC media session listener (PowerShell)
+│   ├── scheduler.js            # Alarms & timers scheduler
+│   └── notify-server.js        # Local HTTP notification webhook
+│
+├── src/                        # Renderer Process (React & Three.js UI)
+│   ├── components/
+│   │   ├── Island.jsx          # Dynamic morphing pill container
+│   │   ├── NowPlaying.jsx      # Compact & expanded music player
+│   │   ├── FullLyrics.jsx      # Full-screen synchronized lyrics & karaoke
+│   │   ├── VoicePanel.jsx      # Living audio visualizer & voice conversation
+│   │   ├── InlineFavorites.jsx # Interactive inline favorites in chat
+│   │   ├── FavoritesMenu.jsx   # Standalone unified favorites library
+│   │   ├── Pet.jsx / Pet3D.jsx # Procedural Three.js 3D desktop companion
+│   │   └── PetStudioPanel.jsx  # Companion customizer & settings
+│   ├── hooks/                  # Custom React hooks (voice, media, high-res art)
+│   ├── lib/                    # Core engines (music-actions, favorites, ducking)
+│   └── styles.css              # Custom styling, glassmorphism, animations
+│
+├── scripts/                    # Helper scripts (notify CLI, icon generator)
+└── test/                       # Node.js automated test suites
 ```
 
-## Next phases
+---
 
-1. Pet behaviour: walks to the island, reacts to music, opens apps.
-2. Drag shelf: drop files on a shelf at the screen edge and drag them out later.
-3. Hold-to-talk dictation (local Whisper) and a chat bubble from the pet.
-4. Windows notification capture.
+## 📄 License
+
+MIT License. Designed and engineered for Windows.
