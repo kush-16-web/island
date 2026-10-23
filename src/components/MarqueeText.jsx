@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 export default function MarqueeText({
   text = '',
   className = '',
-  speed = 22,
+  speed = 13,
   style = {},
 }) {
   const containerRef = useRef(null);
@@ -32,8 +32,8 @@ export default function MarqueeText({
     return () => ro.disconnect();
   }, [text]);
 
-  // Natural pacing: comfortable start pause, smooth glide, end pause
-  const duration = Math.max(5.2, (offset / speed) + 3.2);
+  // Calm, natural pacing: generous initial hold (~4s), unhurried glide, generous end hold
+  const duration = Math.max(9.5, (offset / speed) + 7.5);
 
   return (
     <div

@@ -1330,16 +1330,16 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   will-change: transform;
 }
 .marquee-content.is-marquee {
-  animation: marqueeScrollForward var(--marquee-duration, 6.5s) cubic-bezier(0.25, 0.1, 0.25, 1) 1.8s infinite;
+  animation: marqueeScrollForward var(--marquee-duration, 10s) cubic-bezier(0.22, 1, 0.36, 1) 2.5s infinite;
 }
 @keyframes marqueeScrollForward {
-  0%, 20% {
+  0%, 30% {
     transform: translateX(0);
   }
-  68%, 86% {
+  60%, 80% {
     transform: translateX(var(--marquee-offset, -30px));
   }
-  100% {
+  95%, 100% {
     transform: translateX(0);
   }
 }
