@@ -1762,7 +1762,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   font-weight: 750;
   color: #ffffff !important;
   opacity: 1;
-  text-shadow: 0 0 16px color-mix(in srgb, var(--lyric-accent, #ff3b69) 50%, transparent);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
 }
 
 .full-lyrics__line.is-plain {
@@ -1801,36 +1801,30 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   align-items: center;
   gap: 5px;
   height: 22px;
-  padding: 0 8px;
+  padding: 0 9px;
   border-radius: 11px;
   font-size: 10.5px;
-  font-weight: 600;
-  background: var(--fill-1);
-  box-shadow: inset 0 0 0 1px var(--hair);
-  color: var(--text-2);
-  transition: all 0.2s;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+  transition: all 0.2s ease;
   flex: none;
   cursor: pointer;
 }
 .karaoke-toggle:hover:not(.is-disabled):not(.is-plain-badge) {
-  background: var(--fill-2);
-  color: var(--text);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 .karaoke-toggle.is-active {
-  background: color-mix(in srgb, var(--lyric-accent, var(--accent)) 25%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lyric-accent, var(--accent)) 60%, transparent);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.85);
 }
 .karaoke-toggle.is-plain-badge {
-  opacity: 0.65;
+  opacity: 0.6;
   cursor: default;
-}
-.karaoke-toggle .dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--lyric-accent, var(--accent));
-  box-shadow: 0 0 6px var(--lyric-accent, var(--accent));
 }
 
 /* Wrapper classes for seamless view transitions */
@@ -1949,7 +1943,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 12px;
 }
 .play-btn--mini {
   width: 34px;

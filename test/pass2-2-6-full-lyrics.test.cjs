@@ -103,6 +103,11 @@ test('Pass 2.2.6: Premium Full Lyrics Experience Suite', async (t) => {
 
     // Unsynchronized notice for plain lyrics
     assert.ok(flFile.includes('full-lyrics__unsynced-notice'), 'FullLyrics must display unsynced lyrics notice');
+
+    // 5-second skip forward/backward buttons
+    assert.ok(flFile.includes('Icon.Replay5'), 'FullLyrics must include Replay5 rewind button');
+    assert.ok(flFile.includes('Icon.Forward5'), 'FullLyrics must include Forward5 fast-forward button');
+    assert.ok(!flFile.includes('<span className="dot" />'), 'FullLyrics must not have dot in status pill');
   });
 
   await t.test('9. Canvas Art Dormancy: Feature remains disabled and non-intrusive during Pass 2.2.6', () => {

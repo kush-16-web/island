@@ -171,6 +171,13 @@ export default function FullLyrics({
     window.addEventListener('pointercancel', onPointerUp);
   };
 
+  const handleSkip = (seconds) => {
+    const targetMs = Math.max(0, Math.min(hasDuration ? media.durationMs : Infinity, effectivePosition + seconds * 1000));
+    if (onSeek) {
+      onSeek(targetMs / 1000);
+    }
+  };
+
   return (
     <div
       className="full-lyrics"
@@ -236,7 +243,6 @@ export default function FullLyrics({
                 aria-label="Toggle word-by-word karaoke mode"
                 title="Syllable-level Karaoke Mode"
               >
-                <span className="dot" />
                 <span>Karaoke</span>
               </button>
             ) : isSynced ? (
@@ -246,7 +252,6 @@ export default function FullLyrics({
                 onClick={() => setAutoScroll((prev) => !prev)}
                 title={autoScroll ? 'Auto-scroll ON (click to pause)' : 'Auto-scroll paused (click to resume)'}
               >
-                <span className="dot" />
                 <span>{autoScroll ? 'Synced' : 'Scroll Free'}</span>
               </button>
             ) : (
@@ -408,12 +413,30 @@ export default function FullLyrics({
           </button>
           <button
             type="button"
+            className="icon-btn icon-btn--skip icon-btn--sm"
+            aria-label="Rewind 5 seconds"
+            onClick={() => handleSkip(-5)}
+            title="Rewind 5s"
+          >
+            <Icon.Replay5 width={18} height={18} />
+          </button>
+          <button
+            type="button"
             className="play-btn play-btn--sm"
             aria-label={playing ? 'Pause' : 'Play'}
             onClick={() => onControl('playpause')}
             title={playing ? 'Pause' : 'Play'}
           >
             {playing ? <Icon.Pause width={16} height={16} /> : <Icon.Play width={16} height={16} />}
+          </button>
+          <button
+            type="button"
+            className="icon-btn icon-btn--skip icon-btn--sm"
+            aria-label="Forward 5 seconds"
+            onClick={() => handleSkip(5)}
+            title="Forward 5s"
+          >
+            <Icon.Forward5 width={18} height={18} />
           </button>
           <button
             type="button"
