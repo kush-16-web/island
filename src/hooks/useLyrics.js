@@ -73,7 +73,7 @@ export function useLyrics(media, currentPositionMs, userOffsetMs) {
   }, [trackKey, media?.durationMs]);
 
   const activeLineIndex = useMemo(() => {
-    if (!lyricsData || !lyricsData.lines || lyricsData.lines.length === 0) return -1;
+    if (!lyricsData || !lyricsData.isSynced || !lyricsData.lines || lyricsData.lines.length === 0) return -1;
     const effectivePos = Math.max(0, currentPositionMs + DEFAULT_VOCAL_LEAD_MS + offsetMs);
     return findActiveLyricIndex(lyricsData.lines, effectivePos);
   }, [lyricsData, currentPositionMs, offsetMs]);

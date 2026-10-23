@@ -203,8 +203,8 @@ export async function fetchLyrics({ title, artist, album, durationSec }) {
           .filter(Boolean)
           .map((text, idx) => ({
             id: `plain-${idx}`,
-            timeMs: idx * 4000,
-            endMs: (idx + 1) * 4000,
+            timeMs: null,
+            endMs: null,
             text,
             words: null,
           }));

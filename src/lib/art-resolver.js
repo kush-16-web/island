@@ -66,6 +66,26 @@ export function upgradeProviderArtUrl(url) {
     return `https://i.ytimg.com/vi/${ytMatch[1]}/maxresdefault.jpg`;
   }
 
+  // Google / YouTube Music CDN: /...=w120-h120-l90-rj -> =w1200-h1200-l90-rj
+  if (url.includes('googleusercontent.com') || url.includes('ggpht.com')) {
+    if (/=w\d+-h\d+/.test(url)) {
+      return url.replace(/=w\d+-h\d+/, '=w1200-h1200');
+    }
+    if (/=s\d+(-c)?/.test(url)) {
+      return url.replace(/=s\d+(-c)?/, '=s1200');
+    }
+  }
+
+  // Deezer: /cover/.../250x250 -> /cover/.../1000x1000
+  if (url.includes('dzcdn.net') && /\/\d+x\d+-/.test(url)) {
+    return url.replace(/\/\d+x\d+-/, '/1000x1000-');
+  }
+
+  // Tidal: /images/.../320x320.jpg -> /1280x1280.jpg
+  if (url.includes('resources.tidal.com') && /\/\d+x\d+\.jpg/.test(url)) {
+    return url.replace(/\/\d+x\d+\.jpg/, '/1280x1280.jpg');
+  }
+
   return url;
 }
 

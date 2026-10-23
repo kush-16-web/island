@@ -328,3 +328,60 @@ Pass 2.2.5 transforms Island from a rigid command parser into an adaptive conver
 - **Full Project Tests**: 271 passed, 0 failed, 1 skipped (272 total tests).
 - **Production Bundle**: `npm run build` completed cleanly in 2.04s.
 
+---
+
+## 9. Pass 2.2.6: Premium Full Lyrics Experience
+
+### A. Architectural Overview & Core Achievements
+Pass 2.2.6 makes opening the full lyrics screen feel like a seamless physical expansion of the music player rather than a disconnected modal:
+
+1. **Shared Element Album-Art Transition**:
+   - Integrated `framer-motion` `LayoutGroup` (`nowplaying-lyrics-group`) and `AnimatePresence mode="popLayout"`.
+   - Shared layout tokens across `NowPlaying.jsx` (64×64) and `FullLyrics.jsx` (92×92):
+     - `layoutId="island-album-art-wrap"`: Glides and scales smoothly between player position and lyrics hero position.
+     - `layoutId="island-album-art-img"`: Image scales naturally preserving aspect ratio with `object-fit: cover`.
+     - `layoutId="island-track-meta"`: Track title and artist glide into hero metadata.
+     - `layoutId="island-progress-wrap"`: Scrubbing progress bar glides smoothly between player and lyrics layouts.
+   - Symmetric, interruptible spring transition (`stiffness: 280, damping: 28, mass: 0.85`), handling rapid open/close toggles without snapping or visual artifacts.
+   - Respects `prefers-reduced-motion` accessibility preferences by collapsing to instant/fade transitions.
+
+2. **Refined Full Lyrics Two-Column Layout**:
+   - **Left Hero Column (`full-lyrics__hero`)**: 92×92 high-res cover art with depth shadow (`0 8px 24px rgba(0,0,0,0.5)`), overlaid favorite heart button, crisp bold title and artist marquee, and sync/karaoke status pill.
+   - **Right Column (`full-lyrics__right`)**: Top navigation bar with "Player" chevron back button, fluid vertical lyrics scroller with smooth gradient masks (`linear-gradient(to bottom, transparent 0%, black 10%, black 88%, transparent 100%)`).
+   - Active synchronized line displays crisp white typography with soft ambient glow derived from `--lyric-accent`. Past lines fade gracefully to 0.32 opacity.
+   - Responsive cubic-bezier auto-scroll (`1 - Math.pow(1 - t, 3)`) with manual scroll pause detection (2.8s grace period before auto-scroll resumes).
+   - Word-level ELRC Karaoke mode when syllable timestamps are present.
+   - Click-to-seek directly on any synchronized lyric line.
+
+3. **High-Resolution Artwork Pipeline (`src/hooks/useHighResArt.js` & `src/lib/art-resolver.js`)**:
+   - Automatically upgrades low-resolution thumbnails to crystal-clear HD master artwork:
+     - Spotify: converts `ab67616d00004851` (64×64) and `ab67616d00001e02` (300×300) to `ab67616d0000b273` (640×640 HD).
+     - Apple Music: converts `/100x100bb.` to `/1200x1200bb.`.
+     - YouTube: converts `/vi/.../hqdefault.jpg` to `/vi/.../maxresdefault.jpg`.
+     - YouTube Music / Google CDN: converts `=w\d+-h\d+` to `=w1200-h1200`.
+     - Deezer: converts `/250x250` to `/1000x1000`.
+     - Tidal: converts `/320x320` to `/1280x1280`.
+   - Zero blank-frame flashing: renders existing raw art immediately, preloads upgraded URL in background `Image()` object, and swaps display only when decoding completes.
+   - Graceful fallback: falls back to base art if high-res URL 404s.
+
+4. **Plain Lyrics Integrity**:
+   - **Never fabricates timestamps**: When LRCLIB returns plain lyrics, lines maintain `timeMs: null, endMs: null`.
+   - Clearly badged as "Plain Lyrics" with an unsynchronized notice pill and clean readable typography.
+
+5. **Performance, Accessibility & Keyboard Controls**:
+   - Optimized for modest Windows laptops with integrated graphics and 8 GB RAM.
+   - Hardware-accelerated ambient backdrop using CSS `radial-gradient` derived from the artwork color palette (zero expensive continuous blur shaders or canvas loops).
+   - Keyboard navigation: Pressing `Escape` while in full lyrics returns immediately and smoothly to the player.
+   - Scrub bar supports pointer capture and slider keyboard accessibility.
+
+6. **Canvas Art Dormancy & Future Cinema Separation**:
+   - Canvas Art remains dormant (`ENABLE_CANVAS_ART = false`) in `NowPlaying.jsx` and `VideoPiP.jsx`.
+   - No Three.js renderer or living canvas loops run on the lyrics screen.
+   - Artwork metadata and layout transitions remain cleanly separated for the future Pass 2.2.8 concert stage.
+
+### B. Automated Verification
+- **Test Suite**: `test/pass2-2-6-full-lyrics.test.cjs` (10 passing tests verifying high-res artwork upgrading, plain lyrics timestamp integrity, shared `layoutId` alignment, two-column structure, Canvas Art dormancy, and CSS ambient styling).
+- **Full Project Test Suite**: 282 passed, 0 failed, 1 skipped (283 total tests across 76 suites).
+- **Production Bundle**: `npm run build` compiled cleanly in 3.23s.
+
+

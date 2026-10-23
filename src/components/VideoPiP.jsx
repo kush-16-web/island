@@ -147,11 +147,14 @@ export default function VideoPiP({
 
   const startSec = Math.max(0, Math.floor((displayPosition || 0) / 1000));
 
+// Living Canvas fine-art mode is dormant during Pass 2.2.6 while building toward Cinema Mode
+const ENABLE_CANVAS_ART = false;
+
   return (
     <div className="cinema-screen">
       <div className="cinema-screen__stage">
-        {/* 0. Living Canvas Fine-Art Mode */}
-        {showSongArt ? (
+        {/* 0. Living Canvas Fine-Art Mode (Dormant during Pass 2.2.6) */}
+        {ENABLE_CANVAS_ART && showSongArt ? (
           <SongArtPoster media={media} accentColor={accentColor} />
         ) : (
           <>
