@@ -83,7 +83,7 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
   }
 
   const media = env.media || { active: false };
-  const storage = env.customStorage || null;
+  const storage = env.storage || env.customStorage || null;
   const turnId = env.turnId || Date.now();
 
   // Helper to record context on handled results
@@ -238,6 +238,31 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     });
   }
 
+  // 0D. Conversational Closing & Dismissal Detection (Part 4)
+  const isClosingPhrase =
+    /^(thanks|thank\s+you|thank\s+you\s+so\s+much|thanks\s+a\s+lot|no\s+thanks|no\s+thank\s+you|no\s+that(?:'s|\s+is)\s+all|that(?:'s|\s+is)\s+all|that(?:'s|\s+is)\s+it|nothing\s+else|bye|goodbye|done|dismiss)$/i.test(cleaned);
+  if (isClosingPhrase) {
+    let closingAck = "You're welcome! Enjoy your music.";
+    if (/bye|goodbye/i.test(cleaned)) closingAck = 'Goodbye! Enjoy your day.';
+    else if (/no|that(?:'s|\s+is)\s+all|nothing/i.test(cleaned)) closingAck = 'Understood. Enjoy your day!';
+
+    return {
+      handledLocally: true,
+      actionResult: {
+        ok: true,
+        action: 'session_dismiss',
+        isSessionEnd: true,
+        spokenConfirmation: closingAck,
+      },
+    };
+  }
+
+  // 0E. Informational questions about artists/music (Must NOT trigger playback!)
+  if (/\b(?:tell\s+me|who\s+is|what\s+is|explain|describe|information)\s+(?:about\s+)?(?:this|the)\s+(?:artist|singer|band|musician|album)\b/i.test(cleaned) ||
+      /\btell\s+me\s+about\s+(?:this|the)\s+artist\b/i.test(rawText)) {
+    return { handledLocally: false, fallbackToLlm: true, reason: 'informational_query' };
+  }
+
   if (/^(previous|previous song|previous track|prev song|prev track|go back|go back to the previous track|go back to the previous song)$/i.test(cleaned)) {
     return wrapResult({
       handledLocally: true,
@@ -245,18 +270,66 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     });
   }
 
-  if (/^(what is playing|whats playing|what's playing|what song is this|what track is this|current song|current track|which song is playing)$/i.test(cleaned)) {
+  // Current track inspection
+  if (/^(what is playing|whats playing|what's playing|what song is this|what track is this|current song|current track|which song is playing|what song am i listening to|what am i listening to)$/i.test(cleaned)) {
     return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'get_current_track' }, env),
     });
   }
 
-  if (/^(show|open|browse|view|display)\s+(my\s+)?favorites(\s+menu)?$/i.test(cleaned) ||
-      /^(show|open|view)\s+my\s+saved\s+songs$/i.test(cleaned)) {
+  // Explicit menu opening (redirects to full Favorites tab)
+  if (/^(open|open\s+the)\s+(?:favorites\s+menu|favorites\s+page)$/i.test(cleaned)) {
     return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'show_favorites' }, env),
+    });
+  }
+
+  // 1A. Favorites Count Request: "How many songs do I have?", "How many favorites do I have?"
+  if (/^how\s+many\s+(?:favorites|songs|tracks|saved\s+songs|saved\s+tracks)(?:\s+do\s+i\s+have|\s+are\s+saved|\s+are\s+in\s+my\s+favorites|\s+in\s+my\s+favorites)?$/i.test(cleaned) ||
+      /^how\s+many\s+songs\s+(?:are\s+in|in)\s+my\s+favorites$/i.test(cleaned)) {
+    return wrapResult({
+      handledLocally: true,
+      actionResult: executeMusicAction({ action: 'count_favorites' }, env),
+    });
+  }
+
+  // 1B. Complete List Request: "Name all of them", "List all of them", "Show all of them"
+  if (/^(name|list|show|tell\s+me)\s+(all|all\s+of\s+them|every\s+song)(\s+in\s+my\s+favorites)?$/i.test(cleaned)) {
+    return wrapResult({
+      handledLocally: true,
+      actionResult: executeMusicAction({ action: 'list_favorites', all: true }, env),
+    });
+  }
+
+  // 1C. Filtered List Request: "Show only Spotify songs", "Show my Spotify favorites"
+  const spotifyListMatch = cleaned.match(/^(?:show|list|what\s+are)\s+(?:only\s+)?spotify\s+(?:favorites|songs|tracks)$/i) ||
+                           cleaned.match(/^(?:show|list)\s+my\s+spotify\s+favorites$/i);
+  if (spotifyListMatch) {
+    return wrapResult({
+      handledLocally: true,
+      actionResult: executeMusicAction({ action: 'list_favorites', provider: 'spotify' }, env),
+    });
+  }
+
+  const ytmListMatch = cleaned.match(/^(?:show|list|what\s+are)\s+(?:only\s+)?(?:youtube|youtube\s+music)\s+(?:favorites|songs|tracks)$/i) ||
+                       cleaned.match(/^(?:show|list)\s+my\s+(?:youtube|youtube\s+music)\s+favorites$/i);
+  if (ytmListMatch) {
+    return wrapResult({
+      handledLocally: true,
+      actionResult: executeMusicAction({ action: 'list_favorites', provider: 'youtube' }, env),
+    });
+  }
+
+  // 1D. General List Request: "Show my favorite songs", "Which songs have I saved?", "What songs are in my favorites?"
+  // Directly renders inline favorites in Agent chat without navigating away!
+  if (/^(show|list|what\s+are|which\s+songs\s+have\s+i\s+saved|what\s+songs\s+are\s+in\s+my\s+favorites|which\s+songs\s+do\s+i\s+have)\s*(my\s+favorite\s+songs|my\s+saved\s+songs|my\s+favorites|favorites)?$/i.test(cleaned) ||
+      /^(which\s+songs|what\s+songs)\s+(have\s+i\s+saved|are\s+in\s+my\s+favorites|do\s+i\s+have)$/i.test(cleaned) ||
+      /^(show|display|browse)\s+(my\s+)?(favorite\s+songs|favorites|saved\s+songs)$/i.test(cleaned)) {
+    return wrapResult({
+      handledLocally: true,
+      actionResult: executeMusicAction({ action: 'list_favorites' }, env),
     });
   }
 
@@ -267,7 +340,15 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     });
   }
 
-  // 2. Favorites Commands: Shuffle / Something / Saved songs
+  // 2. Favorites Commands: Shuffle / Something / Saved songs / Spotify favorite
+  if (/^play\s+(?:something\s+from\s+)?(?:my\s+)?spotify\s+favorites?$/i.test(cleaned) ||
+      /^play\s+(?:a\s+)?spotify\s+favorite$/i.test(cleaned)) {
+    return wrapResult({
+      handledLocally: true,
+      actionResult: executeMusicAction({ action: 'play_random_favorite', provider: 'spotify' }, env),
+    });
+  }
+
   if (/^play\s+(something|anything|a\s+song|random)\s+from\s+(my\s+)?favorites$/i.test(cleaned) ||
       /^play\s+my\s+(saved\s+songs|favorites)$/i.test(cleaned) ||
       /^shuffle\s+(my\s+)?favorites$/i.test(cleaned)) {
@@ -298,88 +379,128 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     });
   }
 
-  // 4. Targeted Favorites Commands: e.g. "Play Die For You from my favorites"
-  // or "Play Die For You by The Weeknd from my favorites"
-  const favMatch = cleaned.match(/^play\s+(.+?)\s+from\s+(my\s+)?favorites$/i) ||
-                   cleaned.match(/^play\s+my\s+favorite\s+song\s+(.+)$/i) ||
-                   cleaned.match(/^play\s+favorite\s+(.+)$/i);
+  // 4. Natural-Language Music Intent with Source Constraints (Part 2)
+  // Handles:
+  // - "Play city of star from my list."
+  // - "Play that city stars song I saved."
+  // - "Play Starboy, but from Spotify."
+  // - "Play Tuu."
+  const playMatch = cleaned.match(/^play\s+(.+)$/i);
+  if (playMatch) {
+    let targetQuery = playMatch[1].trim();
 
-  if (favMatch) {
-    const rawSongTarget = favMatch[1].trim();
-    let title = rawSongTarget;
+    // Provider constraint extraction:
+    let explicitProvider = null;
+    if (/\b(?:,\s*)?(?:but\s+)?(?:from|on|in)\s+spotify\b/i.test(targetQuery)) {
+      explicitProvider = SUPPORTED_PROVIDERS.SPOTIFY;
+      targetQuery = targetQuery.replace(/\b(?:,\s*)?(?:but\s+)?(?:from|on|in)\s+spotify\b/gi, '').trim();
+    } else if (/\b(?:,\s*)?(?:but\s+)?(?:from|on|in)\s+youtube(?:\s+music)?\b/i.test(targetQuery)) {
+      explicitProvider = SUPPORTED_PROVIDERS.YOUTUBE;
+      targetQuery = targetQuery.replace(/\b(?:,\s*)?(?:but\s+)?(?:from|on|in)\s+youtube(?:\s+music)?\b/gi, '').trim();
+    } else if (/\b(?:,\s*)?(?:but\s+)?(?:from|on|in)\s+apple(?:\s+music)?\b/i.test(targetQuery)) {
+      explicitProvider = SUPPORTED_PROVIDERS.APPLE;
+      targetQuery = targetQuery.replace(/\b(?:,\s*)?(?:but\s+)?(?:from|on|in)\s+apple(?:\s+music)?\b/gi, '').trim();
+    }
+
+    // Source constraint extraction (Favorites / My List / Saved songs):
+    let isFavoritesConstraint = false;
+    if (/\b(?:from|in|on)\s+(?:my\s+)?(?:list|playlist|favorites|saved\s+songs|saved\s+tracks|library)\b/i.test(targetQuery)) {
+      isFavoritesConstraint = true;
+      targetQuery = targetQuery.replace(/\b(?:from|in|on)\s+(?:my\s+)?(?:list|playlist|favorites|saved\s+songs|saved\s+tracks|library)\b/gi, '').trim();
+    } else if (/\b(?:that\s+)?(?:i\s+)?(?:saved|liked|favorited)\b/i.test(targetQuery)) {
+      isFavoritesConstraint = true;
+      targetQuery = targetQuery.replace(/\b(?:that\s+)?(?:i\s+)?(?:saved|liked|favorited)\b/gi, '').trim();
+    } else if (/^my\s+favorite\s+song\s+(.+)$/i.test(targetQuery)) {
+      isFavoritesConstraint = true;
+      targetQuery = targetQuery.replace(/^my\s+favorite\s+song\s+/i, '').trim();
+    } else if (/^favorite\s+(.+)$/i.test(targetQuery)) {
+      isFavoritesConstraint = true;
+      targetQuery = targetQuery.replace(/^favorite\s+/i, '').trim();
+    }
+
+    // Clean conversational wrapping: e.g. "that city stars song" -> "city stars"
+    targetQuery = targetQuery
+      .replace(/^(?:that|the)\s+/i, '')
+      .replace(/\s+(?:song|track)$/i, '')
+      .trim();
+
+    // Check artist separator: "song by artist"
+    let title = targetQuery;
     let artist = '';
-    const byMatch = rawSongTarget.match(/^(.+?)\s+by\s+(.+)$/i);
+    const byMatch = targetQuery.match(/^(.+?)\s+by\s+(.+)$/i);
     if (byMatch) {
       title = byMatch[1].trim();
       artist = byMatch[2].trim();
     }
 
-    const resolution = resolveFavoriteTrack({
-      query: rawSongTarget,
-      title,
-      artist,
-      storage,
-    });
+    // If query was constrained to favorites ("from my list", "i saved", etc.)
+    if (isFavoritesConstraint) {
+      const resolution = resolveFavoriteTrack({
+        query: targetQuery,
+        title,
+        artist,
+        provider: explicitProvider,
+        storage,
+      });
 
-    if (resolution.ambiguous) {
-      const candidateList = resolution.candidates
-        .map((c) => `"${c.title}"${c.artist ? ` by ${c.artist}` : ''}`)
-        .join(' or ');
-      return wrapResult({
-        handledLocally: true,
-        actionResult: {
-          ok: false,
-          action: 'play_favorite',
-          reason: 'ambiguous_match',
-          matches: resolution.candidates,
-          spokenConfirmation: `I found multiple matching songs in your favorites: ${candidateList}. Which one would you like?`,
+      if (resolution.ambiguous) {
+        const candidateList = resolution.candidates
+          .map((c) => `"${c.title}"${c.artist ? ` by ${c.artist}` : ''}`)
+          .join(' or ');
+        return wrapResult({
+          handledLocally: true,
+          actionResult: {
+            ok: false,
+            action: 'play_favorite',
+            reason: 'ambiguous_match',
+            clarificationNeeded: true,
+            matches: resolution.candidates,
+            spokenConfirmation: `I found multiple matching songs in your favorites: ${candidateList}. Which one would you like?`,
+          },
+        });
+      }
+
+      if (resolution.match) {
+        return wrapResult({
+          handledLocally: true,
+          actionResult: executeMusicAction(
+            { action: 'play_favorite', track: resolution.match, query: resolution.match.title },
+            env
+          ),
+        });
+      }
+
+      // Truthful negative feedback: Never fabricate or search internet if user explicitly requested from their list
+      return wrapResult(
+        {
+          handledLocally: true,
+          actionResult: {
+            ok: false,
+            action: 'play_favorite',
+            reason: 'not_found',
+            spokenConfirmation: `I couldn't find "${title}" in your favorites.`,
+          },
         },
-      });
+        title
+      );
     }
 
-    if (resolution.match) {
-      return wrapResult({
-        handledLocally: true,
-        actionResult: executeMusicAction({ action: 'play_favorite', track: resolution.match, query: resolution.match.title }, env),
-      });
-    }
-
-    // Honest negative feedback: Never fabricate or search internet if user asked for a favorite
-    return wrapResult({
-      handledLocally: true,
-      actionResult: {
-        ok: false,
-        action: 'play_favorite',
-        reason: 'not_found',
-        spokenConfirmation: `I couldn't find "${title}" in your favorites.`,
-      },
-    }, title);
-  }
-
-  // 5. General "Play [song] by [artist]" or "Play [song]"
-  const generalPlayMatch = cleaned.match(/^play\s+(.+)$/i);
-  if (generalPlayMatch) {
-    const candidateQuery = generalPlayMatch[1].trim();
-    let title = candidateQuery;
-    let artist = '';
-    const byMatch = candidateQuery.match(/^(.+?)\s+by\s+(.+)$/i);
-    if (byMatch) {
-      title = byMatch[1].trim();
-      artist = byMatch[2].trim();
-    }
-
-    // Check if it matches an existing saved favorite with high confidence
+    // General Play command: Check favorites first with high confidence
     const favRes = resolveFavoriteTrack({
-      query: candidateQuery,
+      query: targetQuery,
       title,
       artist,
+      provider: explicitProvider,
       storage,
     });
 
     if (favRes.match) {
       return wrapResult({
         handledLocally: true,
-        actionResult: executeMusicAction({ action: 'play_favorite', track: favRes.match, query: favRes.match.title }, env),
+        actionResult: executeMusicAction(
+          { action: 'play_favorite', track: favRes.match, query: favRes.match.title },
+          env
+        ),
       });
     }
 
@@ -393,17 +514,19 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
           ok: false,
           action: 'play_track',
           reason: 'ambiguous_match',
+          clarificationNeeded: true,
           matches: favRes.candidates,
           spokenConfirmation: `I found multiple matching songs: ${candidateList}. Which one did you mean?`,
         },
       });
     }
 
-    // If query has clear music structure ("song by artist" or "track") but is not in favorites:
-    // Execute play_track to search SMTC / launch provider
     return wrapResult({
       handledLocally: true,
-      actionResult: executeMusicAction({ action: 'play_track', query: candidateQuery }, env),
+      actionResult: executeMusicAction(
+        { action: 'play_track', query: targetQuery, provider: explicitProvider },
+        env
+      ),
     });
   }
 

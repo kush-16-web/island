@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from './icons';
 import { getAssistantName } from '../lib/assistant';
+import InlineFavorites from './InlineFavorites';
 
 function sanitizeError(msg) {
   if (!msg || typeof msg !== 'string') return '';
@@ -423,6 +424,9 @@ export default function VoicePanel({
                       {isAssistant ? assistantName : userName}
                     </div>
                     <div className="voice-turn__text">{item.text}</div>
+                    {isAssistant && item.tracks && item.tracks.length > 0 && (
+                      <InlineFavorites tracks={item.tracks} />
+                    )}
                   </div>
                 );
               })

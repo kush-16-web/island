@@ -33,6 +33,7 @@ class MusicConversationContext {
     this.previousCandidates = []; // Array of candidate tracks from ambiguous resolution
     this.recentRequests = []; // [{ query, title, artist, status, timestamp }]
     this.activePlayerState = null;
+    this.displayedFavorites = []; // Currently displayed favorites list in Agent chat
   }
 
   getContext() {
@@ -43,7 +44,21 @@ class MusicConversationContext {
       previousCandidates: this.previousCandidates,
       recentRequests: this.recentRequests,
       activePlayerState: this.activePlayerState,
+      displayedFavorites: this.displayedFavorites,
     };
+  }
+
+  setDisplayedFavorites(tracks = []) {
+    this.displayedFavorites = Array.isArray(tracks) ? tracks.map((t) => ({ ...t })) : [];
+  }
+
+  getDisplayedFavorites() {
+    return this.displayedFavorites || [];
+  }
+
+  getDisplayedFavoriteByIndex(index) {
+    if (!Array.isArray(this.displayedFavorites)) return null;
+    return this.displayedFavorites[index] || null;
   }
 
   recordRequest({ query, title, artist, action, status = 'requested' }) {
@@ -149,31 +164,67 @@ class MusicConversationContext {
     const spelledWord = this.normalizeSpelledLetters(trimmed);
     const langMatch = lower.match(/\b(hindi|punjabi|bengali|tamil|telugu|hinglish|english|spanish)\b/i);
 
-    const hasPendingContext = Boolean(this.pendingIntent || this.lastFailedAction || this.previousCandidates.length > 0);
+    const hasPendingContext = Boolean(
+      this.pendingIntent ||
+      this.lastFailedAction ||
+      this.previousCandidates.length > 0 ||
+      (this.displayedFavorites && this.displayedFavorites.length > 0)
+    );
+
+    // Check ordinal and numbered selection: "Play the third one", "Play the 2nd one", "Play number 3", "The third one", etc.
+    const ordinalMatch =
+      lower.match(/\b(?:play\s+)?(?:the\s+)?(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|sixth|6th|seventh|7th|eighth|8th|ninth|9th|tenth|10th)\s*(?:one|track|song|candidate)?\b/i) ||
+      lower.match(/\b(?:play\s+)?number\s+(\d+)\b/i);
+
+    if (ordinalMatch) {
+      let index = -1;
+      const word = (ordinalMatch[1] || '').toLowerCase();
+      if (word === 'first' || word === '1st') index = 0;
+      else if (word === 'second' || word === '2nd') index = 1;
+      else if (word === 'third' || word === '3rd') index = 2;
+      else if (word === 'fourth' || word === '4th') index = 3;
+      else if (word === 'fifth' || word === '5th') index = 4;
+      else if (word === 'sixth' || word === '6th') index = 5;
+      else if (word === 'seventh' || word === '7th') index = 6;
+      else if (word === 'eighth' || word === '8th') index = 7;
+      else if (word === 'ninth' || word === '9th') index = 8;
+      else if (word === 'tenth' || word === '10th') index = 9;
+      else if (/^\d+$/.test(word)) index = parseInt(word, 10) - 1;
+
+      // Check displayed favorites list first
+      if (this.displayedFavorites && this.displayedFavorites.length > index && index >= 0) {
+        return {
+          isCorrection: true,
+          action: 'play_favorite',
+          selectedTrack: this.displayedFavorites[index],
+          reason: 'chose_displayed_favorite',
+        };
+      }
+
+      // Fall back to ambiguous candidate list
+      if (this.previousCandidates && this.previousCandidates.length > index && index >= 0) {
+        return {
+          isCorrection: true,
+          action: this.pendingIntent?.action || 'play_favorite',
+          selectedTrack: this.previousCandidates[index],
+          reason: 'chose_candidate_by_ordinal',
+        };
+      }
+    }
+
     if (!hasPendingContext && !isCorrectionPrefix && !spelledWord && !langMatch) return null;
 
     const prevAction = this.pendingIntent?.action || this.lastFailedAction?.action || 'play_favorite';
     const prevQuery = this.pendingIntent?.query || this.lastFailedAction?.query || '';
 
-    // 1. Check for candidate selection: "No, the other one", "The second one", "Play the first one"
-    if (/\b(?:no[,.\s]+)?(?:the\s+)?other\s+one\b/i.test(lower) || /\bsecond\s+(?:one|candidate|track|song)\b/i.test(lower)) {
+    // 1. Check for candidate selection: "No, the other one"
+    if (/\b(?:no[,.\s]+)?(?:the\s+)?other\s+one\b/i.test(lower)) {
       if (this.previousCandidates.length >= 2) {
         return {
           isCorrection: true,
           action: prevAction,
           selectedTrack: this.previousCandidates[1],
           reason: 'chose_second_candidate',
-        };
-      }
-    }
-
-    if (/\b(?:the\s+)?first\s+(?:one|candidate|track|song)\b/i.test(lower)) {
-      if (this.previousCandidates.length >= 1) {
-        return {
-          isCorrection: true,
-          action: prevAction,
-          selectedTrack: this.previousCandidates[0],
-          reason: 'chose_first_candidate',
         };
       }
     }

@@ -12,7 +12,7 @@ import FullLyrics, { sharedLyricsTransition } from './FullLyrics';
 import VideoPiP from './VideoPiP';
 import FavoritesMenu from './FavoritesMenu';
 import { isTrackFavorite, addFavorite, removeFavorite, healFavoriteWithExactId } from '../lib/favorites';
-import { playFavoriteTrack } from '../lib/music-actions';
+import { playFavoriteTrack, getFriendlyProviderName } from '../lib/music-actions';
 
 // Living Canvas fine-art mode is dormant during Pass 2.2.6 while building toward Cinema Mode
 const ENABLE_CANVAS_ART = false;
@@ -164,7 +164,10 @@ export default function NowPlaying({
       removeFavorite(media);
       setIsFavorite(false);
     } else {
-      addFavorite(media, null, companionState);
+      const isSpotify =
+        (media.app || '').toLowerCase().includes('spotify') ||
+        (media.rawAppId || '').toLowerCase().includes('spotify');
+      addFavorite(media, null, isSpotify ? null : companionState);
       setIsFavorite(true);
     }
   };
@@ -230,10 +233,11 @@ export default function NowPlaying({
     });
 
     if (res && res.playbackState) {
+      const providerName = getFriendlyProviderName(item.provider);
       if (res.playbackState === 'playback_requested') {
-        setPlaybackFeedback({ state: 'playback_requested', text: `Requesting ${item.title} on YouTube Music...` });
+        setPlaybackFeedback({ state: 'playback_requested', text: `Requesting ${item.title} on ${providerName}...` });
       } else if (res.playbackState === 'opening_provider') {
-        setPlaybackFeedback({ state: 'opening_provider', text: `Opening ${item.title} in YouTube Music...` });
+        setPlaybackFeedback({ state: 'opening_provider', text: `Opening ${item.title} in ${providerName}...` });
       }
     }
     return res;

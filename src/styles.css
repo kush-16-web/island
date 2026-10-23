@@ -4386,6 +4386,38 @@ button:hover .lucide-icon--bell {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.fav-item__provider-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+  line-height: 1.3;
+}
+.fav-item__provider-badge--spotify {
+  background: rgba(30, 215, 96, 0.15);
+  color: #1ed760;
+  border: 1px solid rgba(30, 215, 96, 0.35);
+}
+.fav-item__provider-badge--youtube {
+  background: rgba(255, 68, 68, 0.15);
+  color: #ff5555;
+  border: 1px solid rgba(255, 68, 68, 0.35);
+}
+.fav-item__provider-badge--apple {
+  background: rgba(250, 36, 60, 0.15);
+  color: #fa243c;
+  border: 1px solid rgba(250, 36, 60, 0.35);
+}
+.fav-item__provider-badge--unknown {
+  background: rgba(234, 179, 8, 0.15);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
 .fav-item__reconnect-group {
   display: flex;
   align-items: center;
@@ -4753,8 +4785,175 @@ button:hover .lucide-icon--bell {
   background: #a78bfa;
   box-shadow: 0 0 6px #a78bfa;
   animation: voice-pulse-anim 1.4s ease-in-out infinite;
+/* ==========================================================================
+   Inline Favorites in Agent Chat (Pass 2.2.6)
+   ========================================================================== */
+.inline-favs {
+  margin-top: 8px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inline-favs__filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+.inline-favs__filter-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2, #aaa);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.inline-favs__filter-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text, #fff);
+}
+.inline-favs__filter-chip.is-active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-weight: 600;
+}
+.inline-favs__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.inline-favs__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+}
+.inline-favs__item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.inline-favs__item.is-playing {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+.inline-favs__index {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3, #777);
+  min-width: 14px;
+  text-align: center;
+}
+.inline-favs__art-wrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.inline-favs__art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.inline-favs__art-fallback {
+  color: var(--text-3, #777);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.inline-favs__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.inline-favs__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.inline-favs__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inline-favs__badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 999px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+.inline-favs__badge--spotify {
+  background: rgba(30, 215, 96, 0.15);
+  color: #1ed760;
+  border: 1px solid rgba(30, 215, 96, 0.35);
+}
+.inline-favs__badge--youtube {
+  background: rgba(255, 68, 68, 0.15);
+  color: #ff5555;
+  border: 1px solid rgba(255, 68, 68, 0.35);
+}
+.inline-favs__badge--apple {
+  background: rgba(250, 36, 60, 0.15);
+  color: #fa243c;
+  border: 1px solid rgba(250, 36, 60, 0.35);
+}
+.inline-favs__badge--unknown {
+  background: rgba(234, 179, 8, 0.15);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+.inline-favs__artist {
+  font-size: 11px;
+  color: var(--text-2, #aaa);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inline-favs__play-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text, #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.inline-favs__play-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .eq i, .ringing__icon, .pet *, .pet, .voice-waveform__bar { animation: none !important; }
 }
+

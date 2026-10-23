@@ -18,6 +18,7 @@ export const LEGACY_STORAGE_KEY = 'island_fav_tracks';
 export const SUPPORTED_PROVIDERS = Object.freeze({
   SPOTIFY: 'spotify',
   YOUTUBE: 'youtube',
+  YOUTUBE_MUSIC: 'youtube',
   APPLE: 'apple',
   LOCAL: 'local',
   GENERIC: 'generic',
@@ -32,7 +33,7 @@ export function isVerifiedYouTube(track) {
   if (!track) return false;
   if (track.youtubeId) return true;
   if (typeof track.providerTrackId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(track.providerTrackId)) return true;
-  const url = String(track.playableUrl || '').toLowerCase();
+  const url = String(track.playableUrl || track.originalUrl || '').toLowerCase();
   if (url.includes('youtube.com') || url.includes('youtu.be')) return true;
   const art = String(track.artwork || track.art || '').toLowerCase();
   if (art.includes('ytimg.com') || art.includes('youtube.com')) return true;
@@ -46,7 +47,7 @@ export function isVerifiedYouTube(track) {
 export function isVerifiedSpotify(track) {
   if (!track) return false;
   if (typeof track.providerTrackId === 'string' && track.providerTrackId.startsWith('spotify:')) return true;
-  const url = String(track.playableUrl || '').toLowerCase();
+  const url = String(track.playableUrl || track.originalUrl || '').toLowerCase();
   if (url.startsWith('spotify:') || url.includes('open.spotify.com')) return true;
   const rawApp = String(track.rawAppId || track.sourceAppId || '').toLowerCase();
   if (rawApp.includes('spotify')) return true;
@@ -61,7 +62,7 @@ export function isVerifiedApple(track) {
   if (rawApp.includes('applemusic') || rawApp.includes('itunes')) return true;
   const app = String(track.app || '').toLowerCase();
   if (app.includes('apple music') || app.includes('itunes')) return true;
-  const url = String(track.playableUrl || '').toLowerCase();
+  const url = String(track.playableUrl || track.originalUrl || '').toLowerCase();
   // Only actual catalog tracks/albums, NOT generic public iTunes search results
   if (url.includes('music.apple.com') && !url.includes('search?term=') && !url.includes('/search?')) return true;
   return false;
@@ -81,7 +82,17 @@ export function isVerifiedLocal(track) {
  */
 export function detectProvider(media = {}) {
   if (!media) return SUPPORTED_PROVIDERS.GENERIC;
+  const rawApp = String(media.rawAppId || media.sourceAppId || '').toLowerCase();
+  const app = String(media.app || '').toLowerCase();
+
+  // Strongest source evidence: Spotify application
+  if (app.includes('spotify') || rawApp.includes('spotify') || isVerifiedSpotify(media)) {
+    return SUPPORTED_PROVIDERS.SPOTIFY;
+  }
+
   if (media.provider && Object.values(SUPPORTED_PROVIDERS).includes(media.provider)) {
+    // Normalize youtube_music alias
+    if (media.provider === 'youtube_music') return SUPPORTED_PROVIDERS.YOUTUBE;
     // Guard: If marked Apple Music, ensure it actually has Apple evidence and wasn't just iTunes artwork
     if (media.provider === SUPPORTED_PROVIDERS.APPLE && !isVerifiedApple(media)) {
       if (isVerifiedYouTube(media)) return SUPPORTED_PROVIDERS.YOUTUBE;
@@ -90,12 +101,10 @@ export function detectProvider(media = {}) {
     }
     return media.provider;
   }
-  const app = String(media.app || '').toLowerCase();
-  const rawApp = String(media.rawAppId || media.sourceAppId || '').toLowerCase();
+
   const title = String(media.title || '').toLowerCase();
   const art = String(media.art || media.artwork || '').toLowerCase();
 
-  if (app.includes('spotify') || rawApp.includes('spotify')) return SUPPORTED_PROVIDERS.SPOTIFY;
   if (
     app.includes('apple music') ||
     app.includes('itunes') ||
@@ -124,20 +133,45 @@ export function detectProvider(media = {}) {
 /**
  * Build a safe, provider-specific playable URL or deep-link URI.
  */
-export function buildPlayableReference(title, artist, provider, extra = {}) {
-  const query = `${title || ''} ${artist || ''}`.trim();
-  const encodedQuery = encodeURIComponent(query);
+export function buildPlayableReference(titleOrTrack, artist, provider, extra = {}) {
+  let title = titleOrTrack;
+  let effectiveArtist = artist;
+  let effectiveProvider = provider;
+  let effectiveExtra = extra || {};
 
-  switch (provider) {
+  if (typeof titleOrTrack === 'object' && titleOrTrack !== null) {
+    const item = titleOrTrack;
+    title = item.title;
+    effectiveArtist = item.artist;
+    effectiveProvider = item.provider;
+    effectiveExtra = {
+      ...item,
+      youtubeId: item.youtubeId || item.videoId,
+      ...extra,
+    };
+  }
+
+  const query = `${title || ''} ${effectiveArtist || ''}`.trim();
+  const encodedQuery = encodeURIComponent(query);
+  const normalizedProvider = effectiveProvider === 'youtube_music' ? SUPPORTED_PROVIDERS.YOUTUBE : effectiveProvider;
+
+  switch (normalizedProvider) {
     case SUPPORTED_PROVIDERS.SPOTIFY: {
-      if (extra.providerTrackId && extra.providerTrackId.startsWith('spotify:')) {
-        return extra.providerTrackId;
+      if (effectiveExtra.providerTrackId && effectiveExtra.providerTrackId.startsWith('spotify:')) {
+        return effectiveExtra.providerTrackId;
+      }
+      if (effectiveExtra.spotifyUri && effectiveExtra.spotifyUri.startsWith('spotify:')) {
+        return effectiveExtra.spotifyUri;
+      }
+      if (effectiveExtra.playableUrl && (effectiveExtra.playableUrl.startsWith('spotify:') || effectiveExtra.playableUrl.includes('open.spotify.com'))) {
+        return effectiveExtra.playableUrl;
       }
       return `spotify:search:${encodedQuery}`;
     }
     case SUPPORTED_PROVIDERS.YOUTUBE: {
-      if (extra.youtubeId) {
-        return `https://music.youtube.com/watch?v=${extra.youtubeId}`;
+      const ytId = effectiveExtra.youtubeId || effectiveExtra.videoId;
+      if (ytId) {
+        return `https://music.youtube.com/watch?v=${ytId}`;
       }
       return `https://music.youtube.com/search?q=${encodedQuery}`;
     }
@@ -156,10 +190,11 @@ export function buildPlayableReference(title, artist, provider, extra = {}) {
 export function createFavoriteId(title, artist, provider = 'generic', providerTrackId = null) {
   const cleanTitle = normalizeText(title);
   const cleanArtist = normalizeText(artist);
+  const normProv = provider === 'youtube_music' ? SUPPORTED_PROVIDERS.YOUTUBE : provider;
   if (providerTrackId) {
-    return `${provider}:${providerTrackId}`;
+    return `${normProv}:${providerTrackId}`;
   }
-  return `${provider}:${cleanTitle}__${cleanArtist}`;
+  return `${normProv}:${cleanTitle}__${cleanArtist}`;
 }
 
 /**
@@ -405,8 +440,12 @@ export function isTrackFavorite(track, storage = null) {
   const list = getAllFavorites(storage);
   const targetTitle = normalizeText(track.title);
   const targetArtist = normalizeText(track.artist || '');
+  const targetProvider = track.provider || (track.app ? detectProvider(track) : null);
 
   return list.some((f) => {
+    if (targetProvider && f.provider && f.provider !== targetProvider) {
+      return false;
+    }
     const titleMatch = normalizeText(f.title) === targetTitle;
     if (!titleMatch) return false;
     if (!targetArtist || !f.artist) return true;
@@ -417,67 +456,111 @@ export function isTrackFavorite(track, storage = null) {
 /**
  * Add a track to unified favorites with companion correlation and exact identity preservation.
  */
-export function addFavorite(track, storage = null, companion = null) {
+export function addFavorite(track, storageOrOptions = null, maybeCompanion = null) {
   if (!track || !track.title) return null;
+
+  let storage = storageOrOptions;
+  let companion = maybeCompanion;
+  if (storageOrOptions && typeof storageOrOptions === 'object' && typeof storageOrOptions.getItem !== 'function') {
+    storage = storageOrOptions.storage || null;
+    companion = storageOrOptions.companionState || storageOrOptions.companion || null;
+  }
 
   const list = getAllFavorites(storage);
   const detectedProvider = track.provider || detectProvider(track);
 
-  // Check companion for active verified YouTube Music identity
-  const comp = companion || (typeof window !== 'undefined' ? window.__islandCompanionState : null);
-  let resolvedYoutubeId =
-    track.youtubeId ||
-    (typeof track.providerTrackId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(track.providerTrackId)
-      ? track.providerTrackId
-      : null);
-  let resolvedUrl = track.playableUrl || null;
+  let finalProvider = detectedProvider;
+  let resolvedYoutubeId = null;
+  let resolvedProviderTrackId = track.providerTrackId || null;
+  let resolvedUrl = track.playableUrl || track.originalUrl || null;
 
-  // Extract from playableUrl if present
-  if (!resolvedYoutubeId && resolvedUrl) {
-    try {
-      const u = new URL(resolvedUrl);
-      const v = u.searchParams.get('v');
-      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
-        resolvedYoutubeId = v;
+  const isSpotify = detectedProvider === SUPPORTED_PROVIDERS.SPOTIFY || isVerifiedSpotify(track);
+
+  if (isSpotify) {
+    finalProvider = SUPPORTED_PROVIDERS.SPOTIFY;
+    if (resolvedProviderTrackId && resolvedProviderTrackId.startsWith('spotify:')) {
+      resolvedUrl = resolvedUrl || resolvedProviderTrackId;
+    } else if (resolvedUrl && (resolvedUrl.startsWith('spotify:') || resolvedUrl.includes('open.spotify.com'))) {
+      if (!resolvedProviderTrackId && resolvedUrl.startsWith('spotify:')) {
+        resolvedProviderTrackId = resolvedUrl;
       }
-    } catch {}
-  }
+    }
+    if (!resolvedUrl) {
+      resolvedUrl = buildPlayableReference(track.title, track.artist, SUPPORTED_PROVIDERS.SPOTIFY, {
+        providerTrackId: resolvedProviderTrackId,
+      });
+    }
+  } else {
+    // Non-Spotify track: check for YouTube identity or correlation with companion
+    const comp = companion || (typeof window !== 'undefined' ? window.__islandCompanionState : null);
+    resolvedYoutubeId =
+      track.youtubeId ||
+      (typeof track.providerTrackId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(track.providerTrackId)
+        ? track.providerTrackId
+        : null);
 
-  // Correlate with connected companion if available
-  if (!resolvedYoutubeId && comp && comp.isYtMusicActive && comp.currentTrack?.videoId) {
-    const normTrack = normalizeText(track.title);
-    const normComp = normalizeText(comp.currentTrack.title || '');
-    if (normTrack && normComp && (normTrack.includes(normComp) || normComp.includes(normTrack))) {
-      resolvedYoutubeId = comp.currentTrack.videoId;
-      resolvedUrl = `https://music.youtube.com/watch?v=${resolvedYoutubeId}`;
+    if (!resolvedYoutubeId && resolvedUrl) {
+      try {
+        const u = new URL(resolvedUrl);
+        const v = u.searchParams.get('v');
+        if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
+          resolvedYoutubeId = v;
+        }
+      } catch {}
+    }
+
+    if (!resolvedYoutubeId && comp && comp.isYtMusicActive && comp.currentTrack?.videoId) {
+      const normTrack = normalizeText(track.title);
+      const normComp = normalizeText(comp.currentTrack.title || '');
+      if (normTrack && normComp && (normTrack.includes(normComp) || normComp.includes(normTrack))) {
+        resolvedYoutubeId = comp.currentTrack.videoId;
+        resolvedUrl = `https://music.youtube.com/watch?v=${resolvedYoutubeId}`;
+      }
+    }
+
+    if (resolvedYoutubeId || detectedProvider === SUPPORTED_PROVIDERS.YOUTUBE || isVerifiedYouTube(track)) {
+      finalProvider = SUPPORTED_PROVIDERS.YOUTUBE;
+      resolvedProviderTrackId = resolvedYoutubeId;
+      resolvedUrl =
+        resolvedUrl ||
+        buildPlayableReference(track.title, track.artist, SUPPORTED_PROVIDERS.YOUTUBE, {
+          youtubeId: resolvedYoutubeId,
+          providerTrackId: resolvedYoutubeId,
+        });
+    } else if (detectedProvider === SUPPORTED_PROVIDERS.APPLE && isVerifiedApple(track)) {
+      finalProvider = SUPPORTED_PROVIDERS.APPLE;
+      resolvedUrl = resolvedUrl || buildPlayableReference(track.title, track.artist, SUPPORTED_PROVIDERS.APPLE);
+    } else if (detectedProvider === SUPPORTED_PROVIDERS.LOCAL) {
+      finalProvider = SUPPORTED_PROVIDERS.LOCAL;
+    } else {
+      finalProvider = detectedProvider || SUPPORTED_PROVIDERS.UNKNOWN;
     }
   }
 
-  const finalProvider = resolvedYoutubeId
-    ? SUPPORTED_PROVIDERS.YOUTUBE
-    : detectedProvider === SUPPORTED_PROVIDERS.APPLE && !isVerifiedApple(track)
-      ? SUPPORTED_PROVIDERS.YOUTUBE
-      : detectedProvider;
+  const isUnresolvedIdentity =
+    (finalProvider === SUPPORTED_PROVIDERS.YOUTUBE && !resolvedYoutubeId) ||
+    finalProvider === SUPPORTED_PROVIDERS.UNKNOWN;
 
-  const finalPlayableUrl =
-    resolvedUrl ||
-    buildPlayableReference(track.title, track.artist, finalProvider, {
-      youtubeId: resolvedYoutubeId,
-      providerTrackId: resolvedYoutubeId,
-    });
+  const id = track.id || createFavoriteId(track.title, track.artist, finalProvider, resolvedProviderTrackId);
 
-  const isUnresolvedIdentity = finalProvider === SUPPORTED_PROVIDERS.YOUTUBE && !resolvedYoutubeId;
-  const id = track.id || createFavoriteId(track.title, track.artist, finalProvider, resolvedYoutubeId);
-
-  // Check for duplicate ID or matching title/artist
+  // Provider-aware duplicate checking: identical songs from different providers must NOT collide!
   const normTitle = normalizeText(track.title);
   const normArtist = normalizeText(track.artist || '');
-  const existingIndex = list.findIndex(
-    (f) => f.id === id || (normalizeText(f.title) === normTitle && (!normArtist || normalizeText(f.artist) === normArtist))
-  );
+  const existingIndex = list.findIndex((f) => {
+    if (f.id === id) return true;
+    const fProv = (f.provider || '').toLowerCase();
+    const targetProv = (finalProvider || '').toLowerCase();
+    if (fProv === targetProv) {
+      const titleMatch = normalizeText(f.title) === normTitle;
+      if (titleMatch && (!normArtist || !f.artist || normalizeText(f.artist) === normArtist)) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   if (existingIndex >= 0) {
-    // If existing record was missing exact video ID and we now have one, heal it!
+    // If existing record was missing exact provider ID and we now have one, heal it!
     if (resolvedYoutubeId && !list[existingIndex].youtubeId) {
       list[existingIndex] = {
         ...list[existingIndex],
@@ -486,6 +569,16 @@ export function addFavorite(track, storage = null, companion = null) {
         youtubeId: resolvedYoutubeId,
         playableUrl: `https://music.youtube.com/watch?v=${resolvedYoutubeId}`,
         isUnresolvedIdentity: false,
+      };
+      setAllFavorites(list, storage);
+      return list[existingIndex];
+    }
+    if (finalProvider === SUPPORTED_PROVIDERS.SPOTIFY && resolvedProviderTrackId && !list[existingIndex].providerTrackId) {
+      list[existingIndex] = {
+        ...list[existingIndex],
+        provider: finalProvider,
+        providerTrackId: resolvedProviderTrackId,
+        playableUrl: resolvedUrl,
       };
       setAllFavorites(list, storage);
       return list[existingIndex];
@@ -500,9 +593,12 @@ export function addFavorite(track, storage = null, companion = null) {
     album: track.album || '',
     artwork: track.artwork || track.art || null,
     provider: finalProvider,
-    providerTrackId: resolvedYoutubeId || null,
+    source: finalProvider,
+    isVerifiedSpotify: finalProvider === SUPPORTED_PROVIDERS.SPOTIFY,
+    providerTrackId: resolvedProviderTrackId || null,
     youtubeId: resolvedYoutubeId || null,
-    playableUrl: finalPlayableUrl,
+    playableUrl: resolvedUrl,
+    originalUrl: track.originalUrl || track.url || track.playableUrl || resolvedUrl,
     isUnresolvedIdentity,
     addedAt: Date.now(),
   };
@@ -577,7 +673,11 @@ export function removeFavorite(idOrTrack, storage = null) {
   } else if (idOrTrack && idOrTrack.title) {
     const targetTitle = normalizeText(idOrTrack.title);
     const targetArtist = normalizeText(idOrTrack.artist || '');
+    const targetProvider = idOrTrack.provider || (idOrTrack.app ? detectProvider(idOrTrack) : null);
     nextList = list.filter((f) => {
+      if (targetProvider && f.provider && f.provider !== targetProvider) {
+        return true; // Keep favorites from other providers
+      }
       const titleMatch = normalizeText(f.title) === targetTitle;
       const artistMatch = !targetArtist || !f.artist || normalizeText(f.artist) === targetArtist;
       return !(titleMatch && artistMatch);

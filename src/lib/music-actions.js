@@ -30,6 +30,7 @@ import {
   SUPPORTED_PROVIDERS,
 } from './favorites.js';
 import { audioCoordinator } from './audio-coordinator.js';
+import { musicContext } from './music-conversation-context.js';
 
 export const ALLOWED_ACTIONS = Object.freeze([
   'play_track',
@@ -43,6 +44,8 @@ export const ALLOWED_ACTIONS = Object.freeze([
   'add_current_to_favorites',
   'remove_current_from_favorites',
   'show_favorites',
+  'list_favorites',
+  'count_favorites',
   'compound_pause_play',
   'set_volume',
 ]);
@@ -307,7 +310,7 @@ export function executeMusicAction(intent, env = {}) {
           }
           return null;
         };
-  const storage = env.customStorage || null;
+  const storage = env.storage || env.customStorage || null;
   const turnId = env.turnId || Date.now();
 
   if (!ALLOWED_ACTIONS.includes(action)) {
@@ -360,6 +363,63 @@ export function executeMusicAction(intent, env = {}) {
         spokenConfirmation: `Opening your favorites.${countMsg}`,
       };
       logActionDiagnostic({ turnId, action, ok: true, count });
+      return res;
+    }
+
+    case 'count_favorites': {
+      const list = getAllFavorites(storage);
+      const targetProvider = explicitProvider || null;
+      const filtered = targetProvider ? list.filter((f) => f.provider === targetProvider) : list;
+      const count = filtered.length;
+      const provText = targetProvider ? ` ${getFriendlyProviderName(targetProvider)}` : '';
+      const spokenConfirmation = count > 0
+        ? `You have ${count}${provText} saved song${count === 1 ? '' : 's'}.`
+        : `You don't have any${provText} saved songs yet.`;
+      const res = {
+        ok: true,
+        action: 'count_favorites',
+        count,
+        provider: targetProvider,
+        spokenConfirmation,
+      };
+      logActionDiagnostic({ turnId, action: 'count_favorites', ok: true, count, provider: targetProvider });
+      return res;
+    }
+
+    case 'list_favorites': {
+      let list = getAllFavorites(storage);
+      const targetProvider = explicitProvider || null;
+      if (targetProvider) {
+        list = list.filter((f) => f.provider === targetProvider);
+      }
+      const totalCount = list.length;
+      musicContext.setDisplayedFavorites(list);
+
+      let spokenConfirmation = '';
+      const provName = targetProvider ? getFriendlyProviderName(targetProvider) : null;
+      if (totalCount === 0) {
+        spokenConfirmation = provName
+          ? `You don't have any songs from ${provName} in your favorites.`
+          : 'Your favorites list is empty.';
+      } else {
+        const top3 = list.slice(0, 3).map((t) => t.title).join(', ');
+        const moreCount = totalCount > 3 ? ` and ${totalCount - 3} more` : '';
+        if (provName) {
+          spokenConfirmation = `Here are your ${totalCount} ${provName} favorites, including ${top3}${moreCount}.`;
+        } else {
+          spokenConfirmation = `Here are your ${totalCount} saved songs, including ${top3}${moreCount}.`;
+        }
+      }
+
+      const res = {
+        ok: true,
+        action: 'list_favorites',
+        tracks: list,
+        totalCount,
+        provider: targetProvider,
+        spokenConfirmation,
+      };
+      logActionDiagnostic({ turnId, action: 'list_favorites', ok: true, count: totalCount, provider: targetProvider });
       return res;
     }
 

@@ -89,16 +89,26 @@ export default function FavoritesMenu({
     setFavorites(getAllFavorites());
   };
 
-  // Compute available providers among saved songs dynamically (No hardcoded phantom chips)
-  const availableProviders = useMemo(() => {
-    const set = new Set();
+  // Compute compact source filters: All, Spotify, YouTube Music, and Unknown (only when unresolved entries exist)
+  const filterOptions = useMemo(() => {
+    const options = [
+      { id: 'all', label: 'All' },
+      { id: 'spotify', label: 'Spotify' },
+      { id: 'youtube', label: 'YouTube Music' },
+    ];
+    const hasUnknown = favorites.some((f) => f.isAmbiguousSource || f.provider === 'unknown');
+    if (hasUnknown) {
+      options.push({ id: 'unknown', label: 'Unknown' });
+    }
+    const otherProviders = new Set();
     for (const f of favorites) {
       const p = (f.provider || '').toLowerCase();
-      if (p && p !== 'generic' && p !== 'unknown' && p !== 'local') {
-        set.add(p);
-      }
+      if (p === 'apple' || p === 'local') otherProviders.add(p);
     }
-    return Array.from(set);
+    for (const p of otherProviders) {
+      options.push({ id: p, label: getProviderLabel(p) });
+    }
+    return options;
   }, [favorites]);
 
   // Filter and search
@@ -107,7 +117,13 @@ export default function FavoritesMenu({
       if (filterProvider !== 'all') {
         const itemP = (item.provider || '').toLowerCase();
         const targetP = filterProvider.toLowerCase();
-        if (itemP !== targetP) return false;
+        if (targetP === 'unknown') {
+          if (!item.isAmbiguousSource && itemP !== 'unknown' && itemP !== 'generic') return false;
+        } else if (targetP === 'youtube' || targetP === 'youtube_music') {
+          if (itemP !== 'youtube' && itemP !== 'youtube_music') return false;
+        } else if (itemP !== targetP) {
+          return false;
+        }
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -165,29 +181,19 @@ export default function FavoritesMenu({
         </div>
       </div>
 
-      {/* Dynamic Filter Chips (Only show sources present in favorites) */}
+      {/* Compact Source Filters: All, Spotify, YouTube Music, Unknown */}
       <div className="fav-menu__toolbar">
         <div className="fav-menu__chips">
-          <button
-            type="button"
-            className={`fav-chip ${filterProvider === 'all' ? 'is-active' : ''}`}
-            onClick={() => setFilterProvider('all')}
-          >
-            All
-          </button>
-          {availableProviders.map((p) => {
-            const label = getProviderLabel(p);
-            return (
-              <button
-                key={p}
-                type="button"
-                className={`fav-chip ${filterProvider === p ? 'is-active' : ''}`}
-                onClick={() => setFilterProvider(p)}
-              >
-                {label}
-              </button>
-            );
-          })}
+          {filterOptions.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              className={`fav-chip ${filterProvider === opt.id ? 'is-active' : ''}`}
+              onClick={() => setFilterProvider(opt.id)}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
 
         {favorites.length > 5 && (
@@ -230,9 +236,20 @@ export default function FavoritesMenu({
           <div className="fav-menu__list">
             {filteredList.map((item) => {
               const providerLabel = getProviderLabel(item.provider, item.isAmbiguousSource);
-              const subtext = item.artist
-                ? `${item.artist}${providerLabel ? ` · ${providerLabel}` : ''}`
-                : (providerLabel || 'Track');
+              const badgeClass = item.isAmbiguousSource || item.provider === 'unknown'
+                ? 'unknown'
+                : item.provider === SUPPORTED_PROVIDERS.SPOTIFY
+                ? 'spotify'
+                : item.provider === SUPPORTED_PROVIDERS.APPLE
+                ? 'apple'
+                : 'youtube';
+              const badgeText = item.isAmbiguousSource || item.provider === 'unknown'
+                ? 'Unknown'
+                : item.provider === SUPPORTED_PROVIDERS.SPOTIFY
+                ? 'Spotify'
+                : item.provider === SUPPORTED_PROVIDERS.APPLE
+                ? 'Apple Music'
+                : 'YouTube Music';
 
               return (
                 <div
@@ -254,13 +271,16 @@ export default function FavoritesMenu({
                     )}
                   </div>
 
-                  {/* Metadata */}
+                  {/* Metadata with Provider Indicator */}
                   <div className="fav-item__meta">
                     <div className="fav-item__title" title={item.title}>
                       {item.title}
+                      <span className={`fav-item__provider-badge fav-item__provider-badge--${badgeClass}`}>
+                        {badgeText}
+                      </span>
                     </div>
-                    <div className="fav-item__artist" title={subtext}>
-                      {subtext}
+                    <div className="fav-item__artist" title={item.artist || 'Unknown artist'}>
+                      {item.artist || 'Unknown artist'}
                     </div>
                     {item.isAmbiguousSource && (
                       <div className="fav-item__reconnect-group" onClick={(e) => e.stopPropagation()}>

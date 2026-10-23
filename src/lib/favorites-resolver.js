@@ -119,17 +119,24 @@ export function scoreFavoriteCandidate(favorite, queryTitle, queryArtist = '', l
  * @param {Storage|null} [params.storage] - Custom storage for testing
  * @returns {{ match: object|null, ambiguous: boolean, candidates: object[], reason?: string }}
  */
-export function resolveFavoriteTrack({
-  query = '',
-  title = '',
-  artist = '',
-  languageHint = null,
-  provider = null,
-  mostRecent = false,
-  random = false,
-  storage = null,
-} = {}) {
-  let list = getAllFavorites(storage);
+export function resolveFavoriteTrack(queryOrParams = {}, maybeList = null) {
+  let params = queryOrParams;
+  if (typeof queryOrParams === 'string') {
+    params = { query: queryOrParams };
+  }
+
+  const {
+    query = '',
+    title = '',
+    artist = '',
+    languageHint = null,
+    provider = null,
+    mostRecent = false,
+    random = false,
+    storage = null,
+  } = params || {};
+
+  let list = Array.isArray(maybeList) ? maybeList : getAllFavorites(storage);
 
   if (!list || list.length === 0) {
     return { match: null, ambiguous: false, candidates: [], reason: 'empty_favorites' };
@@ -158,6 +165,12 @@ export function resolveFavoriteTrack({
   // Case C: Target query matching
   let effectiveTitle = cleanSpokenQuery(title || query);
   let effectiveArtist = cleanSpokenQuery(artist);
+
+  // Strip natural voice packaging like "from my list", "from my favorites", "play"
+  effectiveTitle = effectiveTitle
+    .replace(/\s+(?:from|on|in|that\s+i\s+saved\s+to|that\s+are\s+in)\s+(?:my\s+)?(?:favorites?|list|saved(?:\s+songs)?|playlist)\b/gi, '')
+    .replace(/^(?:play|listen\s+to|put\s+on)\s+/i, '')
+    .trim();
 
   // Check if title is spelled out: "T-U-U" or "T U U" -> "tuu"
   const spelled = musicContext.normalizeSpelledLetters(effectiveTitle);
@@ -207,6 +220,7 @@ export function resolveFavoriteTrack({
         return {
           match: null,
           ambiguous: true,
+          clarificationNeeded: true,
           candidates: scored.slice(0, 3).map((s) => s.track),
           reason: 'ambiguous_match',
         };

@@ -384,4 +384,54 @@ Pass 2.2.6 makes opening the full lyrics screen feel like a seamless physical ex
 - **Full Project Test Suite**: 282 passed, 0 failed, 1 skipped (283 total tests across 76 suites).
 - **Production Bundle**: `npm run build` compiled cleanly in 3.23s.
 
+---
+
+## 10. Pass 2.2.6: Source-Aware Music Foundation & Natural Conversational Intelligence
+
+### A. Architectural Overview & Core Achievements
+Pass 2.2.6 repairs critical cross-provider favorites routing, elevates natural-language music understanding, embeds interactive Favorites in Agent chat, and stabilizes the voice session lifecycle:
+
+1. **Provider-Aware Favorites Storage & Playback Routing**:
+   - **Root Cause of Spotify -> YouTube Music Substitution**: `addFavorite` was correlating media with `window.__islandCompanionState` even when `media.app === 'Spotify'`. If Chrome had YouTube Music open, `addFavorite` adopted the YTM video ID and marked provider as `YOUTUBE`. Furthermore, duplicate checking on title/artist alone was causing identical titles on different services to overwrite or collide.
+   - **Spotify Isolation Guarantee**: If `media.app === 'Spotify'` or `isVerifiedSpotify(track)`, companion correlation is strictly bypassed. The track stores `provider: 'spotify'`, `source: 'spotify'`, `isVerifiedSpotify: true`, and `playableUrl: 'spotify:search:...'` or exact `spotify:` URI.
+   - **Authoritative Provider Dispatch**: `playFavoriteTrack` examines the verified provider. Spotify favorites always open Spotify protocol URLs, never substituting YouTube Music. YouTube Music favorites dispatch to the browser companion or open YouTube Music watch URLs.
+   - **Multi-Provider Identity & Badges**:
+     - Unique IDs use provider prefixes (`spotify:...`, `youtube:...`, `apple:...`). Identical songs across services coexist without collision.
+     - Added source badges (`.fav-item__provider-badge`, `.inline-favs__badge`) with distinct color themes for Spotify, YouTube Music, Apple Music, and Unknown.
+     - Compact filter pills in `FavoritesMenu.jsx`: `All`, `Spotify`, `YouTube Music`, and dynamically rendered `Unknown` (only shown when unresolved entries exist).
+
+2. **Natural-Language Music Understanding Pipeline (`music-command-interpreter.js` & `favorites-resolver.js`)**:
+   - **Constraint Stripping**: Sentences like "Play city of star from my list", "Play attention from my saved songs", "Play Starboy from my favorites" now extract clean song titles (`"city of star"`, `"attention"`, `"starboy"`) and strip packaging constraints.
+   - **Fuzzy Resolution**: `resolveFavoriteTrack` resiliently matches fuzzy titles ("city of star" -> "City of Stars") using token overlap, Levenshtein distance, phonetic normalization, and language hint boosts.
+   - **Informational Query Guard**: Questions such as "Tell me about this artist", "Who sings this song?", "What genre is this?" are guarded from triggering playback and cleanly fall back to conversational LLM.
+   - **Polite Closings**: Courteous phrases ("Thanks", "No, that's all", "Bye") trigger `session_dismiss` without re-arming the microphone.
+
+3. **Interactive Inline Favorites in Agent Chat (`InlineFavorites.jsx` & `VoicePanel.jsx`)**:
+   - General list inquiries ("Show my favorite songs", "Name all of them", "Show my Spotify favorites") execute `list_favorites` or `count_favorites` without redirecting away from the conversation.
+   - Renders interactive inline cards in the assistant's speech turn with album art, title, artist, source badge, filter pills, and a direct Play button.
+   - Tracks are stored in `musicContext.setDisplayedFavorites(list)` allowing natural follow-ups ("Play the third one", "Play number 2") to resolve against `displayedFavorites[index]`.
+
+4. **Voice Session Lifecycle & Audio Ducking**:
+   - **Completed Playback Handoff**: When a playback action completes successfully and no clarification is needed, the assistant speaks the confirmation, smoothly restores ducked music, stops the session, and cleanly dismisses the transient voice panel (`island:dismiss-voice`).
+   - **Clarification Loops**: If match is ambiguous or needs user selection, the controller remains in `listening` state so the user can speak their choice naturally.
+   - **Courteous Dismissals**: Polite closings speak an acknowledgment, restore audio volume, and dismiss cleanly without re-arming the mic.
+
+### B. Automated Verification
+- **Test Suite**: `test/pass2-2-6-source-aware-music.test.cjs` covering all 12 acceptance criteria:
+  1. Spotify favorite saved with correct source metadata.
+  2. Spotify favorite reopened without YouTube Music substitution.
+  3. YouTube Music favorite plays correctly via companion.
+  4. Existing favorites survive migration idempotently.
+  5. Source filters (`All`, `Spotify`, `YouTube Music`, `Unknown`) work.
+  6. "Play city of star from my list" resolves to "City of Stars".
+  7. "Name all of them" / "Show my favorite songs" returns records via `list_favorites`.
+  8. Follow-up "Play the third one" resolves against `displayedFavorites[2]`.
+  9. Agent dismisses correctly after completed playback handoff and polite closing.
+  10. Agent remains active when clarification is pending.
+  11. Music ducking and restoration remain correct.
+  12. Non-music queries do not trigger playback.
+- **Full Project Test Suite**: 295 passed, 0 failed, 1 skipped (296 total tests across 77 suites).
+- **Production Bundle**: `npm run build` compiled cleanly in 1.94s with 0 errors.
+
+
 

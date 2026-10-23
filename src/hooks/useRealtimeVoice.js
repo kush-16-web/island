@@ -1071,10 +1071,11 @@ export function useRealtimeVoice(options = {}) {
         // Immediate deterministic or conversational response (pause, resume, info, or chat)
         const finalSpokenText = turnResult.spokenText;
         const finalTranscriptText = turnResult.transcriptText;
+        const inlineTracks = turnResult.actionResult?.tracks || null;
 
         setTranscript((prev) => [
           ...prev,
-          { role: 'assistant', text: finalTranscriptText },
+          { role: 'assistant', text: finalTranscriptText, tracks: inlineTracks },
         ]);
         historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
 
@@ -1088,7 +1089,7 @@ export function useRealtimeVoice(options = {}) {
             isIntermediate: false,
           });
 
-          // Priority 2: Transient dismissal for confirmed music playback commands
+          // Priority 2: Transient dismissal for confirmed music playback commands or polite session closings
           const action = turnResult.actionResult?.action;
           const isPlaybackHandoff =
             action === 'play_favorite' ||
@@ -1100,10 +1101,12 @@ export function useRealtimeVoice(options = {}) {
           const needsClarification = Boolean(
             turnResult.actionResult?.clarificationNeeded || turnResult.actionResult?.ambiguous
           );
+          const isSessionDismiss = action === 'session_dismiss' || Boolean(turnResult.actionResult?.isSessionEnd);
 
-          if (isPlaybackHandoff && isSuccessful && !needsClarification) {
+          if ((isPlaybackHandoff && isSuccessful && !needsClarification) || isSessionDismiss) {
             controller.stopSession();
             setStatus('idle');
+            audioCoordinator.restoreVolume({ durationMs: 600 });
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new CustomEvent('island:dismiss-voice'));
             }
