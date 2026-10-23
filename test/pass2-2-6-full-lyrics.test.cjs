@@ -118,12 +118,12 @@ test('Pass 2.2.6: Premium Full Lyrics Experience Suite', async (t) => {
     assert.ok(!flFile.includes('LivingCanvas'), 'FullLyrics must not run Living Canvas');
   });
 
-  await t.test('10. Styling Integrity: Ambient glow and two-column layout rules in styles.css', () => {
+  await t.test('10. Styling Integrity: Transparent background allowing Island ambient art to show seamlessly', () => {
     const cssFile = fs.readFileSync(path.join(__dirname, '../src/styles.css'), 'utf8');
 
     assert.ok(cssFile.includes('.full-lyrics__hero'), 'styles.css must style .full-lyrics__hero');
     assert.ok(cssFile.includes('.full-lyrics__hero-art-wrap'), 'styles.css must style .full-lyrics__hero-art-wrap');
     assert.ok(cssFile.includes('.full-lyrics__scroller'), 'styles.css must style .full-lyrics__scroller');
-    assert.ok(cssFile.includes('radial-gradient'), 'styles.css must include ambient radial-gradient backdrop');
+    assert.ok(cssFile.includes('.full-lyrics {') && cssFile.includes('background: transparent;'), 'styles.css must have transparent background for .full-lyrics');
   });
 });

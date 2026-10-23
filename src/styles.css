@@ -1564,8 +1564,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   flex-direction: column;
   justify-content: space-between;
   padding: 12px 14px 10px;
-  background: radial-gradient(circle at 18% 28%, color-mix(in srgb, var(--lyric-accent, #ff3b69) 22%, transparent), transparent 65%),
-              linear-gradient(180deg, rgba(14, 16, 22, 0.96) 0%, rgba(9, 10, 15, 0.98) 100%);
+  background: transparent;
   overflow: hidden;
 }
 
