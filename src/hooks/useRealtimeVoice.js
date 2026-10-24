@@ -15,6 +15,7 @@ import {
   isExplicitReadAloudRequest,
 } from '../lib/agent-response-contract';
 import { latencyTracker } from '../lib/latency-tracker';
+import { parseSchedulerIntent, executeSchedulerIntent } from '../lib/scheduler-commands';
 const isDev = Boolean(import.meta.env?.DEV);
 
 function logDevStage(stageNumber, stageDescription, extra = {}) {
@@ -117,13 +118,15 @@ export function useRealtimeVoice(options = {}) {
     return () => window.removeEventListener('island:ai-provider-changed', onProviderChanged);
   }, []);
 
-  // Keep live references to active media state & control actions for safe music command execution
+  // Keep live references to active media state, controls, and schedule items
   const mediaRef = useRef(options.media);
   const onControlRef = useRef(options.onControl);
+  const scheduleRef = useRef(options.schedule || []);
   useEffect(() => {
     mediaRef.current = options.media;
     onControlRef.current = options.onControl;
-  }, [options.media, options.onControl]);
+    scheduleRef.current = options.schedule || [];
+  }, [options.media, options.onControl, options.schedule]);
 
   // Audio nodes and references
   const micStreamRef = useRef(null);
@@ -562,9 +565,10 @@ export function useRealtimeVoice(options = {}) {
     return played;
   }, [controller, playAssistantSpeech, playWebSpeech]);
 
-  // Submit recorded user utterance through modular AI pipeline: STT -> Conversational LLM -> Island Action -> TTS
-  const submitUserSpeech = useCallback(async (samples, sampleRate, turnId) => {
+  // Submit recorded user utterance or direct text through modular AI pipeline: STT -> Conversational LLM -> Island Action -> TTS
+  const submitUserSpeech = useCallback(async (samplesOrText, sampleRate = 16000, turnId = Date.now()) => {
     try {
+      const isDirectText = typeof samplesOrText === 'string';
       const assistantName = getAssistantName();
       const userName = localStorage.getItem('island_user_name') || 'Friend';
 
@@ -583,7 +587,7 @@ export function useRealtimeVoice(options = {}) {
       const whisperLanguage = speechLanguage === 'auto' ? undefined : speechLanguage;
 
       // Validate provider readiness before proceeding to avoid mysterious failures
-      if (chatProvider === 'groq' || sttProvider === 'groq-whisper') {
+      if (!isDirectText && (chatProvider === 'groq' || sttProvider === 'groq-whisper')) {
         const groqStatus = await window.island?.groq?.getStatus?.();
         if (!groqStatus?.hasKey) {
           controller.handleTurnFailure(turnId, 'Groq API Key is not configured. Please paste your key in Settings and click Save Key.', {
@@ -594,72 +598,76 @@ export function useRealtimeVoice(options = {}) {
         }
       }
 
-      // Encode samples into standard 16-bit mono WAV
-      const wavBuffer = encodeWav(samples, sampleRate);
-      const audioData = arrayBufferToBase64(wavBuffer);
+      let audioData = null;
+      if (!isDirectText && samplesOrText) {
+        // Encode samples into standard 16-bit mono WAV
+        const wavBuffer = encodeWav(samplesOrText, sampleRate);
+        audioData = arrayBufferToBase64(wavBuffer);
+      }
 
-      let userText = null;
+      let userText = isDirectText ? samplesOrText.trim() : null;
       let turnResult = null;
       let geminiAudioBase64 = null;
 
-      // 1. Stage 1: Speech-to-Text (STT)
-      latencyTracker.recordStage(turnId, 'stt_start');
-      if (sttProvider === 'groq-whisper') {
-        if (!window.island?.groq?.transcribe) {
-          throw new Error('Groq Whisper speech recognition service is not available in Electron.');
-        }
+      // 1. Stage 1: Speech-to-Text (STT) if not already provided as direct text
+      if (!isDirectText) {
+        latencyTracker.recordStage(turnId, 'stt_start');
+        if (sttProvider === 'groq-whisper') {
+          if (!window.island?.groq?.transcribe) {
+            throw new Error('Groq Whisper speech recognition service is not available in Electron.');
+          }
 
-        const sttRes = await window.island.groq.transcribe({
-          audioBase64: audioData,
-          model: groqWhisperModel,
-          language: whisperLanguage,
-        });
-
-        latencyTracker.recordStage(turnId, 'stt_end', { userText: sttRes?.text });
-
-        if (!controller.isTurnActive(turnId)) return;
-
-        if (!sttRes?.ok) {
-          controller.handleTurnFailure(turnId, sttRes?.error || 'Failed to transcribe audio with Groq Whisper.', {
-            retryDelaySeconds: sttRes?.retryDelaySeconds || 0,
-            isDailyQuota: sttRes?.isDailyQuota || false,
+          const sttRes = await window.island.groq.transcribe({
+            audioBase64: audioData,
+            model: groqWhisperModel,
+            language: whisperLanguage,
           });
-          return;
+
+          latencyTracker.recordStage(turnId, 'stt_end', { userText: sttRes?.text });
+
+          if (!controller.isTurnActive(turnId)) return;
+
+          if (!sttRes?.ok) {
+            controller.handleTurnFailure(turnId, sttRes?.error || 'Failed to transcribe audio with Groq Whisper.', {
+              retryDelaySeconds: sttRes?.retryDelaySeconds || 0,
+              isDailyQuota: sttRes?.isDailyQuota || false,
+            });
+            return;
+          }
+
+          logDevStage(4, 'Raw transcription returned', {
+            provider: 'groq-whisper',
+            rawTextLength: sttRes.text?.length || 0,
+            empty: Boolean(sttRes.empty),
+          });
+          logDevStage(5, 'Detected language and confidence', {
+            languagePreference: speechLanguage,
+            whisperLanguageHint: whisperLanguage || 'auto',
+            provider: 'groq-whisper',
+          });
+
+          if (sttRes.empty || !sttRes.text?.trim()) {
+            controller.resetToListening(turnId);
+            return;
+          }
+
+          // Filter out obvious hallucination artifacts on silence or noise
+          const rawLower = sttRes.text.trim().toLowerCase();
+          const isHallucination = [
+            'thank you for watching',
+            'thanks for watching',
+            'subtitles by',
+            'amara.org',
+            'subscribe to my channel',
+          ].some((phrase) => rawLower.includes(phrase));
+
+          if (isHallucination || /^[.\s?!,;:\-_–—…]+$/.test(sttRes.text.trim())) {
+            controller.resetToListening(turnId);
+            return;
+          }
+
+          userText = sttRes.text.trim();
         }
-
-        logDevStage(4, 'Raw transcription returned', {
-          provider: 'groq-whisper',
-          rawTextLength: sttRes.text?.length || 0,
-          empty: Boolean(sttRes.empty),
-        });
-        logDevStage(5, 'Detected language and confidence', {
-          languagePreference: speechLanguage,
-          whisperLanguageHint: whisperLanguage || 'auto',
-          provider: 'groq-whisper',
-        });
-
-        if (sttRes.empty || !sttRes.text?.trim()) {
-          // Silence or no speech detected; reset turn cleanly to listening readiness
-          controller.resetToListening(turnId);
-          return;
-        }
-
-        // Filter out obvious hallucination artifacts on silence or noise
-        const rawLower = sttRes.text.trim().toLowerCase();
-        const isHallucination = [
-          'thank you for watching',
-          'thanks for watching',
-          'subtitles by',
-          'amara.org',
-          'subscribe to my channel',
-        ].some((phrase) => rawLower.includes(phrase));
-
-        if (isHallucination || /^[.\s?!,;:\-_–—…]+$/.test(sttRes.text.trim())) {
-          controller.resetToListening(turnId);
-          return;
-        }
-
-        userText = sttRes.text.trim();
       }
 
       // Add user speech entry to transcript
@@ -674,10 +682,29 @@ export function useRealtimeVoice(options = {}) {
         text: displayedUserText,
       });
 
-      // 2. Direct Local Music Command Interpretation (PASS 2 - PART B)
-      // Checks local-first command grammar to completely eliminate unnecessary Groq chat calls
-      let localMusicResult = null;
+      // 2. Direct Natural-Language Scheduler Commands (PASS 2.2.8)
+      // Resolves countdowns, alarms, status, cancellations locally with 0ms delay and zero LLM quota
+      let schedulerActionResult = null;
       if (userText) {
+        const schedulerParsed = parseSchedulerIntent(userText, {
+          schedule: scheduleRef.current || [],
+          now: new Date(),
+        });
+        if (schedulerParsed.isScheduler) {
+          latencyTracker.recordStage(turnId, 'intent_start');
+          const schedRes = await executeSchedulerIntent(schedulerParsed, {
+            scheduler: window.island?.scheduler,
+            schedule: scheduleRef.current || [],
+            now: Date.now(),
+          });
+          latencyTracker.recordStage(turnId, 'intent_end', { isLocal: true });
+          schedulerActionResult = schedRes;
+        }
+      }
+
+      // 3. Direct Local Music Command Interpretation (PASS 2 - PART B)
+      let localMusicResult = null;
+      if (!schedulerActionResult && userText) {
         latencyTracker.recordStage(turnId, 'intent_start');
         const localEval = interpretLocalMusicCommand(userText, {
           media: mediaRef.current || { active: false },
@@ -691,10 +718,36 @@ export function useRealtimeVoice(options = {}) {
       }
 
       logDevStage(7, 'Selected intent or AI tool', {
-        intent: localMusicResult ? localMusicResult.action : 'conversational_llm',
+        intent: schedulerActionResult
+          ? schedulerActionResult.action
+          : localMusicResult
+          ? localMusicResult.action
+          : 'conversational_llm',
       });
 
-      if (localMusicResult) {
+      if (schedulerActionResult) {
+        latencyTracker.recordStage(turnId, 'tool_start');
+        const display = schedulerActionResult.displayText || schedulerActionResult.spokenConfirmation;
+        const agentResponse = createAgentResponse({
+          displayText: display,
+          spokenText: schedulerActionResult.spokenConfirmation,
+          toolResults: null,
+          responseStatus: schedulerActionResult.clarificationNeeded
+            ? 'clarification'
+            : schedulerActionResult.ok === false
+            ? 'failure'
+            : 'success',
+        });
+        latencyTracker.recordStage(turnId, 'tool_end');
+
+        turnResult = {
+          executed: true,
+          actionResult: schedulerActionResult,
+          spokenText: agentResponse.spokenText,
+          transcriptText: agentResponse.displayText,
+          agentResponse,
+        };
+      } else if (localMusicResult) {
         latencyTracker.recordStage(turnId, 'tool_start');
         // Live Weather query: fetch real-time forecast asynchronously without paid API keys
         if (localMusicResult.isWeather) {
@@ -1411,6 +1464,14 @@ export function useRealtimeVoice(options = {}) {
     setErrorMessage(null);
   }, [controller]);
 
+  // Direct text command submission through unified AI agent pipeline
+  const submitText = useCallback(async (text) => {
+    if (!text || typeof text !== 'string' || !text.trim()) return null;
+    const turnId = Date.now();
+    controller.startSession();
+    return submitUserSpeech(text.trim(), 16000, turnId);
+  }, [controller, submitUserSpeech]);
+
   // Clean up on unmount
   useEffect(() => {
     return cleanup;
@@ -1431,6 +1492,7 @@ export function useRealtimeVoice(options = {}) {
     startSession,
     stopSession,
     endSession,
+    submitText,
     interrupt,
     toggleMute,
     dismissCooldown,

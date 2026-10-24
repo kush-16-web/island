@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Icon } from './icons';
 import PrecisionLyricLine from './PrecisionLyricLine';
+import { getTrackLyricsPresentation } from '../lib/lyrics-style-engine';
 
 const LINE_HEIGHT = 28; // Standard vertical line pitch in pixels
 const VIEWPORT_HEIGHT = 112; // 4 lines visible in continuous reel
@@ -18,6 +20,8 @@ export default function MiniLyrics({
   playing = false,
   accentColor,
   onClick,
+  lyricsStyle = 'classic',
+  trackSeed = '',
 }) {
   if (loading) {
     return (
@@ -47,6 +51,11 @@ export default function MiniLyrics({
   const lines = lyricsData.lines || [];
   const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lines.length;
   const safeActiveIndex = hasActiveLine ? activeLineIndex : 0;
+
+  const lyricsPresentation = useMemo(
+    () => getTrackLyricsPresentation(lines, trackSeed, lyricsStyle),
+    [lines, trackSeed, lyricsStyle]
+  );
 
   // Center active line in the vertical viewport (or preview line 0 during intro)
   const targetY = hasActiveLine
@@ -84,6 +93,7 @@ export default function MiniLyrics({
                   playing={playing}
                   className={lineClass}
                   style={{ height: LINE_HEIGHT }}
+                  presentation={lyricsPresentation[idx]}
                 />
               );
             }

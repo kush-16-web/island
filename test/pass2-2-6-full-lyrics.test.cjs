@@ -104,9 +104,10 @@ test('Pass 2.2.6: Premium Full Lyrics Experience Suite', async (t) => {
     // Unsynchronized notice for plain lyrics
     assert.ok(flFile.includes('full-lyrics__unsynced-notice'), 'FullLyrics must display unsynced lyrics notice');
 
-    // 5-second skip forward/backward buttons
-    assert.ok(flFile.includes('Icon.Replay5'), 'FullLyrics must include Replay5 rewind button');
-    assert.ok(flFile.includes('Icon.Forward5'), 'FullLyrics must include Forward5 fast-forward button');
+    // Approved six-button toolbar playback controls
+    assert.ok(flFile.includes("onControl('previous')"), 'FullLyrics must include previous track control');
+    assert.ok(flFile.includes("onControl('playpause')"), 'FullLyrics must include play/pause control');
+    assert.ok(flFile.includes("onControl('next')"), 'FullLyrics must include next track control');
     assert.ok(!flFile.includes('<span className="dot" />'), 'FullLyrics must not have dot in status pill');
   });
 

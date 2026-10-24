@@ -13,6 +13,7 @@ import VideoPiP from './VideoPiP';
 import FavoritesMenu from './FavoritesMenu';
 import { isTrackFavorite, addFavorite, removeFavorite, healFavoriteWithExactId } from '../lib/favorites';
 import { playFavoriteTrack, getFriendlyProviderName } from '../lib/music-actions';
+import { getLyricsStyle, setLyricsStyle, LYRICS_STYLES } from '../lib/lyrics-style-engine';
 
 // Living Canvas fine-art mode is dormant during Pass 2.2.6 while building toward Cinema Mode
 const ENABLE_CANVAS_ART = false;
@@ -133,6 +134,68 @@ export default function NowPlaying({
   const handleSetViewMode = (mode) => {
     setViewMode(mode);
     onLyricsViewChange?.(mode === 'player' ? false : mode);
+  };
+
+  const npContainerRef = useRef(null);
+  const playerCoverRef = useRef(null);
+  const popoverRef = useRef(null);
+  const [isSourceCoverHidden, setIsSourceCoverHidden] = useState(false);
+  const [travelDelta, setTravelDelta] = useState({ x: -153, y: 2, scale: 64 / 126 });
+
+  // Lyrics Appearance State (classic, kinetic)
+  const [lyricsStyle, setLyricsStyleState] = useState(getLyricsStyle);
+  const [showLyricsStylePopover, setShowLyricsStylePopover] = useState(false);
+
+  useEffect(() => {
+    if (!showLyricsStylePopover) return;
+    const handleOutsideClick = (e) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+        setShowLyricsStylePopover(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowLyricsStylePopover(false);
+      }
+    };
+    window.addEventListener('pointerdown', handleOutsideClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handleOutsideClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showLyricsStylePopover]);
+
+  const handleSelectLyricsStyle = (newStyle) => {
+    setLyricsStyleState(newStyle);
+    setLyricsStyle(newStyle);
+    setShowLyricsStylePopover(false);
+  };
+
+  const openFullLyricsWithGlide = () => {
+    let delta = { x: -153, y: 2, scale: 64 / 126 };
+    if (playerCoverRef.current && npContainerRef.current) {
+      const p = playerCoverRef.current.getBoundingClientRect();
+      const c = npContainerRef.current.getBoundingClientRect();
+      if (p.width > 0 && c.width > 0) {
+        // Measure source position relative to common container
+        const srcLeft = p.left - c.left;
+        const srcTop = p.top - c.top;
+        // In FullLyrics, top navbar is hidden so FullLyrics starts at container top
+        // Destination artwork is 126px wide, centered in container
+        const destLeft = (c.width - 126) / 2;
+        // Destination top in FullLyrics: 8px padding + 26px top-bar + 4px margin = 38px
+        const destTop = 38;
+        delta = {
+          x: Math.round(srcLeft - destLeft),
+          y: Math.round(srcTop - destTop),
+          scale: Math.max(0.2, Math.min(1, p.width / 126)),
+        };
+      }
+    }
+    setTravelDelta(delta);
+    setIsSourceCoverHidden(true);
+    handleSetViewMode('lyrics');
   };
 
   // Unified favorite track state
@@ -469,192 +532,249 @@ export default function NowPlaying({
     );
   }
 
-  // Shared Music Player & Full Lyrics Views with FLIP Layout Transitions
+  // Shared Music Player & Full Lyrics Views with FLIP Layout Transitions & Position Glider
   return (
-    <LayoutGroup id="nowplaying-lyrics-group">
-      <AnimatePresence mode="popLayout" initial={false}>
-        {viewMode === 'lyrics' ? (
-          <motion.div
-            key="lyrics-view"
-            className="np-view-wrapper np-view-wrapper--lyrics"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.28 }}
-          >
-            <FullLyrics
-              media={media}
-              displayArt={displayArt}
-              lyricsData={lyricsData}
-              loading={loading}
-              activeLineIndex={activeLineIndex}
-              currentPositionMs={displayPosition}
-              onControl={onControl}
-              onClose={() => handleSetViewMode(isVideoSource ? 'cinema' : 'player')}
-              accentColor={accentColor}
-              isFavorite={isFavorite}
-              toggleFavorite={toggleFavorite}
-              onSeek={(posSec) => {
-                setOptimisticSeek({ posMs: posSec * 1000, timestamp: Date.now() });
-                island?.media?.seek?.(posSec);
-              }}
-            />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="player-view"
-            className="np-view-wrapper np-view-wrapper--player"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.28 }}
-          >
-            <div className="np">
-              <div className="np__main">
-                {/* Left Column: Cover + Title + Artist */}
-                <div className="np__left">
-                  <motion.div
-                    layoutId="island-album-art-wrap"
-                    className="np__cover-wrap"
-                    transition={sharedLyricsTransition}
-                  >
-                    {displayArt ? (
-                      <motion.img
-                        layoutId="island-album-art-img"
-                        src={displayArt}
-                        alt=""
-                        className="np__cover-img"
-                        transition={sharedLyricsTransition}
-                      />
-                    ) : (
-                      <Art src={null} seed={seed} size={64} radius={12} />
-                    )}
-                    <button
-                      type="button"
-                      className={`heart-btn heart-btn--overlay${isFavorite ? ' is-favorite' : ''}`}
-                      onClick={toggleFavorite}
-                      aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                      style={{ '--heart-color': accentColor || 'var(--music-accent, #ff3b69)' }}
-                      title={isFavorite ? 'Favorited' : 'Favorite track'}
-                    >
-                      {isFavorite ? (
-                        <Icon.HeartSolid width={13} height={13} />
-                      ) : (
-                        <Icon.Heart width={13} height={13} />
-                      )}
-                    </button>
-                  </motion.div>
-                  <motion.div
-                    layoutId="island-track-meta"
-                    className="np__meta"
-                    transition={sharedLyricsTransition}
-                  >
-                    <MarqueeText text={media.title} className="np__title" />
-                    <MarqueeText text={media.artist || 'Unknown artist'} className="np__artist" />
-                  </motion.div>
-                </div>
-
-                {/* Right Column: Mini Lyrics + Tab pills at bottom-right */}
-                <div className="np__right">
-                  <MiniLyrics
-                    lyricsData={lyricsData}
-                    loading={loading}
-                    activeLineIndex={activeLineIndex}
-                    currentPositionMs={displayPosition}
-                    playing={playing}
-                    accentColor={accentColor}
-                    onClick={() => handleSetViewMode('lyrics')}
-                  />
-
-                  <div className="np__right-tabs np__right-tabs--bottom">
-                    <button
-                      type="button"
-                      className={`np__tab-pill${viewMode === 'lyrics' ? ' is-active' : ''}`}
-                      onClick={() => handleSetViewMode('lyrics')}
-                      title="Open Synchronized Lyrics"
-                    >
-                      <Icon.Music width={11} height={11} />
-                      <span>Lyrics</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`np__tab-pill${viewMode === 'cinema' ? ' is-active' : ''}`}
+    <div
+      ref={npContainerRef}
+      className="np-outer-wrapper"
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+    >
+      <LayoutGroup id="nowplaying-lyrics-group">
+        <AnimatePresence mode="popLayout" initial={false}>
+          {viewMode === 'lyrics' ? (
+            <motion.div
+              key="lyrics-view"
+              className="np-view-wrapper np-view-wrapper--lyrics"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.28 }}
+            >
+              <FullLyrics
+                media={media}
+                displayArt={displayArt}
+                lyricsData={lyricsData}
+                loading={loading}
+                activeLineIndex={activeLineIndex}
+                currentPositionMs={displayPosition}
+                onControl={onControl}
+                onClose={() => {
+                  setIsSourceCoverHidden(false);
+                  handleSetViewMode(isVideoSource ? 'cinema' : 'player');
+                }}
+                accentColor={accentColor}
+                isFavorite={isFavorite}
+                toggleFavorite={toggleFavorite}
+                travelDelta={travelDelta}
+                lyricsStyle={lyricsStyle}
+                onSeek={(posSec) => {
+                  setOptimisticSeek({ posMs: posSec * 1000, timestamp: Date.now() });
+                  island?.media?.seek?.(posSec);
+                }}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="player-view"
+              className="np-view-wrapper np-view-wrapper--player"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.28 }}
+            >
+              <div className="np" ref={npContainerRef}>
+                <div className="np__main">
+                  {/* Left Column: Cover + Title + Artist */}
+                  <div className="np__left">
+                    <motion.div
+                      ref={playerCoverRef}
+                      layoutId="island-album-art-wrap"
+                      className="np__cover-wrap np__cover-wrap--clickable"
+                      transition={sharedLyricsTransition}
                       onClick={() => handleSetViewMode('cinema')}
-                      title="Switch to Fullscreen Cinema PiP"
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Open Cinema Mode"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSetViewMode('cinema');
+                        }
+                      }}
+                      style={{
+                        opacity: isSourceCoverHidden ? 0 : 1,
+                      }}
                     >
-                      <Icon.Video width={11} height={11} />
-                      <span>Cinema</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`np__tab-pill${viewMode === 'favorites' ? ' is-active' : ''}`}
-                      onClick={() => handleSetViewMode('favorites')}
-                      title="Open Favorites Menu"
-                    >
-                      <Icon.Heart width={11} height={11} filled={isFavorite} />
-                      <span>Favorites</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <motion.div
-                layoutId="island-progress-wrap"
-                className="np__bottom"
-                transition={sharedLyricsTransition}
-              >
-                <div className="np__progress">
-                  <span className="np__time-text">{formatTrackTime(displayPosition)}</span>
-                  <div
-                    ref={barRef}
-                    className={`np__bar${isScrubbing ? ' is-scrubbing' : ''}`}
-                    onPointerDown={handlePointerDown}
-                    role="slider"
-                    aria-label="Seek track position"
-                    aria-valuemin={0}
-                    aria-valuemax={media.durationMs || 100}
-                    aria-valuenow={displayPosition}
-                    tabIndex={0}
-                  >
-                    {hasDuration && (
-                      <div
-                        className="np__fill"
-                        style={{
-                          width: `${pct}%`,
-                          background: accentColor || 'var(--accent)',
-                        }}
+                      {displayArt ? (
+                        <motion.img
+                          layoutId="island-album-art-img"
+                          src={displayArt}
+                          alt=""
+                          className="np__cover-img"
+                          transition={sharedLyricsTransition}
+                        />
+                      ) : (
+                        <Art src={null} seed={seed} size={64} radius={12} />
+                      )}
+                      <button
+                        type="button"
+                        className={`heart-btn heart-btn--overlay${isFavorite ? ' is-favorite' : ''}`}
+                        onClick={toggleFavorite}
+                        aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        style={{ '--heart-color': accentColor || 'var(--music-accent, #ff3b69)' }}
+                        title={isFavorite ? 'Favorited' : 'Favorite track'}
                       >
-                        <div className="np__thumb" />
-                      </div>
-                    )}
+                        {isFavorite ? (
+                          <Icon.HeartSolid width={13} height={13} />
+                        ) : (
+                          <Icon.Heart width={13} height={13} />
+                        )}
+                      </button>
+                    </motion.div>
+                    <motion.div
+                      layoutId="island-track-meta"
+                      className="np__meta"
+                      transition={sharedLyricsTransition}
+                    >
+                      <MarqueeText text={media.title} className="np__title" />
+                      <MarqueeText text={media.artist || 'Unknown artist'} className="np__artist" />
+                    </motion.div>
                   </div>
-                  <span className="np__time-text">
-                    {hasDuration ? formatTrackTime(media.durationMs) : 'Live'}
-                  </span>
+
+                  {/* Right Column: Mini Lyrics + Tab pills at bottom-right */}
+                  <div className="np__right">
+                    <MiniLyrics
+                      lyricsData={lyricsData}
+                      loading={loading}
+                      activeLineIndex={activeLineIndex}
+                      currentPositionMs={displayPosition}
+                      playing={playing}
+                      accentColor={accentColor}
+                      onClick={openFullLyricsWithGlide}
+                      lyricsStyle={lyricsStyle}
+                      trackSeed={seed}
+                    />
+
+                    <div className="np__right-tabs np__right-tabs--bottom">
+                      <div className="np__lyrics-popover-anchor" ref={popoverRef}>
+                        <button
+                          type="button"
+                          className={`np__tab-pill${showLyricsStylePopover ? ' is-active' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowLyricsStylePopover((prev) => !prev);
+                          }}
+                          title="Choose lyrics appearance"
+                          aria-label="Choose lyrics appearance"
+                        >
+                          <Icon.Music width={11} height={11} />
+                          <span>Lyrics</span>
+                        </button>
+                        {showLyricsStylePopover && (
+                          <div
+                            className="np__lyrics-popover"
+                            role="dialog"
+                            aria-label="Lyrics appearance selector"
+                            style={{
+                              '--popover-accent': accentColor || 'var(--accent, #ff3b69)',
+                            }}
+                          >
+                            <div className="np__lyrics-popover-header">Lyrics</div>
+                            <button
+                              type="button"
+                              className={`np__lyrics-popover-option${lyricsStyle === LYRICS_STYLES.CLASSIC ? ' is-active' : ''}`}
+                              onClick={() => handleSelectLyricsStyle(LYRICS_STYLES.CLASSIC)}
+                            >
+                              <div className="np__lyrics-option-info">
+                                <span className="np__lyrics-option-title">Classic</span>
+                                <span className="np__lyrics-option-desc">Original lyrics</span>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              className={`np__lyrics-popover-option${lyricsStyle === LYRICS_STYLES.KINETIC ? ' is-active' : ''}`}
+                              onClick={() => handleSelectLyricsStyle(LYRICS_STYLES.KINETIC)}
+                            >
+                              <div className="np__lyrics-option-info">
+                                <span className="np__lyrics-option-title">Kinetic</span>
+                                <span className="np__lyrics-option-desc">Meaning-aware typography</span>
+                              </div>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className={`np__tab-pill${viewMode === 'favorites' ? ' is-active' : ''}`}
+                        onClick={() => handleSetViewMode('favorites')}
+                        title="Open Favorites Menu"
+                      >
+                        <Icon.Library width={11} height={11} />
+                        <span>Favorites</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="np__controls">
-                  <button type="button" className="icon-btn" aria-label="Previous track" onClick={() => onControl('previous')} title="Previous">
-                    <Icon.Prev width={18} height={18} />
-                  </button>
-                  <button type="button" className="icon-btn icon-btn--skip" aria-label="Rewind 5 seconds" onClick={() => handleSkip(-5)} title="Rewind 5s">
-                    <Icon.Replay5 width={20} height={20} />
-                  </button>
-                  <button type="button" className="play-btn" aria-label={playing ? 'Pause' : 'Play'} onClick={() => onControl('playpause')}>
-                    {playing ? <Icon.Pause width={20} height={20} /> : <Icon.Play width={20} height={20} />}
-                  </button>
-                  <button type="button" className="icon-btn icon-btn--skip" aria-label="Forward 5 seconds" onClick={() => handleSkip(5)} title="Forward 5s">
-                    <Icon.Forward5 width={20} height={20} />
-                  </button>
-                  <button type="button" className="icon-btn" aria-label="Next track" onClick={() => onControl('next')} title="Next">
-                    <Icon.Next width={18} height={18} />
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </LayoutGroup>
+                <motion.div
+                  layoutId="island-progress-wrap"
+                  className="np__bottom"
+                  transition={sharedLyricsTransition}
+                >
+                  <div className="np__progress">
+                    <span className="np__time-text">{formatTrackTime(displayPosition)}</span>
+                    <div
+                      ref={barRef}
+                      className={`np__bar${isScrubbing ? ' is-scrubbing' : ''}`}
+                      onPointerDown={handlePointerDown}
+                      role="slider"
+                      aria-label="Seek track position"
+                      aria-valuemin={0}
+                      aria-valuemax={media.durationMs || 100}
+                      aria-valuenow={displayPosition}
+                      tabIndex={0}
+                    >
+                      {hasDuration && (
+                        <div
+                          className="np__fill"
+                          style={{
+                            width: `${pct}%`,
+                            background: accentColor || 'var(--accent)',
+                          }}
+                        >
+                          <div className="np__thumb" />
+                        </div>
+                      )}
+                    </div>
+                    <span className="np__time-text">
+                      {hasDuration ? formatTrackTime(media.durationMs) : 'Live'}
+                    </span>
+                  </div>
+
+                  <div className="np__controls">
+                    <button type="button" className="icon-btn" aria-label="Previous track" onClick={() => onControl('previous')} title="Previous">
+                      <Icon.Prev width={18} height={18} />
+                    </button>
+                    <button type="button" className="icon-btn icon-btn--skip" aria-label="Rewind 5 seconds" onClick={() => handleSkip(-5)} title="Rewind 5s">
+                      <Icon.Replay5 width={20} height={20} />
+                    </button>
+                    <button type="button" className="play-btn" aria-label={playing ? 'Pause' : 'Play'} onClick={() => onControl('playpause')}>
+                      {playing ? <Icon.Pause width={20} height={20} /> : <Icon.Play width={20} height={20} />}
+                    </button>
+                    <button type="button" className="icon-btn icon-btn--skip" aria-label="Forward 5 seconds" onClick={() => handleSkip(5)} title="Forward 5s">
+                      <Icon.Forward5 width={20} height={20} />
+                    </button>
+                    <button type="button" className="icon-btn" aria-label="Next track" onClick={() => onControl('next')} title="Next">
+                      <Icon.Next width={18} height={18} />
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </LayoutGroup>
+
+    </div>
   );
 }

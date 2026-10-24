@@ -49,6 +49,12 @@ export function validateIntentSchema(raw) {
     intent: {
       action: sanitizedAction,
       query: sanitizedQuery || undefined,
+      durationMs: Number.isFinite(raw.durationMs) ? raw.durationMs : undefined,
+      minutes: Number.isFinite(raw.minutes) ? raw.minutes : undefined,
+      seconds: Number.isFinite(raw.seconds) ? raw.seconds : undefined,
+      time: typeof raw.time === 'string' ? raw.time.trim() : undefined,
+      label: typeof raw.label === 'string' ? raw.label.trim() : undefined,
+      target: typeof raw.target === 'string' ? raw.target.trim() : undefined,
     },
   };
 }

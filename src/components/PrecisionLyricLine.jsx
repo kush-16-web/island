@@ -17,6 +17,9 @@ export { calculateLyricScrollOffset };
  *   without reverse-scroll animations.
  * - Pause & Resume Stability: Freezes position on pause; re-anchors wall-clock on resume.
  * - Reduced Motion: Bypasses translation when prefers-reduced-motion is enabled.
+ * - Subtle Curved Perspective: In Kinetic mode, occasional horizontal lines glide over a shallow
+ *   curved display surface (lift + scale at center) with pre-measured word metrics.
+ * - Meaning-Aware Typography: In Kinetic mode, key emotional words receive targeted typography effects.
  */
 export default function PrecisionLyricLine({
   line,
@@ -24,6 +27,7 @@ export default function PrecisionLyricLine({
   playing = false,
   className = '',
   style = {},
+  presentation = null,
 }) {
   const containerRef = useRef(null);
   const contentRef = useRef(null);
@@ -41,6 +45,7 @@ export default function PrecisionLyricLine({
   const rafIdRef = useRef(null);
   const activeLineIdRef = useRef(line?.id || '');
   const wasPlayingRef = useRef(playing);
+  const wordMetricsRef = useRef([]);
 
   // Measure overflow dimensions
   useEffect(() => {
@@ -53,6 +58,17 @@ export default function PrecisionLyricLine({
       setOverflow(isOverflowing);
       const newMax = isOverflowing ? tWidth - cWidth + 10 : 0;
       setMaxScroll(newMax);
+
+      // Pre-measure word metrics for shallow curved horizontal scrolling (Kinetic mode, rare eligible lines only)
+      if (presentation?.style === 'kinetic' && presentation?.isCurved && !presentation?.kineticEffect && isOverflowing) {
+        const wordEls = contentRef.current.querySelectorAll('.p-curved-word');
+        wordMetricsRef.current = Array.from(wordEls).map((el) => ({
+          el,
+          mid: el.offsetLeft + el.offsetWidth / 2,
+        }));
+      } else {
+        wordMetricsRef.current = [];
+      }
 
       // Recalculate immediate offset for new layout
       if (newMax > 0 && line) {
@@ -69,9 +85,9 @@ export default function PrecisionLyricLine({
     const ro = new ResizeObserver(checkOverflow);
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [line?.text, line?.id]);
+  }, [line?.text, line?.id, presentation?.style, presentation?.isCurved, presentation?.kineticEffect]);
 
-  // Apply transform and dynamic edge gradient masks directly to DOM
+  // Apply transform, dynamic edge gradient masks, and subtle curved perspective
   const applyOffset = (offset, max) => {
     if (!contentRef.current || !containerRef.current) return;
 
@@ -80,15 +96,12 @@ export default function PrecisionLyricLine({
     // Dynamic edge gradient mask to prevent clipping
     if (max > 0) {
       if (offset <= 1) {
-        // Start of line: soft fade on right edge only
         containerRef.current.style.maskImage = 'linear-gradient(to right, black calc(100% - 16px), transparent 100%)';
         containerRef.current.style.webkitMaskImage = 'linear-gradient(to right, black calc(100% - 16px), transparent 100%)';
       } else if (offset >= max - 2) {
-        // End of line: soft fade on left edge only
         containerRef.current.style.maskImage = 'linear-gradient(to right, transparent 0%, black 16px, black 100%)';
         containerRef.current.style.webkitMaskImage = 'linear-gradient(to right, transparent 0%, black 16px, black 100%)';
       } else {
-        // Middle of line: soft fade on both edges
         containerRef.current.style.maskImage = 'linear-gradient(to right, transparent 0%, black 16px, black calc(100% - 16px), transparent 100%)';
         containerRef.current.style.webkitMaskImage = 'linear-gradient(to right, transparent 0%, black 16px, black calc(100% - 16px), transparent 100%)';
       }
@@ -96,64 +109,73 @@ export default function PrecisionLyricLine({
       containerRef.current.style.maskImage = 'none';
       containerRef.current.style.webkitMaskImage = 'none';
     }
+
+    // Subtle curved perspective applied strictly to rare horizontal scrolling in Kinetic mode without word effects
+    if (presentation?.style === 'kinetic' && presentation?.isCurved && !presentation?.kineticEffect && max > 0 && wordMetricsRef.current.length > 0) {
+      const cWidth = containerRef.current.clientWidth;
+      const center = cWidth / 2;
+      for (let i = 0; i < wordMetricsRef.current.length; i++) {
+        const item = wordMetricsRef.current[i];
+        const vpX = item.mid - offset;
+        const d = (vpX - center) / center;
+        if (Math.abs(d) <= 1.25) {
+          const t = Math.max(0, 1 - Math.min(1, d * d));
+          const lift = (6 * t).toFixed(2);
+          const scale = (0.96 + 0.10 * t).toFixed(3);
+          const opacity = (0.72 + 0.28 * t).toFixed(2);
+          item.el.style.transform = `translateY(-${lift}px) scale(${scale})`;
+          item.el.style.opacity = opacity;
+        } else {
+          item.el.style.opacity = '0.5';
+          item.el.style.transform = 'translateY(0) scale(0.96)';
+        }
+      }
+    }
   };
 
-  // Synchronize player updates and detect seeks / line transitions
+  // Immediate seek and line-change responsiveness
   useEffect(() => {
-    if (!line) return;
+    const isNewLine = activeLineIdRef.current !== (line?.id || '');
+    if (isNewLine) {
+      activeLineIdRef.current = line?.id || '';
+      currentOffsetRef.current = 0;
+      clockAnchorRef.current = {
+        timeMs: currentPositionMs,
+        perfNow: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+      };
+      if (line && maxScroll > 0) {
+        const instantOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll, { subpixel: true });
+        currentOffsetRef.current = instantOffset;
+        applyOffset(instantOffset, maxScroll);
+      } else {
+        applyOffset(0, 0);
+      }
+      return;
+    }
 
     const perfNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const expectedMs = clockAnchorRef.current.timeMs + (perfNow - clockAnchorRef.current.perfNow);
+    const drift = Math.abs(currentPositionMs - expectedMs);
 
-    // 1. Line changed: reset cleanly to new line's starting position
-    if (activeLineIdRef.current !== (line.id || '')) {
-      activeLineIdRef.current = line.id || '';
+    // Large drift (>280ms) indicates backward/forward user seek
+    if (drift > 280) {
       clockAnchorRef.current = {
         timeMs: currentPositionMs,
         perfNow,
       };
-      const initialOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll, { subpixel: true });
-      currentOffsetRef.current = initialOffset;
-      applyOffset(initialOffset, maxScroll);
-      return;
+      if (line && maxScroll > 0) {
+        const seekOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll, { subpixel: true });
+        currentOffsetRef.current = seekOffset;
+        applyOffset(seekOffset, maxScroll);
+      }
     }
-
-    // 2. Compute drift against current local interpolated clock
-    const localEstimated = clockAnchorRef.current.timeMs + (perfNow - clockAnchorRef.current.perfNow);
-    const delta = currentPositionMs - localEstimated;
-
-    // 3. User seek or large timing correction (>300ms): immediately re-anchor
-    if (Math.abs(delta) > 300) {
-      clockAnchorRef.current = {
-        timeMs: currentPositionMs,
-        perfNow,
-      };
-      const seekOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll, { subpixel: true });
-      currentOffsetRef.current = seekOffset;
-      applyOffset(seekOffset, maxScroll);
-      return;
-    }
-
-    // 4. Normal minor forward drift: gently update clock anchor forward without backward pops
-    if (delta > 0) {
-      clockAnchorRef.current = {
-        timeMs: Math.max(localEstimated, currentPositionMs),
-        perfNow,
-      };
-    }
-  }, [line?.id, currentPositionMs, maxScroll]);
-
-  // Handle pause & resume transitions
-  useEffect(() => {
-    const perfNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     if (playing && !wasPlayingRef.current) {
-      // Resumed from pause: re-anchor perfNow so paused duration is not added to song time
       clockAnchorRef.current = {
         timeMs: currentPositionMs,
         perfNow,
       };
     } else if (!playing && wasPlayingRef.current) {
-      // Paused: freeze offset immediately
       if (line && maxScroll > 0) {
         const frozenOffset = calculateLyricScrollOffset(currentPositionMs, line, maxScroll, { subpixel: true });
         currentOffsetRef.current = frozenOffset;
@@ -165,7 +187,6 @@ export default function PrecisionLyricLine({
 
   // High-performance RAF animation loop running at display refresh rate
   useEffect(() => {
-    // Respect prefers-reduced-motion
     if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
       if (contentRef.current) contentRef.current.style.transform = 'none';
       return;
@@ -188,8 +209,6 @@ export default function PrecisionLyricLine({
       const currentMs = clockAnchorRef.current.timeMs + (perfNow - clockAnchorRef.current.perfNow);
 
       const targetOffset = calculateLyricScrollOffset(currentMs, line, maxScroll, { subpixel: true });
-
-      // Monotonic forward guarantee: never reverse direction during normal forward playback
       const nextOffset = Math.max(currentOffsetRef.current, targetOffset);
 
       if (Math.abs(nextOffset - currentOffsetRef.current) >= 0.01) {
@@ -209,20 +228,55 @@ export default function PrecisionLyricLine({
         rafIdRef.current = null;
       }
     };
-  }, [playing, overflow, maxScroll, line?.id, line?.timeMs, line?.endMs]);
+  }, [playing, overflow, maxScroll, line?.id, line?.timeMs, line?.endMs, presentation?.style]);
+
+  const rawText = line?.text || '';
 
   return (
     <div
       ref={containerRef}
       className={`precision-lyric-container ${className}`}
       style={style}
-      title={line?.text || undefined}
+      title={rawText || undefined}
     >
       <span
         ref={contentRef}
         className="precision-lyric-content"
       >
-        {line?.text || ''}
+        {presentation?.style === 'kinetic' && presentation?.kineticEffect && presentation.targetWord ? (
+          (() => {
+            const raw = rawText;
+            const start = presentation.startIndex != null ? presentation.startIndex : raw.indexOf(presentation.targetWord);
+            const end = presentation.endIndex != null ? presentation.endIndex : (start >= 0 ? start + presentation.targetWord.length : -1);
+            if (start >= 0 && end > start) {
+              const before = raw.slice(0, start);
+              const target = raw.slice(start, end);
+              const after = raw.slice(end);
+              return (
+                <>
+                  {before}
+                  <span className={`k-fx-${presentation.kineticEffect}`}>{target}</span>
+                  {after}
+                </>
+              );
+            }
+            return raw;
+          })()
+        ) : presentation?.style === 'kinetic' && presentation?.isCurved && overflow ? (
+          // Rare shallow curved horizontal perspective (only eligible overflowing lines without word effect)
+          rawText.split(/(\s+)/).map((segment, sIdx) => {
+            if (/^\s+$/.test(segment)) {
+              return segment;
+            }
+            return (
+              <span key={sIdx} className="p-curved-word">
+                {segment}
+              </span>
+            );
+          })
+        ) : (
+          rawText
+        )}
       </span>
     </div>
   );

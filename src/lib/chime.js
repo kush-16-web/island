@@ -38,8 +38,11 @@ export function startChime() {
       if (plays >= 40) stopChime();
       else phrase();
     }, 2200);
-  } catch {
-    // Audio can fail on machines with no output device; the visual alert still works.
+    return { ok: true };
+  } catch (err) {
+    // Audio can fail on machines with no output device or suspended context; return failure
+    console.warn('[Chime] Audio chime failed to start:', err);
+    return { ok: false, error: err?.message || 'Audio output device unavailable' };
   }
 }
 

@@ -168,7 +168,7 @@ const measureTextWidth = (text, font = '500 12.5px Geist, -apple-system, sans-se
 
 export default function Island() {
   const { state: s, actions } = useIsland();
-  const voice = useRealtimeVoice({ media: s.media, onControl: actions.mediaControl });
+  const voice = useRealtimeVoice({ media: s.media, onControl: actions.mediaControl, schedule: s.schedule });
   const now = useNow(1000);
   const [hubOpen, setHubOpen] = useState(false);
   const [tab, setTab] = useState(s.media?.active ? 'playing' : 'launcher');
@@ -219,7 +219,7 @@ export default function Island() {
         if (isLyricsFull === 'favorites') return 380;
         if (!media.active) return 240;
         if (isLyricsFull === 'cinema') return 315;
-        if (isLyricsFull === 'lyrics' || isLyricsFull === true) return 340;
+        if (isLyricsFull === 'lyrics' || isLyricsFull === true) return 390;
         return 276;
       case 'clock': {
         const count = schedule.length;
@@ -422,8 +422,14 @@ export default function Island() {
 
   const ringing = Boolean(ring);
   useEffect(() => {
-    if (ringing) startChime();
-    else stopChime();
+    if (ringing) {
+      const res = startChime();
+      if (res && res.ok === false) {
+        console.warn('[Island] Audio chime could not play:', res.error);
+      }
+    } else {
+      stopChime();
+    }
     return stopChime;
   }, [ringing]);
 

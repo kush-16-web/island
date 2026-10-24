@@ -246,6 +246,13 @@ export const Icon = {
       <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
     </svg>
   ),
+  VolumeX: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon ${className}`} {...p}>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <line x1="23" y1="9" x2="17" y2="15" />
+      <line x1="17" y1="9" x2="23" y2="15" />
+    </svg>
+  ),
   Hourglass: ({ className = '', ...p }) => (
     <svg {...base} className={`lucide-icon ${className}`} {...p}>
       <path d="M5 22h14" />
@@ -338,4 +345,34 @@ export const Icon = {
       <path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97" />
     </svg>
   ),
+  Library: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--library ${className}`} {...p}>
+      <path d="m16 6 4 14" />
+      <path d="M12 6v14" />
+      <path d="M8 8v12" />
+      <path d="M4 4v16" />
+    </svg>
+  ),
+  Check: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--check ${className}`} {...p}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ),
+  Droplet: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--droplet ${className}`} {...p}>
+      <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />
+    </svg>
+  ),
+  HeartCrack: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--heart-crack ${className}`} {...p}>
+      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+      <path d="m12 13-1-1 2-2-3-3 2-2" />
+    </svg>
+  ),
+  Flame: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--flame ${className}`} {...p}>
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    </svg>
+  ),
 };
+

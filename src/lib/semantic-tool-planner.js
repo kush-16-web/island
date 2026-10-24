@@ -34,6 +34,10 @@ export const ACTION_TYPES = Object.freeze({
   CONVERSATION_CLARIFY: 'conversation.clarify',
   CONVERSATION_DISMISS: 'conversation.dismiss',
   CONVERSATION_INFO: 'conversation.info',
+  SCHEDULER_TIMER: 'scheduler.timer',
+  SCHEDULER_ALARM: 'scheduler.alarm',
+  SCHEDULER_CANCEL: 'scheduler.cancel',
+  SCHEDULER_STATUS: 'scheduler.status',
 });
 
 /**
@@ -156,6 +160,30 @@ export function validateAgentAction(actionObj) {
           query: String(actionObj.query || ''),
         },
       };
+    }
+
+    case ACTION_TYPES.SCHEDULER_TIMER: {
+      const durationMs = Number(actionObj.durationMs);
+      if (!Number.isFinite(durationMs) || durationMs <= 0) {
+        return { valid: false, error: 'scheduler.timer requires positive durationMs' };
+      }
+      return { valid: true, action: { type, durationMs, label: actionObj.label || '' } };
+    }
+
+    case ACTION_TYPES.SCHEDULER_ALARM: {
+      const time = String(actionObj.time || '').trim();
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+        return { valid: false, error: 'scheduler.alarm requires valid HH:MM time' };
+      }
+      return { valid: true, action: { type, time, label: actionObj.label || '' } };
+    }
+
+    case ACTION_TYPES.SCHEDULER_CANCEL: {
+      return { valid: true, action: { type, target: actionObj.target || 'any', specificTime: actionObj.specificTime || null } };
+    }
+
+    case ACTION_TYPES.SCHEDULER_STATUS: {
+      return { valid: true, action: { type, target: actionObj.target || 'all' } };
     }
 
     default:

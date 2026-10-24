@@ -166,6 +166,76 @@ const ISLAND_MUSIC_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'set_timer',
+      description: 'Set a countdown timer in Island scheduler',
+      parameters: {
+        type: 'object',
+        properties: {
+          durationMs: { type: 'number', description: 'Duration in milliseconds' },
+          label: { type: 'string', description: 'Optional label or purpose of the timer' },
+        },
+        required: ['durationMs'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_alarm',
+      description: 'Set a clock alarm in Island scheduler',
+      parameters: {
+        type: 'object',
+        properties: {
+          time: { type: 'string', description: 'Alarm clock time in 24-hour HH:MM format (e.g. 07:00, 19:30)' },
+          label: { type: 'string', description: 'Optional label or purpose of the alarm' },
+        },
+        required: ['time'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancel_timer',
+      description: 'Cancel an active countdown timer',
+      parameters: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: 'Optional label of the timer to cancel' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancel_alarm',
+      description: 'Cancel an alarm',
+      parameters: {
+        type: 'object',
+        properties: {
+          time: { type: 'string', description: 'Time of the alarm to cancel in HH:MM format' },
+          label: { type: 'string', description: 'Optional label of the alarm' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_schedule_status',
+      description: 'Check active timers, alarms, or remaining time on timers',
+      parameters: {
+        type: 'object',
+        properties: {
+          target: { type: 'string', enum: ['timer', 'alarm', 'all'], description: 'What to query' },
+        },
+      },
+    },
+  },
 ];
 
 class GroqService {

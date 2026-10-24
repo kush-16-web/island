@@ -681,7 +681,485 @@ Real multi-turn voice conversations were thoroughly investigated across screen r
 - **Production Build**:
   - `npm run build` compiled cleanly via Vite in 1.92s with 0 errors.
 
+---
 
+## 12. Pass 2.2.7 Revised: Full Lyrics Only Architecture & Implementation Report
 
+### A. Executive Summary & Critical Corrections
+- **Reverted Listening Stage Takeover**: Confirmed that the premature Listening Stage navigation that replaced Now Playing has been reverted.
+- **Preserved Original Now Playing Experience**: When users play music from Spotify or YouTube Music, Island displays its original, familiar Now Playing interface (`NowPlaying.jsx`).
+- **Single Intentional Entry Point**: The redesigned view is strictly accessible only when the user explicitly triggers the existing **Full Lyrics** action (clicking `MiniLyrics` or the `Lyrics` tab pill in Now Playing).
+- **Smooth Return to Player**: Closing Full Lyrics via the `Close` button or keyboard `Escape` restores the original Now Playing UI immediately with zero interruption to ongoing music playback.
+- **Zero Morphing between Compact Island and Full Lyrics**: `sharedLyricsTransition` is scoped to immediate entrance (`{ duration: 0 }`), preventing Framer Motion from visually morphing the compact Island or Now Playing UI into the Full Lyrics view.
 
+---
+
+### B. Architecture & Approved Layout Specifications
+
+1. **Segmented Tabs at Top**:
+   - `Artwork` vs `Concert` capsule segmented tabs.
+   - **Artwork Tab**: Shows centered square artwork, metadata underneath, and synchronized scrolling lyrics.
+   - **Concert Tab**: Serves as a lightweight placeholder view (`Live Concert Stage`) with an ambient gradient glow and status indicator without altering or interrupting audio playback.
+   - Top-right close button (`Icon.Close`) cleanly returns to the player.
+
+2. **Centered Square Artwork & Glide Transition**:
+   - Dimensions: Centered 88x88px album art with subtle drop shadow and border.
+   - **Incoming Artwork Preloader**: Uses `new Image()` to load incoming covers in background memory.
+   - **Continuous Previous Cover**: While preloading, the previous track's cover remains rendered, eliminating blank frames, snapping, or flashing.
+   - **Subtle Glide & Crossfade**: Smooth horizontal glide (10px) with cubic-bezier easing `[0.25, 1, 0.5, 1]` and opacity crossfade.
+   - **Rapid Skip Protection**: `loadTokenRef` tracking discards stale image loads when skipping rapidly through multiple tracks.
+   - **Reduced Motion**: Automatically falls back to a pure subtle crossfade with zero translation when `prefers-reduced-motion` is active.
+
+3. **Lyrics Reel Beneath Artwork**:
+   - Compact scroller with fluid cubic-bezier auto-scroll to the active line.
+   - Unsynchronized lyrics notice for plain lyrics (`full-lyrics__unsynced-notice`).
+   - Word-level karaoke highlighting when ELRC syllables are available.
+   - Interactive click-to-seek on synchronized lines.
+   - 2.8-second manual user scroll pause before smoothly resuming auto-scroll.
+
+4. **Playback Progress & Timestamps**:
+   - Position and total duration timestamps formatted via `formatTrackTime`.
+   - Full-width scrubber bar with interactive pointer drag scrubbing.
+
+5. **Controls Row Layout**:
+   - **Bottom-Left**:
+     - Favorite Heart button (`Icon.Heart` / `Icon.HeartSolid` with active accent glow).
+     - Music-Note Lyrics Toggle (`Icon.Music` toggling auto-scroll / karaoke sync).
+     - Volume Control (`Icon.Volume2` / `Icon.VolumeX` with interactive mini slider popover wired to `audioCoordinator`).
+   - **Bottom-Right**:
+     - Previous Track (`Icon.Prev`).
+     - Rewind 5s (`Icon.Replay5`).
+     - Play / Pause (`Icon.Play` / `Icon.Pause`).
+     - Forward 5s (`Icon.Forward5`).
+     - Next Track (`Icon.Next`).
+
+---
+
+### C. Verification & Test Results
+
+- **Pass 2.2.7 Revised Test Suite** (`test/pass2-2-7-revised-full-lyrics.test.cjs`):
+  1. *Navigation Integrity*: NowPlaying UI is preserved in Hub and default viewMode is player.
+  2. *Entry & Exit*: Accessible only via Full Lyrics action; closing returns to original player.
+  3. *Segmented Tabs*: Artwork / Concert top navigation with lightweight placeholder.
+  4. *Centered Layout*: Square artwork, metadata underneath, lyrics reel beneath.
+  5. *Artwork Glide*: Preloads incoming cover, keeps previous visible, handles rapid skips.
+  6. *Bottom Controls*: Favorite, Lyrics toggle, and Volume on left; playback on right.
+  7. *No Shared-Element Morphing*: Immediate display without morphing NowPlaying.
+  - **Result: 7/7 passed**.
+
+- **Pass 2.2.6 Full Lyrics Suite** (`test/pass2-2-6-full-lyrics.test.cjs`):
+  - **Result: 10/10 passed**.
+
+- **Complete Repository Regression Test Suite**:
+  - **327 passed, 0 failed, 1 skipped** (328 tests across 81 test suites in 9.40s).
+
+- **Production Build**:
+  - `npm run build` compiled cleanly via Vite in 3.29s with 0 errors.
+
+---
+
+## 13. Pass 2.2.7.1: Full Lyrics Visual & Artwork Glide Correction Report
+
+### A. Root Cause Analysis of Visual Cramping & Fixes Implemented
+
+1. **Global Navigation Overcrowding in Full Lyrics Mode**:
+   - *Issue*: In Full Lyrics mode, the global top navbar (`Home`, `Playing`, `Pet`) and global header action controls (`Settings`, `Mic`) remained rendered, consuming ~46px of vertical height and conflicting with the Full Lyrics `Artwork / Concert` switch.
+   - *Fix*: In [src/components/Hub.jsx](file:///d:/island/src/components/Hub.jsx), calculated `isLyricsActive = tab === 'playing' && (lyricsViewMode === 'lyrics' || lyricsViewMode === true)`. When active, `hub__head` is completely omitted from rendering without reserving empty space (`padding-top: 0`), reclaiming that space for artwork and lyrics. When Full Lyrics is closed or tab switches, `hub__head` is immediately restored.
+
+2. **Artwork Size & Vertical Placement**:
+   - *Issue*: 88×88px album art was diminutive, under-representing the music experience.
+   - *Fix*: In [src/styles.css](file:///d:/island/src/styles.css), increased square cover dimensions to 150×150px (rounded 16px with deep shadow `0 10px 30px rgba(0,0,0,0.6)`), positioned high directly beneath the top segmented switch. When lyrics are hidden, the cover expands to 185×185px. In [src/components/Island.jsx](file:///d:/island/src/components/Island.jsx), adjusted the Full Lyrics height to 472px (leaving normal Now Playing at 276px).
+
+3. **Visible Yet Restrained Artwork Glide Animation**:
+   - *Issue*: Previous 10px transition appeared as an imperceptible fade rather than a clear glide.
+   - *Fixes Implemented in [src/components/FullLyrics.jsx](file:///d:/island/src/components/FullLyrics.jsx)*:
+     - **Entrance Glide**: On opening Full Lyrics, the hero artwork gently glides upward into final position from `y: 26px` to `0` over 440ms (`ease: [0.16, 1, 0.3, 1]`) with opacity fade. It does not re-trigger on playback progress updates.
+     - **Track-Change Glide (Two-Layer)**: Outgoing artwork slides left (`x: 0 -> -28px`) and fades out while incoming preloaded artwork slides in from right (`x: 28px -> 0`) over 380ms (`ease: [0.22, 1, 0.36, 1]`). The fixed frame with `overflow: hidden` prevents layout jumping.
+     - **Preloading & Rapid Skips**: Uses `new Image()` and `loadTokenRef` to keep previous art visible until incoming image is decoded, discarding stale completions during rapid skips.
+     - **Reduced Motion**: Respects `prefers-reduced-motion` with an in-place crossfade (`x: 0, y: 0`).
+
+4. **Spacious Lyrics Viewport & Progress Separation**:
+   - *Issue*: Lyrics were compressed directly against the scrubber bar and overlapped progress timestamps.
+   - *Fix*: Structured strict flex vertical order: Top Switch $\to$ Centered Artwork $\to$ Meta $\to$ Lyrics Viewport $\to$ Progress Bar $\to$ 6-Button Toolbar. Lyrics scroller has dedicated height (110–135px), comfortable 16px line separation, and gradient masks strictly contained within the scroller viewport.
+
+5. **Music-Note Button: Show/Hide Lyrics Visibility**:
+   - *Issue*: Button previously toggled karaoke/sync mode instead of hiding/showing lyrics.
+   - *Fix*: In [src/components/FullLyrics.jsx](file:///d:/island/src/components/FullLyrics.jsx), implemented `showLyrics` state toggled by the music note button. When hidden, the lyrics region is removed from layout and artwork expands to 185×185px. Playback is never interrupted.
+
+6. **Clean Six-Button Toolbar**:
+   - *Issue*: Extra `Replay5` and `Forward5` buttons overcrowded the bottom toolbar.
+   - *Fix*: Removed `Replay5` and `Forward5` from Full Lyrics toolbar (preserved in standard Now Playing/Cinema HUD). Result is exactly 6 accessible, well-spaced buttons:
+     - **Left**: Heart (Favorite), Music Note (Show/Hide Lyrics), Volume (Popover Slider).
+     - **Right**: Previous, Play/Pause, Next.
+
+---
+
+### B. Verification & Test Results
+
+- **Pass 2.2.7.1 Acceptance Test Suite** (`test/pass2-2-7-revised-full-lyrics.test.cjs`):
+  1. *Global Navigation Hidden Only in Full Lyrics*: Validates `isLyricsActive`, omitted `hub__head`, and restoration on exit.
+  2. *Sizing & Dimensions*: Validates 150px default / 185px expanded cover and 472px height.
+  3. *Artwork Glide*: Validates 26px upward entrance and 28px horizontal two-layer track-change glide.
+  4. *Distinct Layout Hierarchy*: Confirms strict vertical order and 16px line separation.
+  5. *Music-Note Button*: Validates show/hide lyrics visibility toggling without playback disruption.
+  6. *Six-Button Toolbar*: Confirms exactly 6 buttons and verifies removal of Replay5/Forward5 from Full Lyrics.
+  7. *Normal Now Playing Preserved*: Standard player mode and 276px window height untouched.
+  - **Result: 7/7 passed**.
+
+- **Pass 2.2.6 Full Lyrics Test Suite** (`test/pass2-2-6-full-lyrics.test.cjs`):
+  - **Result: 10/10 passed**.
+
+- **Complete Repository Regression Suite**:
+  - **327 passed, 0 failed, 1 skipped** (across 81 test suites in 9.38s).
+
+- **Production Build**:
+  - `npm run build` compiled cleanly via Vite in 1.90s with 0 errors.
+
+---
+
+## 14. Pass 2.2.7.2: Compact Full Lyrics & Real Artwork Position Glide Report
+
+### A. Root Cause Analysis & Architectural Implementation
+
+1. **Window Sizing Correction (Compact 390px Height)**:
+   - *Previous Issue*: 472px was oversized for Island and visually unanchored from the compact desktop companion feel.
+   - *Solution*: Set Full Lyrics height to **390px** in [src/components/Island.jsx](file:///d:/island/src/components/Island.jsx) (normal player remains at **276px**). Width preserved at 460px.
+   - *Measured Layout Budget (390px)*:
+     - Top bar (`Artwork / Concert` tabs + Close button): 26px + 4px margin.
+     - Centered artwork hero: 126×126px square (rounded 14px with deep glass shadow `0 8px 24px rgba(0,0,0,0.55)`). Expands to 152×152px when lyrics are hidden.
+     - Song title & artist metadata: 30px (13.5px title, 11px artist).
+     - Compact lyrics reel: 76px flex viewport (`min-height: 70px; max-height: 85px; overflow: hidden`) with 10px vertical line separation and gradient masks strictly contained within the scroller. Active line highlighted in 14px bold white.
+     - Playback progress bar: 18px (timestamps + scrubber).
+     - Approved 6-button toolbar: 32px.
+     - Container padding: 16px (top: 8px, bottom: 8px).
+     - Total = 368px, leaving 22px of flexible, comfortable breathing room. Zero clipping, zero overlap.
+
+2. **Real Artwork Position Glide Architecture**:
+   - *Previous Issue*: Fixed 26px upward translation from an already-centered position did not move the artwork from where it actually lived in the player.
+   - *Architecture*:
+     - **Source Element**: `playerCoverRef` attached to `<motion.div layoutId="island-album-art-wrap" className="np__cover-wrap">` in `NowPlaying.jsx`. Positioned on the left side of the player: `{ left: 14, top: 46, width: 64, height: 64, borderRadius: 12 }`.
+     - **Destination Element**: `<motion.div layoutId="island-album-art-wrap" className="full-lyrics__hero-art-wrap">` in `FullLyrics.jsx`. Centered horizontally: `{ left: 167, top: 40, width: 126, height: 126, borderRadius: 14 }`.
+     - **Dynamic Measurement**: `openFullLyricsWithGlide` and `closeFullLyricsWithGlide` measure real DOM bounding rectangles via `getBoundingClientRect()` relative to `npContainerRef`.
+     - **Traveling Glider Overlay**: Renders `<motion.div className="island-artwork-glider">` inside `NowPlaying.jsx`. On opening, glides across the window from `(14, 46, 64x64, r12)` to `(167, 40, 126x126, r14)` over 380ms (`ease: [0.22, 1, 0.36, 1]`).
+     - **Handoff Protection**: During the flight, `opacity: 0` is applied to both source and destination covers, guaranteeing that only the traveling cover is visible. When it settles at the destination, `glideState` is cleared and the real destination cover appears at `opacity: 1`. Zero duplicate covers, zero flashing, zero snapping.
+     - **Closing Reversal**: When closing via close button or Escape key, the glider starts at `(167, 40, 126x126)` and glides back to `(14, 46, 64x64)`. Upon completion, `handleSetViewMode` is called, restoring normal player mode.
+
+3. **High-Resolution Artwork Upgrade**:
+   - Imported `upgradeProviderArtUrl` in [src/components/FullLyrics.jsx](file:///d:/island/src/components/FullLyrics.jsx) to upgrade Spotify thumbnails to 640x640, Apple Music to 1200x1200bb, YouTube to maxresdefault, and Google CDN to 1200x1200.
+
+4. **Track-Change Cover Swap**:
+   - When skipping songs while Full Lyrics is open, `new Image()` preloads the incoming cover. Once ready, a 24px horizontal crossfade occurs inside the fixed 126px frame without moving the frame.
+
+---
+
+### B. Verification & Test Results
+
+- **Pass 2.2.7.2 Acceptance Test Suite** (`test/pass2-2-7-revised-full-lyrics.test.cjs`):
+  1. *Entry & Exit*: Validates Full Lyrics opens only on request via `openFullLyricsWithGlide` and closes via `closeFullLyricsWithGlide`.
+  2. *Global Navigation*: Confirms `hub__head` is hidden strictly during Full Lyrics and restored on exit.
+  3. *Compact Dimensions*: Confirms 390px window height, 126px artwork, 70-85px lyrics viewport, and 10px line gap.
+  4. *Real Artwork Travel*: Validates source and destination rectangles and traveling glider overlay.
+  5. *Handoff Integrity*: Confirms source and destination covers are hidden while traveler is in flight.
+  6. *Track Changes*: Confirms two-layer horizontal cover swap inside fixed frame.
+  7. *High Quality Artwork*: Validates `upgradeProviderArtUrl` resolution pipeline.
+  8. *Compact Lyrics & No Collisions*: Confirms layout hierarchy and overflow containment.
+  9. *Six-Button Toolbar*: Confirms exactly 6 buttons and no seek buttons in FullLyrics.
+  10. *Normal Now Playing Unchanged*: Standard player mode and 276px window height preserved.
+  - **Result: 10/10 passed**.
+
+- **Pass 2.2.6 Full Lyrics Suite** (`test/pass2-2-6-full-lyrics.test.cjs`):
+  - **Result: 10/10 passed**.
+
+- **Complete Repository Regression Suite**:
+  - **330 passed, 0 failed, 1 skipped** (across 81 test suites in 8.63s).
+
+- **Production Build**:
+  - `npm run build` compiled cleanly via Vite in **3.60s with 0 errors**.
+
+---
+
+## 15. Pass 2.2.7.3: Artwork Compositor Glide, Wide Metadata & Concert Layering Report
+
+### A. Root Cause Analysis
+
+1. **Artwork Stutter & Snap Root Causes**:
+   - **Competing Animation Systems**: In Pass 2.2.7.2, three separate systems were animating the cover simultaneously: (a) Framer Motion's `<LayoutGroup>` FLIP projection on `layoutId="island-album-art-wrap"`, (b) a manual `.island-artwork-glider` overlay animating CSS `left`, `top`, `width`, and `height` (forcing expensive layout and repaint cycles on every frame), and (c) CSS `transition: width 0.32s, height 0.32s` on `.full-lyrics__hero-art-wrap` intercepting JavaScript property changes.
+   - **Coordinate Shift from Layout Changes**: Measuring `fromRect` occurred while `hub__head` was still mounted. Once `handleSetViewMode('lyrics')` unmounted `hub__head`, the top boundary shifted upward by ~46px while the Island window height expanded via a spring from 276px to 390px.
+   - **Entrance Slide Collision**: An internal horizontal slide (`x: 24 -> 0`) in `.full-lyrics__art-slide` was triggering on initial mount, creating a secondary wobble while the cover was in flight.
+
+2. **Song Title & Artist Cropping**:
+   - `.full-lyrics__hero-meta` was constrained to `max-width: 320px` inside a 460px container, leaving 140px of unused horizontal space.
+   - It inherited `MarqueeText` with `white-space: nowrap`, forcing aggressive truncation and scroll masks rather than wrapping to 2 lines.
+
+3. **Concert Tab Layering & Decorative Visuals**:
+   - `.full-lyrics__concert-stage` had no CSS definition, leading to layout collapse and bleeding through.
+   - Contained unwanted decorative visuals (`full-lyrics__concert-glow`, `Icon.Sparkles`, `concert-dot-pulse`).
+
+---
+
+### B. Architectural Fixes
+
+1. **Single-Layer GPU Compositor Transform Glide**:
+   - **Single Layer**: Removed the duplicate `.island-artwork-glider` overlay. The destination hero cover in [src/components/FullLyrics.jsx](file:///d:/island/src/components/FullLyrics.jsx) is the sole visual layer responsible for travel.
+   - **Compositor Transforms**: Instead of animating layout properties (`left/top/width/height`), the cover animates via GPU-accelerated `transform: translate3d(x, y, 0) scale(...)` and `borderRadius`.
+     - *Start Coordinates*: `x: travelDelta.x` (-153px), `y: travelDelta.y` (2px), `scale: 64/126` (0.5079), `borderRadius: 24px` (visually matches 14px, 46px, 64×64px, 12px radius).
+     - *Target Coordinates*: `x: 0px`, `y: 0px`, `scale: 1.0`, `borderRadius: 14px` (centered 167px, 44px, 126×126px).
+   - **CSS Conflict Removed**: Stripped `transition: width, height` from `.full-lyrics__hero-art-wrap` and added `will-change: transform`.
+   - **Track Change Isolation**: Added `isInitialMountRef` so the horizontal track-skip slide (`x: 24 * glideDir -> 0`) only executes on subsequent song changes, never on initial mount.
+   - **Smooth Reversal on Close**: Close button and Escape key trigger `setIsClosing(true)`, reversing the transform back to the source position over 380ms before unmounting.
+
+2. **Wide Responsive Metadata**:
+   - Expanded `.full-lyrics__hero-meta` to `max-width: 420px; box-sizing: border-box; padding: 0 16px;`.
+   - Replaced `MarqueeText` with clean `div` elements with `-webkit-line-clamp: 2; word-break: break-word;`.
+   - Normal and short titles display completely without truncation; long titles and multiple artists wrap cleanly to 2 lines.
+
+3. **Restrained Minimal Concert Tab Isolation**:
+   - Mutually exclusive rendering: when `activeTab === 'concert'`, the artwork and lyrics are completely omitted from the DOM.
+   - Replaced decorative elements with a clean, dark-glass message: `"Concert mode — coming later"` alongside the current song title and artist.
+   - Sized properly via `.full-lyrics__concert-pane` with zero stacking or visual bleeding.
+
+---
+
+### C. Verification & Test Results
+
+- **Pass 2.2.7.3 Acceptance Test Suite** (`test/pass2-2-7-revised-full-lyrics.test.cjs`):
+  1. *Entry & Exit*: Opens only on request; closes via graceful return state. **(PASS)**
+  2. *Global Navigation*: Hidden strictly during Full Lyrics. **(PASS)**
+  3. *Compact Dimensions*: 390px window, 126px artwork, 70-85px lyrics viewport, 10px line gap. **(PASS)**
+  4. *Single-Layer Compositor Glide*: No duplicate clone, `will-change: transform`, return animation on close. **(PASS)**
+  5. *Track Change Isolation*: Initial mount suppresses entrance slide; preloads incoming covers. **(PASS)**
+  6. *Responsive Wide Metadata*: Up to 420px width, no marquee truncation, multi-line wrap up to 2 lines. **(PASS)**
+  7. *Clean Concert Tab Isolation*: Mutually exclusive, zero decorative glows/sparkles, minimal message. **(PASS)**
+  8. *High Quality Artwork*: Upgrades stream thumbnails via `upgradeProviderArtUrl`. **(PASS)**
+  9. *Six-Button Toolbar*: Approved 6 controls preserved with no extra seek buttons. **(PASS)**
+  10. *Normal Now Playing Unchanged*: Standard player mode and 276px height preserved. **(PASS)**
+  - **Result: 10/10 passed**.
+
+- **Pass 2.2.6 Full Lyrics Suite** (`test/pass2-2-6-full-lyrics.test.cjs`):
+  - **Result: 10/10 passed**.
+
+- **Complete Repository Regression Suite**:
+  - **330 passed, 0 failed, 1 skipped** (across 81 test suites in 8.53s).
+
+- **Production Build**:
+  - `npm run build` compiled cleanly via Vite in **3.07s with 0 errors**.
+
+---
+
+## 12. Pass 2.2.7: Cinema Navigation, Lyrics Style Popover & Expressive Lyrics Engine
+
+### A. Problem Statement & User Experience Goals
+1. **Cluttered Bottom Navigation**: The Now Playing bottom bar featured three buttons (`Lyrics`, `Cinema`, `Favorites`), creating visual density in a compact space and introducing an unnecessary step to open Cinema Mode.
+2. **Missing Album Cover Affordance**: In media applications (e.g. Apple Music / YouTube), the album art is the primary visual centerpiece. Clicking the artwork is a natural, intuitive gesture for opening Cinema/Visualizer PiP.
+3. **Misleading Favorites Tab Icon**: The bottom navigation Favorites pill used a Heart icon (`Icon.Heart`), causing visual confusion with the track-level favorite button on the album cover.
+4. **Desire for Expressive Lyrics**: Modern lyrics displays (e.g. Musixmatch, Apple Music sing-along) benefit from restrained, emotional accents (emojis, kinetic typography) while preserving pure text for purists.
+5. **Artwork Glide Stutter**: During the transition from Now Playing to Full Lyrics, both the source cover and the traveling cover were momentarily visible, creating a slight double-image stutter.
+
+---
+
+### B. Architectural Implementation
+
+1. **Navigation Cleanup & Album Cover Cinema Affordance**:
+   - **Cinema Button Removed**: Removed the `Cinema` pill from `np__right-tabs--bottom`. The bottom navigation now cleanly contains only `Lyrics` and `Favorites`.
+   - **Clickable Cover Frame**: Transformed `.np__cover-wrap` into an interactive target (`.np__cover-wrap--clickable`) with `role="button"`, `tabIndex={0}`, accessible `aria-label="Open Cinema Mode"`, and keyboard support (`Enter` / `Space`). Clicking the album cover seamlessly enters Cinema Mode (`handleSetViewMode('cinema')`).
+   - **Heart Overlay Isolation**: The favorite heart overlay inside the cover retains its dedicated click handler with `e.stopPropagation()`, ensuring favoriting a track never triggers Cinema navigation.
+
+2. **Favorites Tab Icon Refinement**:
+   - Replaced `Icon.Heart` on the bottom tab pill with `Icon.Library` from [src/components/icons.jsx](file:///d:/island/src/components/icons.jsx).
+   - Preserved the textual label `"Favorites"`, cleanly distinguishing the track favorite toggle from the user's music library menu.
+
+3. **Lyrics Appearance Popover**:
+   - Clicking the `Lyrics` tab pill in Now Playing toggles a refined dark-glass style selector popover (`.np__lyrics-popover`).
+   - **Zero Audio Interruption**: Opening or selecting styles does not pause, restart, seek, or interrupt playback in any way.
+   - **Options**:
+     - **Classic**: Original clean, uninterrupted synchronized typography.
+     - **Expressive**: Contextual, meaningful emoji accents on eligible lines.
+     - **Kinetic**: Micro-animations on emotionally resonant lyric words.
+   - **Persistent Storage**: Active style choice is persisted to `localStorage` under `island_lyrics_style` via [src/lib/lyrics-style-engine.js](file:///d:/island/src/lib/lyrics-style-engine.js).
+   - **Direct Full Lyrics Access**: Clicking the `MiniLyrics` reel directly invokes `openFullLyricsWithGlide()`, ensuring instant access to the full lyrics experience remains fluid.
+
+4. **Expressive & Kinetic Lyrics Engine ([src/lib/lyrics-style-engine.js](file:///d:/island/src/lib/lyrics-style-engine.js))**:
+   - **Deterministic & Cached**: Uses hash-based seeding on `trackSeed` (`${title}${artist}`) and line index, guaranteeing that lyric decorations remain completely stable across re-renders and replays.
+   - **Tasteful & Restrained (Never Gimmicky)**:
+     - Expressive mode: Maximum of 2 to 4 emoji accents per song, separated by at least 3 lines. Emojis strictly reflect lyrical sentiment (e.g. heartbreak `💔`, longing `🥀`, stormy `🌧️`, fire `🔥`, celestial `✨`).
+     - Kinetic mode: Targeted CSS animations applied exclusively to resonant words (e.g. `.k-fx-fracture`, `.k-fx-fall`, `.k-fx-stretch`, `.k-fx-fade`, `.k-fx-pulse`).
+   - **Text Preservation**: Never mutates or alters the raw lyric string. The original lyrics text remains 100% intact.
+   - **Accessibility**: Automatically checks `prefers-reduced-motion` and falls back to Classic presentation without animation.
+   - **Cross-Component Consistency**: Integrated across [src/components/PrecisionLyricLine.jsx](file:///d:/island/src/components/PrecisionLyricLine.jsx), [src/components/MiniLyrics.jsx](file:///d:/island/src/components/MiniLyrics.jsx), and [src/components/FullLyrics.jsx](file:///d:/island/src/components/FullLyrics.jsx).
+
+5. **Artwork Glide Stutter Elimination**:
+   - Added `isSourceCoverHidden` state to [src/components/NowPlaying.jsx](file:///d:/island/src/components/NowPlaying.jsx).
+   - When entering Full Lyrics, `isSourceCoverHidden` is set to `true`, instantly zeroing out the source cover opacity (`opacity: 0`) while the single-layer destination hero cover travels along the GPU compositor curve (`translate3d(x, y, 0) scale(...)`).
+   - Restored to `opacity: 1` upon closing Full Lyrics.
+   - Verified container-relative coordinate calculation (`srcLeft - destLeft`, `srcTop - destTop`) anchoring to `.np` container ref.
+
+---
+
+### C. Verification & Test Results
+
+- **Pass 2.2.7 Comprehensive Test Suite** (`test/pass2-2-7-cinema-lyrics-expressive.test.cjs`):
+  1. *Navigation Cleanup*: Cinema tab removed from bottom tabs, only Lyrics and Favorites remain. **(PASS)**
+  2. *Album Artwork Cinema*: Album cover is clickable with keyboard accessibility and heart isolation. **(PASS)**
+  3. *Favorites Tab Icon*: Uses `Icon.Library` instead of `Icon.Heart`, retaining "Favorites" label. **(PASS)**
+  4. *Lyrics Tab Popover*: Toggles style selector without changing viewMode or interrupting playback. **(PASS)**
+  5. *Expressive Lyrics Engine*: Deterministic hash caching, sentiment mapping, minimum line spacing, kinetic effects. **(PASS)**
+  6. *Presentation Integration*: `FullLyrics`, `MiniLyrics`, and `PrecisionLyricLine` render presentation effects. **(PASS)**
+  7. *Artwork Glide*: Single-layer travel with source cover hidden during flight. **(PASS)**
+  8. *CSS Styles*: Popover and kinetic typography classes defined in `styles.css`. **(PASS)**
+  - **Result: 8/8 passed**.
+
+- **Pass 2.2.7.3 Revised Full Lyrics Suite** (`test/pass2-2-7-revised-full-lyrics.test.cjs`):
+  - **Result: 10/10 passed**.
+
+- **Complete Repository Regression Suite** (`npm test`):
+  - **339 passed, 0 failed, 1 skipped** (across 82 test suites in 7.56s).
+
+- **Production Build** (`npm run build`):
+  - `vite build` completed cleanly in **2.65s with 0 errors**.
+
+---
+
+## 14. Pass 2.2.6.4 / 2.2.7.4: Lyrics Style Engine, Apple 3D Emojis & Compact Controls Refinement
+
+### A. Executive Summary & Design Refinements
+- **3D Apple-Style Emoji Rendering**: Replaced flat system emojis in Expressive lyrics mode with high-definition 3D Apple / Fluent-style assets rendered through [getAppleEmojiUrl](file:///d:/island/src/lib/lyrics-style-engine.js#L100-L125). Assets are seamlessly resolved and cached, rendering crisp 3D visual accents next to poignant lyrical moments while falling back gracefully to clean Unicode characters if offline or unmapped.
+- **Lyrics Mode Popover Optimization**:
+  - Restyled `.np__lyrics-popover` into an ultra-sleek, compact glassmorphic flyout with refined typography (`10.5px` headers, `8px` subtitles).
+  - Offset elevation (`bottom: calc(100% + 4px)`) ensures the popover floats elegantly above the bottom control bar without occluding the Lyrics tab trigger or clipping into adjacent elements.
+- **FullLyrics Bottom Controls Polish**:
+  - Softened active highlight on `.lyrics-toggle-btn.is-active`: replaced harsh neon accent borders with a clean, cohesive frosted glow (`rgba(255, 255, 255, 0.16)` with subtle border highlight and shadow).
+  - Tightened `.full-lyrics__controls-right` button spacing (`gap: 6px`) to ensure comfortable breathing room across narrow and wide viewport configurations.
+- **Preserved Approved 6-Button Toolbar**:
+  - Maintained the clean, uncluttered 6-button FullLyrics toolbar (Left: Favorite, Lyrics toggle, Volume; Right: Previous, Play/Pause, Next).
+  - Retained dedicated 5-second skip controls strictly within the standard [src/components/NowPlaying.jsx](file:///d:/island/src/components/NowPlaying.jsx) interface.
+
+---
+
+### B. Verification & Test Results
+- **Pass 2.2.6.4 Unit Test Suite** (`test/pass2-2-6-4-lyrics-emoji-controls.test.cjs`):
+  - Resolves known Apple/Fluent 3D emoji assets to CDN endpoints. **(PASS)**
+  - Resolves unmapped unicode emojis via code-point hex strings. **(PASS)**
+  - Gracefully handles empty and null inputs. **(PASS)**
+  - Computes lyrics presentation with accents and effects. **(PASS)**
+  - Resolves lyric modes (`off`, `precision`, `full`). **(PASS)**
+  - **Result: 7/7 passed**.
+- **Pass 2.2.7.3 Revised Full Lyrics Suite** (`test/pass2-2-7-revised-full-lyrics.test.cjs`):
+  - **Result: 10/10 passed**.
+- **Complete Repository Regression Suite** (`npm test`):
+  - **346 passed, 0 failed, 1 skipped** (across 84 test suites in 7.89s).
+- **Production Build** (`npm run build`):
+  - `vite build` completed cleanly in **3.06s with 0 errors**.
+
+---
+
+## 15. Pass 2.2.7.6.1: Emergency Corrective Pass — Lyrics Appearance & Meaning-Aware Kinetic Typography
+
+### A. Executive Summary & Root Cause Corrections
+1. **Complete Removal of Expressive Lyrics Mode**:
+   - Island strictly supports exactly two lyric modes: **Classic** (clean synchronized lyrics, default) and **Kinetic** (occasional meaning-aware typography effects without emojis or icons).
+   - Removed Expressive mode from `LYRICS_STYLES` constants, the appearance popover selector, rendering branches, and style calculations.
+   - Built automatic preference migration: legacy `expressive` or unknown storage values immediately normalize to `classic` and persist.
+2. **Safe Removal of Emoji Assets and Unused Code**:
+   - Audited and deleted all 14 untracked emoji PNG files under `public/emojis/` introduced solely for the discarded lyrics feature (`1f305.png`, `1f319.png`, `1f327-fe0f.png`, `1f3b5.png`, `1f480.png`, `1f494.png`, `1f496.png`, `1f4a7.png`, `1f525.png`, `1f940.png`, `1f97a.png`, `26a1.png`, `2728.png`, `2764-fe0f.png`). Removed the directory.
+   - Removed `APPLE_EMOJIS` mappings, `getAppleEmojiUrl`, and expressive CSS rules (`.lyric-inline-icon`, `.lyric-accent-emoji`, etc.).
+3. **Lyrics Appearance Popover Redesign & Clipping Repair**:
+   - **Root Cause**: `.np__lyrics-popover` was styled with `left: 0; width: 154px;` inside a right-aligned container (`.np__right-tabs--bottom`), protruding ~90px past `.panel`'s right boundary (`overflow: hidden`). It also rendered 3 bulky options, headers, and checkmarks.
+   - **Resolution**:
+     - Anchored popover with `right: 0; left: auto; width: 142px; bottom: calc(100% + 6px);`. Popover right edge is at `x=480px`, completely within the `595px` container right boundary (`isClippedRight: false`).
+     - Contains concise `Lyrics` header and exactly two clean rows: `Classic` (*Original lyrics*) and `Kinetic` (*Meaning-aware typography*).
+     - Removed checkmark icons (`Icon.Check` and `.np__lyrics-option-check`). Active selection is indicated solely through subtle frosted row background (`rgba(255, 255, 255, 0.14)`).
+     - Retained instant outside-click and Escape key dismissal; menu closes immediately upon selection.
+4. **Repaired Meaning-Aware Kinetic Word Targeting**:
+   - Replaced arbitrary / longest-word selection with a local heuristic semantic pipeline ([src/lib/lyrics-style-engine.js](file:///d:/island/src/lib/lyrics-style-engine.js)).
+   - Evaluates contextual phrases against emotional concept categories (`isolation`, `fade`, `fracture`, `fall`, `stretch`, `tremble`, `soft-pulse`, `weight-shift`) with negation checks (`not alone`, `never fade`, `no fear`).
+   - Slices exact character boundaries (`startIndex`, `endIndex`) to isolate the meaningful target word (e.g. `alone` in `"Spend some time alone"` receives `.k-fx-isolation`, leaving `"Spend some time "` normal).
+   - Preserves exact text, whitespace, punctuation, lyric timestamps, and karaoke sync.
+5. **Reduced & Isolated Horizontal Curvature**:
+   - Eliminated unconditional curvature on overflowing lines.
+   - Restricted horizontal curvature strictly to a rare minority of eligible lines (maximum ~10-15%) via deterministic seed hashing.
+   - Never stacks horizontal curvature with primary word-level typography effects.
+6. **Restrained Sparseness**:
+   - Minimum separation of 5 lines between kinetic lines; maximum 3-4 kinetic lines per full track.
+   - No `Math.random()` during render; deterministic djb2 track hash distribution.
+
+### B. Verification & Test Results
+- **Pass 2.2.7.6.1 Corrective Suite** (`test/pass2-2-6-5-lyrics-appearance-controls.test.cjs`):
+  - Exactly two supported modes in `LYRICS_STYLES` (`classic`, `kinetic`). **(PASS)**
+  - Legacy `expressive` preference automatically migrates to `classic`. **(PASS)**
+  - Meaningful word targeting (`alone`, `fade`, `shatter`) with negation rejection. **(PASS)**
+  - Sparse animation frequency (>= 5 lines distance). **(PASS)**
+  - Horizontal curvature is rare and never stacked with word effects. **(PASS)**
+  - Popover positioning within visible bounds (`right: 0`, `bottom: calc(100% + 6px)`). **(PASS)**
+  - PrecisionLyricLine exact character slice and text preservation. **(PASS)**
+  - FullLyrics toolbar preserves approved 6 controls. **(PASS)**
+  - **Result: 10/10 passed**.
+- **Pass 2.2.6.4 Emoji Removal Suite** (`test/pass2-2-6-4-lyrics-emoji-controls.test.cjs`):
+  - Confirmed absence of `public/emojis` directory and emoji functions. **(PASS)**
+  - Clean fallback of legacy input. **(PASS)**
+  - **Result: 5/5 passed**.
+- **Pass 2.2.7 Cinema & Popover Suite** (`test/pass2-2-7-cinema-lyrics-expressive.test.cjs`):
+  - **Result: 8/8 passed**.
+- **Pass 2.2.7.3 Revised Full Lyrics Suite** (`test/pass2-2-7-revised-full-lyrics.test.cjs`):
+  - **Result: 10/10 passed**.
+- **Production Build** (`npm run build`):
+  - Cleanly built in **4.21s with 0 errors**.
+
+---
+
+## 16. Pass 2.2.8: Natural-Language Alarm & Timer Commands
+
+### A. Executive Summary & Existing Scheduler Architecture
+1. **Existing Scheduler Discovered & Leveraged**:
+   - `electron/scheduler.js`: Pure Node event-driven scheduler backed by persistent Electron store (`electron/store.js`).
+   - Stores items with absolute `fireAt` timestamps, surviving app restarts and UI navigation.
+   - Manages relative timers (`durationMs`, `fireAt`, `label`) and clock alarms (`time` in HH:MM, `days`, `fireAt`, `label`).
+   - Emits `fire` and `missed` events over IPC (`ring` channel).
+   - Bridge interface exposed through `electron/preload.js` (`window.island.scheduler.addTimer`, `addAlarm`, `remove`, `snooze`, `setEnabled`) and mirrored in `src/lib/mockIsland.js`.
+2. **Missing Gaps Identified & Resolved**:
+   - Voice and text agents previously only handled music and weather actions; natural language timer and alarm utterances fell through or failed intent validation.
+   - Built [src/lib/scheduler-commands.js](file:///d:/island/src/lib/scheduler-commands.js) to resolve spoken countdown durations ("one minute", "30 seconds", "half an hour") and absolute clock alarms ("7 AM", "6:30 tomorrow morning").
+   - Integrated with `useRealtimeVoice.js` for zero-latency local execution without consuming external LLM quota.
+   - Integrated allowlisted actions with Groq tool declarations and Gemini system prompt for conversational fallback.
+   - Exposed `submitText(text)` to guarantee identical scheduling logic between spoken voice turns and text commands.
+   - Hardened [src/lib/chime.js](file:///d:/island/src/lib/chime.js) to report audio playback status instead of failing silently.
+
+### B. Natural-Language Command Grammar & Resolution
+1. **Relative Countdowns**:
+   - Spoken numbers to digits conversion: "one", "thirty", "twenty five", "half an hour", etc.
+   - Multi-unit compounds: "1 hour 30 minutes", "5 minutes and 10 seconds", "30 seconds", "10s".
+   - Utterances like "Set an alarm for one minute" are parsed as relative countdowns (Pass 2.2.8 Step 2).
+   - Optional label extraction: e.g. "for cooking pasta", "tea timer".
+   - Bounds validation: strictly rejects durations under 1 second or exceeding 99 hours.
+2. **Absolute Clock Alarms**:
+   - Resolves 12-hour AM/PM and 24-hour formats ("7 AM" -> "07:00", "6:30 AM" -> "06:30", "8:15 PM" -> "20:15").
+   - Local clock awareness: evaluates current time relative to user's local timezone. Past times roll over to tomorrow (e.g. at 5:00 PM, "7 AM" schedules 7:00 AM tomorrow).
+   - Relative day keywords: "tomorrow morning", "tonight", "this evening".
+   - Resolves wake-up phrases: "Wake me up at 7 AM" -> alarm with label "Wake up".
+3. **Ambiguity Detection & Clarification**:
+   - Ambiguous hours ("Set an alarm for 7" without AM/PM or unit) prompt a concise clarification: *"Would you like that alarm for 7:00 AM or 7:00 PM?"*
+   - Bare triggers ("Set an alarm", "Set a timer") prompt for time/duration rather than scheduling the wrong time.
+4. **Status & Cancellation**:
+   - "How much time is left?" / "How much time is left on my timer?" -> queries active timers and returns formatted speech (e.g. *"You have 45 seconds left on your tea timer."*).
+   - "What alarms do I have?" -> returns upcoming scheduled alarms (e.g. *"You have an alarm set for 7 AM tomorrow."*).
+   - "Cancel my timer" -> cancels active timer; asks for clarification if multiple timers are running.
+   - "Cancel my 7 AM alarm" -> cancels the specific alarm matching 07:00.
+
+### C. Verification & Test Results
+- **Pass 2.2.8 Test Suite** (`test/pass2-2-8-nl-scheduler.test.cjs`):
+  1. *Step 2A: Relative Countdown Duration Parsing*: One minute (60,000ms), 30 seconds (30,000ms), 5 minutes (300,000ms), pasta label (600,000ms), half hour (1,800,000ms), 10s (10,000ms). **(PASS)**
+  2. *Step 2B: Absolute Clock Alarm Parsing & Local Time*: 7 AM, wake up label, tomorrow rollover, 8:15 PM, strict rejection of "in 7 minutes" as clock alarm. **(PASS)**
+  3. *Step 2C: Ambiguity Handling & Clarifications*: Ambiguous "alarm for 7" requests AM/PM; bare commands ask for duration/time. **(PASS)**
+  4. *Step 4 & 6: Intent Execution, Authoritativeness & TTS Responses*: Scheduler adds items, returns verified items, spoken dialogue is concise and TTS-safe. **(PASS)**
+  5. *Step 5: Status Queries & Cancellation*: Status reports remaining time; cancellation by kind and by exact alarm time. **(PASS)**
+  6. *Step 3: Real Alarm Firing, Non-Repeated Trigger & Dismissal*: Verified timer ticks, fires at exact timestamp, never re-triggers, and cleans up. **(PASS)**
+  7. *Step 7.7: Voice and Text Parity*: Voice and text commands execute identical scheduling actions and return identical speech. **(PASS)**
+  - **Result: 8/8 passed in 233ms**.
+- **Regression Test Suites**:
+  - `test/scheduler.test.js`: 10/10 passed.
+  - `test/pass2-2-6-1-semantic-agent.test.cjs`: 5/5 passed.
+  - `test/pass2-2-7-revised-full-lyrics.test.cjs`: 10/10 passed.
+  - `test/pass2-2-7-cinema-lyrics-expressive.test.cjs`: 8/8 passed.
+  - **Result: 36/36 passed in 546ms**.
+- **Production Build**:
+  - `npm run build` compiled cleanly in **2.12s with 0 errors**.
 

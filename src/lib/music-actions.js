@@ -31,6 +31,7 @@ import {
 } from './favorites.js';
 import { audioCoordinator } from './audio-coordinator.js';
 import { musicContext } from './music-conversation-context.js';
+import { executeSchedulerIntent } from './scheduler-commands.js';
 
 export const ALLOWED_ACTIONS = Object.freeze([
   'play_track',
@@ -50,6 +51,11 @@ export const ALLOWED_ACTIONS = Object.freeze([
   'favorites_select_ordinal',
   'compound_pause_play',
   'set_volume',
+  'set_timer',
+  'set_alarm',
+  'cancel_timer',
+  'cancel_alarm',
+  'get_schedule_status',
 ]);
 
 export const PLAYBACK_STATES = Object.freeze({
@@ -886,12 +892,35 @@ export function executeMusicAction(intent, env = {}) {
       };
     }
 
+    case 'set_timer':
+    case 'set_alarm':
+    case 'cancel_timer':
+    case 'cancel_alarm':
+    case 'get_schedule_status': {
+      const scheduler = env.scheduler || (typeof window !== 'undefined' ? window.island?.scheduler : null);
+      const schedule = env.schedule || [];
+      const parsed = {
+        isScheduler: true,
+        intent: action === 'set_timer' ? 'SET_TIMER' :
+                action === 'set_alarm' ? 'SET_ALARM' :
+                action === 'get_schedule_status' ? 'QUERY_STATUS' : 'CANCEL',
+        durationMs: intent.durationMs || (intent.minutes ? intent.minutes * 60000 : null) || (intent.seconds ? intent.seconds * 1000 : null),
+        time: intent.time,
+        label: intent.label || intent.query,
+        target: action === 'cancel_timer' ? 'timer' : action === 'cancel_alarm' ? 'alarm' : (intent.target || 'timer'),
+        specificTime: intent.time || null,
+        userSaidAlarm: intent.userSaidAlarm || false,
+        rawText: intent.query || '',
+      };
+      return executeSchedulerIntent(parsed, { scheduler, schedule, now: Date.now() });
+    }
+
     default:
       return {
         ok: false,
         action,
         reason: 'unknown_action',
-        spokenConfirmation: "I'm not sure how to perform that music action.",
+        spokenConfirmation: "I'm not sure how to perform that action.",
       };
   }
 }

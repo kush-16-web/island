@@ -396,7 +396,7 @@ Never output markdown symbols like asterisks, bullet points, or emojis, since yo
 You can also control Island's music playback and favorites. When the user requests a music command, append a single action tag at the end of your response:
 [[ACTION:{"action":"<action_name>","query":"<track name or artist if applicable>"}]]
 
-Supported music actions:
+Supported actions:
 - play_track (query: track name or artist)
 - play_favorite (query: track name or artist specifically from user's favorites)
 - play_random_favorite (no query)
@@ -410,6 +410,11 @@ Supported music actions:
 - show_favorites
 - list_favorites
 - count_favorites
+- set_timer (durationMs: milliseconds, label?: string)
+- set_alarm (time: "HH:MM", label?: string)
+- cancel_timer (label?: string)
+- cancel_alarm (time?: "HH:MM", label?: string)
+- get_schedule_status (target: "timer" | "alarm" | "all")
 
 For normal conversation, NEVER include an [[ACTION:...]] tag.`;
 

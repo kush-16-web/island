@@ -78,76 +78,85 @@ export default function Hub({
     visibleTabs.push({ id: 'inbox', label: 'Inbox', Glyph: Icon.Inbox });
   }
 
+  const [lyricsViewMode, setLyricsViewMode] = useState(false);
+  const handleLyricsViewChange = (mode) => {
+    setLyricsViewMode(mode);
+    onLyricsViewChange?.(mode);
+  };
+  const isLyricsActive = tab === 'playing' && (lyricsViewMode === 'lyrics' || lyricsViewMode === true);
+
   return (
-    <div className="hub" style={{ '--accent': accentColor || 'var(--c-info)' }}>
-      <div className="hub__head">
-        <div className="hub__nav">
-          <div className="seg" role="tablist" aria-label="Island sections">
-            {visibleTabs.map(({ id, label, Glyph }) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                className={`seg__btn${tab === id ? ' is-active' : ''}`}
-                onClick={() => {
-                  if (tab === id) onClose?.();
-                  else setTab(id);
-                }}
-                title={tab === id ? `Click to collapse ${label}` : label}
-              >
-                {tab === id && <motion.span layoutId="seg-pill" className="seg__pill" transition={SPRING} />}
-                <span className="seg__label">
-                  <Glyph width={15} height={15} />
-                  {label}
-                  {id === 'inbox' && unread > 0 && <span className="badge">{unread > 9 ? '9+' : unread}</span>}
-                </span>
-              </button>
-            ))}
+    <div className={`hub${isLyricsActive ? ' hub--lyrics-active' : ''}`} style={{ '--accent': accentColor || 'var(--c-info)' }}>
+      {!isLyricsActive && (
+        <div className="hub__head">
+          <div className="hub__nav">
+            <div className="seg" role="tablist" aria-label="Island sections">
+              {visibleTabs.map(({ id, label, Glyph }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === id}
+                  className={`seg__btn${tab === id ? ' is-active' : ''}`}
+                  onClick={() => {
+                    if (tab === id) onClose?.();
+                    else setTab(id);
+                  }}
+                  title={tab === id ? `Click to collapse ${label}` : label}
+                >
+                  {tab === id && <motion.span layoutId="seg-pill" className="seg__pill" transition={SPRING} />}
+                  <span className="seg__label">
+                    <Glyph width={15} height={15} />
+                    {label}
+                    {id === 'inbox' && unread > 0 && <span className="badge">{unread > 9 ? '9+' : unread}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div className="hub__actions">
-          <button
-            type="button"
-            className={`hub-action-btn${tab === 'settings' ? ' is-active' : ''}`}
-            onClick={() => {
-              if (tab === 'settings') setTab(s.media?.active ? 'playing' : 'launcher');
-              else setTab('settings');
-            }}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <Icon.Settings width={15} height={15} />
-          </button>
-
-          {voice && (
+          <div className="hub__actions">
             <button
               type="button"
-              className={`hub-voice-btn${voice.status !== 'idle' ? ' is-active' : ''}${tab === 'voice' ? ' is-selected' : ''}`}
+              className={`hub-action-btn${tab === 'settings' ? ' is-active' : ''}`}
               onClick={() => {
-                if (voice.status === 'idle' || voice.status === 'error') {
-                  voice.startSession();
-                  setTab('voice');
-                } else if (tab === 'voice') {
-                  setTab(s.media?.active ? 'playing' : 'launcher');
-                } else {
-                  setTab('voice');
-                }
+                if (tab === 'settings') setTab(s.media?.active ? 'playing' : 'launcher');
+                else setTab('settings');
               }}
-              title={voice.status !== 'idle' ? `${assistantName} active (Click to view)` : `Talk to ${assistantName} (Ctrl+Shift+Space)`}
-              aria-label="Voice Companion"
+              title="Settings"
+              aria-label="Settings"
             >
-              <Icon.Mic width={14} height={14} />
-              {voice.status !== 'idle' && (
-                <span className={`hub-voice-pulse is-${voice.status}`} />
-              )}
+              <Icon.Settings width={15} height={15} />
             </button>
-          )}
-        </div>
-      </div>
 
-      <div className="hub__body">
+            {voice && (
+              <button
+                type="button"
+                className={`hub-voice-btn${voice.status !== 'idle' ? ' is-active' : ''}${tab === 'voice' ? ' is-selected' : ''}`}
+                onClick={() => {
+                  if (voice.status === 'idle' || voice.status === 'error') {
+                    voice.startSession();
+                    setTab('voice');
+                  } else if (tab === 'voice') {
+                    setTab(s.media?.active ? 'playing' : 'launcher');
+                  } else {
+                    setTab('voice');
+                  }
+                }}
+                title={voice.status !== 'idle' ? `${assistantName} active (Click to view)` : `Talk to ${assistantName} (Ctrl+Shift+Space)`}
+                aria-label="Voice Companion"
+              >
+                <Icon.Mic width={14} height={14} />
+                {voice.status !== 'idle' && (
+                  <span className={`hub-voice-pulse is-${voice.status}`} />
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className={`hub__body${isLyricsActive ? ' hub__body--lyrics-active' : ''}`}>
         <AnimatePresence initial={false} custom={dir}>
           <motion.div
             key={tab}
@@ -176,7 +185,7 @@ export default function Hub({
                 platform={s.platform}
                 onControl={actions.mediaControl}
                 accentColor={accentColor}
-                onLyricsViewChange={onLyricsViewChange}
+                onLyricsViewChange={handleLyricsViewChange}
                 videoStream={videoStream}
                 videoStreamActive={videoStreamActive}
                 youtubeId={youtubeId}
