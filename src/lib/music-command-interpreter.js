@@ -23,6 +23,8 @@ import { SUPPORTED_PROVIDERS, getAllFavorites } from './favorites.js';
 import { getAssistantName } from './assistant.js';
 import { parseMultiActionPlan, executeActionPlan } from './action-plan.js';
 import { musicContext } from './music-conversation-context.js';
+import { planUserIntent, ACTION_TYPES } from './semantic-tool-planner.js';
+import { isExplicitReadAloudRequest } from './agent-response-contract.js';
 
 // Conversational phrases containing "play" that are NOT music commands
 const NON_MUSIC_PLAY_PATTERNS = [
@@ -92,18 +94,22 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     const r = res.actionResult;
     if (r.ok) {
       musicContext.recordSuccess(r.action, r.track);
-    } else if (r.reason === 'ambiguous_match') {
-      musicContext.setPreviousCandidates(r.matches || []);
+    } else if (r.reason === 'ambiguous_match' || r.clarificationNeeded || r.action === 'clarification_needed') {
+      musicContext.setPreviousCandidates(r.candidates || r.matches || []);
+      musicContext.recordFailure(r.action, query || cleaned, 'clarification_needed', r.candidates || r.matches || []);
     } else {
       musicContext.recordFailure(r.action, query || cleaned, r.reason, r.matches || []);
     }
     return res;
   };
 
-  // 0A. Contextual Corrections (Priority 4 & 5)
+  // 00A. Contextual Clarification Confirmation or Correction (Pass 2.2.6.2 Part A)
   const correction = musicContext.detectCorrection(rawText);
   if (correction && correction.isCorrection) {
     if (correction.selectedTrack) {
+      if (correction.confirmedAliasQuery && correction.selectedTrack.id) {
+        musicContext.learnAlias(correction.confirmedAliasQuery, correction.selectedTrack.id, storage);
+      }
       const res = executeMusicAction({ action: 'play_favorite', track: correction.selectedTrack }, env);
       if (res.ok) musicContext.recordSuccess('play_favorite', res.track);
       return {
@@ -135,37 +141,189 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
         actionResult: res,
       };
     }
+  }
 
-    if (resolution.ambiguous) {
-      musicContext.setPreviousCandidates(resolution.candidates);
-      const candidateList = resolution.candidates
-        .map((c) => `"${c.title}"${c.artist ? ` by ${c.artist}` : ''}`)
-        .join(' or ');
-      return {
-        handledLocally: true,
-        actionResult: {
-          ok: false,
-          action: 'play_favorite',
-          reason: 'ambiguous_match',
-          matches: resolution.candidates,
-          spokenConfirmation: `I found multiple matching songs in your favorites: ${candidateList}. Which one would you like?`,
-        },
-      };
+  // 00. General Semantic Tool Planning (Pass 2.2.6.1)
+  const semanticPlan = planUserIntent(rawText, musicContext.getContext());
+  if (semanticPlan && semanticPlan.confidence === 'high' && semanticPlan.plan) {
+    const p = semanticPlan.plan;
+    switch (p.type) {
+      case ACTION_TYPES.CONVERSATION_DISMISS: {
+        let closingAck = "You're welcome! Enjoy your music.";
+        if (/bye|goodbye/i.test(cleaned)) closingAck = 'Goodbye! Enjoy your day.';
+        else if (/no|that(?:'s|\s+is)\s+all|nothing/i.test(cleaned)) closingAck = 'Understood. Enjoy your day!';
+        return {
+          handledLocally: true,
+          actionResult: {
+            ok: true,
+            action: 'session_dismiss',
+            isSessionEnd: true,
+            spokenConfirmation: closingAck,
+          },
+        };
+      }
+
+      case ACTION_TYPES.CONVERSATION_INFO: {
+        if (p.topic === 'weather') {
+          return {
+            handledLocally: true,
+            actionResult: {
+              ok: true,
+              action: 'info_weather',
+              isWeather: true,
+              location: p.location || null,
+              timeframe: p.timeframe || 'current',
+              questionType: p.questionType || 'general',
+              spokenConfirmation: p.location ? `Checking the live weather for ${p.location}...` : 'Checking the live weather...',
+            },
+          };
+        }
+        return { handledLocally: false, fallbackToLlm: true, reason: 'informational_query' };
+      }
+
+      case ACTION_TYPES.MUSIC_CONTROL: {
+        const op = p.operation;
+        if (op === 'volume') {
+          const res = executeMusicAction({ action: 'set_volume', level: p.level }, env);
+          return wrapResult({ handledLocally: true, actionResult: res });
+        }
+        const actionMap = {
+          pause: 'pause',
+          resume: 'resume',
+          stop: 'pause',
+          next: 'next_track',
+          previous: 'previous_track',
+        };
+        const mappedAction = actionMap[op] || 'pause';
+        return wrapResult({
+          handledLocally: true,
+          actionResult: executeMusicAction({ action: mappedAction }, env),
+        });
+      }
+
+      case ACTION_TYPES.FAVORITES_COUNT: {
+        return wrapResult({
+          handledLocally: true,
+          actionResult: executeMusicAction({ action: 'count_favorites', provider: p.filter !== 'all' ? p.filter : undefined }, env),
+        });
+      }
+
+      case ACTION_TYPES.FAVORITES_LIST: {
+        return wrapResult({
+          handledLocally: true,
+          actionResult: executeMusicAction({ action: 'list_favorites', filter: p.filter, provider: p.filter !== 'all' ? p.filter : undefined, all: true, readAloud: Boolean(p.readAloud) }, env),
+        });
+      }
+
+      case ACTION_TYPES.FAVORITES_SELECT: {
+        if (p.selection.kind === 'random') {
+          return wrapResult({
+            handledLocally: true,
+            actionResult: executeMusicAction(
+              { action: 'favorites_select_random', filter: p.filter, collectionRef: p.collectionRef },
+              env
+            ),
+          });
+        }
+        if (p.selection.kind === 'ordinal') {
+          return wrapResult({
+            handledLocally: true,
+            actionResult: executeMusicAction(
+              { action: 'favorites_select_ordinal', index: p.selection.index, collectionRef: p.collectionRef },
+              env
+            ),
+          });
+        }
+        if (p.selection.kind === 'track') {
+          const res = resolveFavoriteTrack({
+            query: p.selection.query,
+            title: p.selection.query,
+            provider: p.provider || (p.filter !== 'all' ? p.filter : undefined),
+            storage,
+          });
+          if (res.match) {
+            return wrapResult(
+              {
+                handledLocally: true,
+                actionResult: executeMusicAction(
+                  { action: 'play_favorite', track: res.match, query: res.match.title },
+                  env
+                ),
+              },
+              p.selection.query
+            );
+          }
+          if (res.clarificationNeeded || res.ambiguous) {
+            return wrapResult(
+              {
+                handledLocally: true,
+                actionResult: {
+                  ok: false,
+                  action: 'clarification_needed',
+                  reason: res.ambiguous ? 'ambiguous_match' : (res.reason || 'clarification_needed'),
+                  clarificationNeeded: true,
+                  candidates: res.candidates,
+                  suggestedCandidate: res.suggestedCandidate || res.candidates[0],
+                  spokenConfirmation: res.spokenConfirmation || `Did you mean ${res.candidates[0]?.title}?`,
+                },
+              },
+              p.selection.query
+            );
+          }
+          return wrapResult(
+            {
+              handledLocally: true,
+              actionResult: {
+                ok: false,
+                action: 'play_favorite',
+                reason: 'not_found',
+                spokenConfirmation: `I couldn't find "${p.selection.query}" in your favorites.`,
+              },
+            },
+            p.selection.query
+          );
+        }
+        break;
+      }
+
+      case ACTION_TYPES.MUSIC_PLAY: {
+        const favRes = resolveFavoriteTrack({
+          query: p.trackRef,
+          title: p.trackRef,
+          provider: p.provider,
+          storage,
+        });
+        if (favRes.match) {
+          return wrapResult({
+            handledLocally: true,
+            actionResult: executeMusicAction(
+              { action: 'play_favorite', track: favRes.match, query: favRes.match.title },
+              env
+            ),
+          });
+        }
+        if (favRes.clarificationNeeded) {
+          return wrapResult({
+            handledLocally: true,
+            actionResult: {
+              ok: false,
+              action: 'clarification_needed',
+              clarificationNeeded: true,
+              candidates: favRes.candidates,
+              suggestedCandidate: favRes.suggestedCandidate || favRes.candidates[0],
+              spokenConfirmation: favRes.spokenConfirmation,
+            },
+          });
+        }
+        return wrapResult({
+          handledLocally: true,
+          actionResult: executeMusicAction(
+            { action: 'play_track', query: p.trackRef, provider: p.provider },
+            env
+          ),
+        });
+      }
     }
-
-    // Graceful feedback
-    const prompt = candidateTitle
-      ? `I couldn't find "${candidateTitle}" in your Favorites${languageHint ? ` under ${languageHint}` : ''}. Did you mean a different title?`
-      : `I couldn't find that title in your Favorites.`;
-    return {
-      handledLocally: true,
-      actionResult: {
-        ok: false,
-        action: 'play_favorite',
-        reason: 'not_found',
-        spokenConfirmation: prompt,
-      },
-    };
   }
 
   // 0B. Multi-Action Commands (Priority 3)
@@ -295,11 +453,11 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     });
   }
 
-  // 1B. Complete List Request: "Name all of them", "List all of them", "Show all of them"
-  if (/^(name|list|show|tell\s+me)\s+(all|all\s+of\s+them|every\s+song)(\s+in\s+my\s+favorites)?$/i.test(cleaned)) {
+  // 1B. Complete List Request: "Name all of them", "List all of them", "Show all of them", "Read all of them aloud"
+  if (/^(name|list|show|tell\s+me|read)\s+(all|all\s+of\s+them|every\s+song)(\s+in\s+my\s+favorites|\s+aloud)?$/i.test(cleaned)) {
     return wrapResult({
       handledLocally: true,
-      actionResult: executeMusicAction({ action: 'list_favorites', all: true }, env),
+      actionResult: executeMusicAction({ action: 'list_favorites', all: true, readAloud: isExplicitReadAloudRequest(rawText) }, env),
     });
   }
 

@@ -24,6 +24,7 @@
 import { normalizeText, stringSimilarity } from './music-actions.js';
 import { getAllFavorites, SUPPORTED_PROVIDERS } from './favorites.js';
 import { musicContext } from './music-conversation-context.js';
+import { calculatePhoneticSimilarity } from './phonetic-transliteration.js';
 
 // Common phonetic and orthographic Whisper replacements for music queries
 const WHISPER_NORMALIZATIONS = [
@@ -68,6 +69,14 @@ export function scoreFavoriteCandidate(favorite, queryTitle, queryArtist = '', l
 
   // 2. Title similarity
   let titleSim = stringSimilarity(cleanQTitle, favTitle);
+
+  // 2B. Reusable phonetic & transliteration similarity (Pass 2.2.6.2 Part A)
+  const phoneticSim = calculatePhoneticSimilarity(cleanQTitle, favTitle);
+  if (phoneticSim >= 0.95) {
+    titleSim = Math.max(titleSim, 0.88);
+  } else if (phoneticSim >= 0.75) {
+    titleSim = Math.max(titleSim, phoneticSim * 0.85);
+  }
 
   // Check for common transliterated Hindi / phonetic variations (e.g. "tuu" vs "tu")
   if (cleanQTitle.replace(/u+/g, 'u') === favTitle.replace(/u+/g, 'u')) {
@@ -217,15 +226,38 @@ export function resolveFavoriteTrack(queryOrParams = {}, maybeList = null) {
       const scoreDiff = best.score - second.score;
       // Very close scores or same title by different artists
       if (scoreDiff <= 0.08 || (normalizeText(best.track.title) === normalizeText(second.track.title) && !effectiveArtist)) {
+        const candidateDescriptions = scored
+          .slice(0, 3)
+          .map((s) => `${s.track.title}${s.track.artist ? ' by ' + s.track.artist : ''}`)
+          .join(' or ');
         return {
           match: null,
           ambiguous: true,
           clarificationNeeded: true,
+          confidence: 'low_ambiguous',
           candidates: scored.slice(0, 3).map((s) => s.track),
+          spokenConfirmation: `Did you mean ${candidateDescriptions}?`,
           reason: 'ambiguous_match',
         };
       }
     }
+  }
+
+  // Natural Clarification for Phonetic / Insufficient-Confidence Plausible Matches (Pass 2.2.6.2 Part A3)
+  // If the query was not an exact text match, identify candidate naturally: "Did you mean Tuu by Arijit Singh?"
+  const isExactText = normalizeText(best.track.title) === normalizeText(effectiveTitle);
+  if (!isExactText && best.score < 0.95 && best.score >= 0.75) {
+    const artistPart = best.track.artist ? ` by ${best.track.artist}` : '';
+    return {
+      match: null,
+      ambiguous: false,
+      clarificationNeeded: true,
+      confidence: 'medium',
+      suggestedCandidate: best.track,
+      candidates: scored.slice(0, 3).map((s) => s.track),
+      spokenConfirmation: `Did you mean ${best.track.title}${artistPart}?`,
+      reason: 'phonetic_clarification',
+    };
   }
 
   return {

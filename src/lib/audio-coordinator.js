@@ -150,12 +150,19 @@ class AudioCoordinator {
     // 1. Dispatch real audible ducking to YouTube Music Chrome extension
     if (typeof window !== 'undefined' && window.island?.companion?.dispatchCommand) {
       this.isExternalDucked = true;
-      window.island.companion.dispatchCommand({
-        action: 'duck',
-        level: targetMultiplier,
-      }).catch(() => {
-        this.isExternalDucked = false;
-      });
+      window.island.companion
+        .dispatchCommand({
+          action: 'duck',
+          level: targetMultiplier,
+        })
+        .then((res) => {
+          if (res && res.ok === false && res.status === 'no_player') {
+            this.isExternalDucked = false;
+          }
+        })
+        .catch(() => {
+          this.isExternalDucked = false;
+        });
     }
 
     // 2. Safe fallback when companion is not connected but external media is currently playing

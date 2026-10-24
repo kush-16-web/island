@@ -129,6 +129,37 @@ class WindowsTtsService {
     }
   }
 
+  _cleanTextForSpeech(rawText) {
+    if (!rawText || typeof rawText !== 'string') return '';
+    let text = rawText.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '');
+    text = text.replace(/```[\w]*\n([\s\S]*?)```/g, 'a code snippet.');
+    text = text.replace(/`([^`]+)`/g, '$1');
+    text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    text = text.replace(/https?:\/\/(?:www\.)?([a-zA-Z0-9.-]+)(?:\/[^\s]*)?/g, '$1');
+    text = text.replace(/^[ \t]*#{1,6}[ \t]+([^\n]+)/gm, '$1.');
+    text = text.replace(/^[ \t]*>[ \t]+([^\n]+)/gm, '$1');
+    text = text.replace(/^[ \t]*(\d+)[.)][ \t]+([^\n]+)/gm, '$1, $2.');
+    text = text.replace(/^[ \t]*[-*+•][ \t]+([^\n]+)/gm, '$1,');
+    text = text.replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1');
+    text = text.replace(/_{1,3}([^_]+)_{1,3}/g, '$1');
+    text = text.replace(/~{1,2}([^~]+)~{1,2}/g, '$1');
+    text = text.replace(/(\d+(?:\.\d+)?)\s*°\s*[cC]\b/g, '$1 degrees Celsius');
+    text = text.replace(/(\d+(?:\.\d+)?)\s*°\s*[fF]\b/g, '$1 degrees Fahrenheit');
+    text = text.replace(/(\d+(?:\.\d+)?)\s*°\b/g, '$1 degrees');
+    text = text.replace(/(\d+(?:\.\d+)?)\s*%/g, '$1 percent');
+    text = text.replace(/\$(\d+(?:\.\d{1,2})?)/g, '$1 dollars');
+    text = text.replace(/₹(\d+(?:\.\d{1,2})?)/g, '$1 rupees');
+    text = text.replace(/€(\d+(?:\.\d{1,2})?)/g, '$1 euros');
+    text = text.replace(/\s+&\s+/g, ' and ');
+    text = text.replace(/(\w+)\/(\w+)/g, '$1 or $2');
+    text = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1FA00}-\u{1FAFF}]/gu, '');
+    text = text.replace(/\s+,/g, ',');
+    text = text.replace(/,\s*,+/g, ',');
+    text = text.replace(/\.\s*\.+/g, '.');
+    text = text.replace(/\s+/g, ' ').trim();
+    return text;
+  }
+
   /**
    * Synthesize text to 16-bit PCM WAV base64 using SAPI.
    */
@@ -137,7 +168,7 @@ class WindowsTtsService {
       return { ok: false, error: 'Empty text to synthesize' };
     }
 
-    const cleanText = text.replace(/\[\[ACTION:[\s\S]*?\]\]/g, '').trim();
+    const cleanText = this._cleanTextForSpeech(text);
     if (!cleanText) {
       return { ok: false, error: 'No clean text after stripping actions' };
     }

@@ -21,6 +21,15 @@ import { normalizeText, stringSimilarity } from './music-actions.js';
 
 const ALIASES_STORAGE_KEY = 'island_music_aliases';
 
+export function extractCleanTitleFromQuery(q) {
+  if (!q || typeof q !== 'string') return null;
+  return q
+    .replace(/^(?:play|listen\s+to|put\s+on)\s+/i, '')
+    .replace(/\s+(?:from|in)\s+my\s+(?:list|favorites|favs)\b/gi, '')
+    .replace(/[.,!?;]/g, '')
+    .trim();
+}
+
 class MusicConversationContext {
   constructor() {
     this.reset();
@@ -34,6 +43,7 @@ class MusicConversationContext {
     this.recentRequests = []; // [{ query, title, artist, status, timestamp }]
     this.activePlayerState = null;
     this.displayedFavorites = []; // Currently displayed favorites list in Agent chat
+    this.lastReferencedCollection = null; // { type, tracks: [], filter, timestamp }
   }
 
   getContext() {
@@ -45,11 +55,34 @@ class MusicConversationContext {
       recentRequests: this.recentRequests,
       activePlayerState: this.activePlayerState,
       displayedFavorites: this.displayedFavorites,
+      lastReferencedCollection: this.lastReferencedCollection,
     };
   }
 
-  setDisplayedFavorites(tracks = []) {
-    this.displayedFavorites = Array.isArray(tracks) ? tracks.map((t) => ({ ...t })) : [];
+  setLastReferencedCollection(type, tracks = [], filter = 'all') {
+    const list = Array.isArray(tracks) ? tracks.map((t) => ({ ...t })) : [];
+    this.lastReferencedCollection = {
+      type: type || 'favorites',
+      tracks: list,
+      filter: filter || 'all',
+      timestamp: Date.now(),
+    };
+    this.displayedFavorites = list;
+  }
+
+  getLastReferencedCollection() {
+    return this.lastReferencedCollection;
+  }
+
+  setDisplayedFavorites(tracks = [], filter = 'all') {
+    const list = Array.isArray(tracks) ? tracks.map((t) => ({ ...t })) : [];
+    this.displayedFavorites = list;
+    this.lastReferencedCollection = {
+      type: 'favorites',
+      tracks: list,
+      filter: filter || 'all',
+      timestamp: Date.now(),
+    };
   }
 
   getDisplayedFavorites() {
@@ -59,6 +92,24 @@ class MusicConversationContext {
   getDisplayedFavoriteByIndex(index) {
     if (!Array.isArray(this.displayedFavorites)) return null;
     return this.displayedFavorites[index] || null;
+  }
+
+  getRandomTrackFromCollection(filter = 'all') {
+    const collection = this.lastReferencedCollection?.tracks || this.displayedFavorites || [];
+    if (!Array.isArray(collection) || collection.length === 0) return null;
+    let eligible = collection;
+    if (filter && filter !== 'all') {
+      const f = filter.toLowerCase();
+      eligible = collection.filter((t) => {
+        const p = (t.provider || '').toLowerCase();
+        if (f === 'spotify') return p === 'spotify';
+        if (f === 'youtube') return p === 'youtube' || p === 'youtube_music';
+        return p === f;
+      });
+    }
+    if (eligible.length === 0) return null;
+    const idx = Math.floor(Math.random() * eligible.length);
+    return eligible[idx];
   }
 
   recordRequest({ query, title, artist, action, status = 'requested' }) {
@@ -164,14 +215,29 @@ class MusicConversationContext {
     const spelledWord = this.normalizeSpelledLetters(trimmed);
     const langMatch = lower.match(/\b(hindi|punjabi|bengali|tamil|telugu|hinglish|english|spanish)\b/i);
 
+    const hasPendingCandidates = Boolean(this.previousCandidates && this.previousCandidates.length > 0);
     const hasPendingContext = Boolean(
       this.pendingIntent ||
       this.lastFailedAction ||
-      this.previousCandidates.length > 0 ||
+      hasPendingCandidates ||
       (this.displayedFavorites && this.displayedFavorites.length > 0)
     );
 
-    // Check ordinal and numbered selection: "Play the third one", "Play the 2nd one", "Play number 3", "The third one", etc.
+    const cleanConfirmedQuery = extractCleanTitleFromQuery(this.pendingIntent?.query) || this.pendingIntent?.query || null;
+
+    // 0. Affirmative clarification confirmation: "Yes, that one", "Yes", "Yeah", "That one", "Play it", "Sure"
+    const isAffirmative = /^(?:yes|yeah|yep|yup|sure|correct|exactly|that(?:'s|\s+is)\s+(?:the\s+one|right|it)|(?:play\s+)?that\s+one|play\s+it|please)\b/i.test(lower);
+    if (isAffirmative && hasPendingCandidates) {
+      return {
+        isCorrection: true,
+        action: 'play_favorite',
+        selectedTrack: this.previousCandidates[0],
+        confirmedAliasQuery: cleanConfirmedQuery,
+        reason: 'confirmed_candidate',
+      };
+    }
+
+    // Check ordinal and numbered selection: "Play the third one", "Play the 2nd one", "Play number 3", "The second one", etc.
     const ordinalMatch =
       lower.match(/\b(?:play\s+)?(?:the\s+)?(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|sixth|6th|seventh|7th|eighth|8th|ninth|9th|tenth|10th)\s*(?:one|track|song|candidate)?\b/i) ||
       lower.match(/\b(?:play\s+)?number\s+(\d+)\b/i);
@@ -191,23 +257,24 @@ class MusicConversationContext {
       else if (word === 'tenth' || word === '10th') index = 9;
       else if (/^\d+$/.test(word)) index = parseInt(word, 10) - 1;
 
-      // Check displayed favorites list first
+      // Pending clarification candidates take priority when user is answering a clarification
+      if (hasPendingCandidates && this.previousCandidates.length > index && index >= 0) {
+        return {
+          isCorrection: true,
+          action: 'play_favorite',
+          selectedTrack: this.previousCandidates[index],
+          confirmedAliasQuery: cleanConfirmedQuery,
+          reason: 'chose_candidate_by_ordinal',
+        };
+      }
+
+      // Check displayed favorites list
       if (this.displayedFavorites && this.displayedFavorites.length > index && index >= 0) {
         return {
           isCorrection: true,
           action: 'play_favorite',
           selectedTrack: this.displayedFavorites[index],
           reason: 'chose_displayed_favorite',
-        };
-      }
-
-      // Fall back to ambiguous candidate list
-      if (this.previousCandidates && this.previousCandidates.length > index && index >= 0) {
-        return {
-          isCorrection: true,
-          action: this.pendingIntent?.action || 'play_favorite',
-          selectedTrack: this.previousCandidates[index],
-          reason: 'chose_candidate_by_ordinal',
         };
       }
     }
@@ -217,29 +284,74 @@ class MusicConversationContext {
     const prevAction = this.pendingIntent?.action || this.lastFailedAction?.action || 'play_favorite';
     const prevQuery = this.pendingIntent?.query || this.lastFailedAction?.query || '';
 
-    // 1. Check for candidate selection: "No, the other one"
+    // 1. Check for candidate selection: "No, the other one" / "The other one"
     if (/\b(?:no[,.\s]+)?(?:the\s+)?other\s+one\b/i.test(lower)) {
       if (this.previousCandidates.length >= 2) {
         return {
           isCorrection: true,
           action: prevAction,
           selectedTrack: this.previousCandidates[1],
+          confirmedAliasQuery: cleanConfirmedQuery,
           reason: 'chose_second_candidate',
+        };
+      }
+      if (this.previousCandidates.length === 1) {
+        return {
+          isCorrection: true,
+          action: prevAction,
+          selectedTrack: this.previousCandidates[0],
+          reason: 'chose_single_candidate',
         };
       }
     }
 
-    // 3. Extract language clues: Hindi, Punjabi, Bengali, Tamil, Telugu, Hinglish, Spanish, etc.
+    // 2. Extract language clues: Hindi, Punjabi, Bengali, Tamil, Telugu, Hinglish, Spanish, etc.
     let languageHint = null;
     if (langMatch) {
       languageHint = langMatch[1].toLowerCase();
     }
 
-    // 4. Extract artist hints: "The one by [artist]", "By [artist]"
+    // 3. Extract artist hints: "The one by [artist]", "By [artist]"
     let artistHint = null;
     const byMatch = trimmed.match(/\b(?:the\s+one\s+)?by\s+([A-Za-z0-9\s]+?)(?:[.,!?;]|$)/i);
     if (byMatch) {
       artistHint = byMatch[1].trim();
+    }
+
+    // 4. Candidate disambiguation by artist or language hint when candidates are pending
+    if (hasPendingCandidates && (artistHint || languageHint)) {
+      if (artistHint) {
+        const normArtist = normalizeText(artistHint);
+        const match = this.previousCandidates.find((c) => {
+          const ca = normalizeText(c.artist || '');
+          return ca.includes(normArtist) || normArtist.includes(ca);
+        });
+        if (match) {
+          return {
+            isCorrection: true,
+            action: 'play_favorite',
+            selectedTrack: match,
+            confirmedAliasQuery: cleanConfirmedQuery,
+            reason: 'chose_candidate_by_artist',
+          };
+        }
+      }
+
+      if (languageHint && (languageHint === 'hindi' || languageHint === 'hinglish' || languageHint === 'punjabi')) {
+        const match = this.previousCandidates.find((c) => {
+          const ca = normalizeText(c.artist || '');
+          return /arijit|pritam|atif|shreya|ar\s+rahman|diljit|badshah|honey|neha|jubin|sidhu|vishal|shekhar|amit|trivedi|salim|sulaiman/i.test(ca);
+        });
+        if (match) {
+          return {
+            isCorrection: true,
+            action: 'play_favorite',
+            selectedTrack: match,
+            confirmedAliasQuery: this.pendingIntent?.query || null,
+            reason: 'chose_candidate_by_language',
+          };
+        }
+      }
     }
 
     if (isCorrectionPrefix || spelledWord || languageHint || artistHint) {
@@ -286,7 +398,8 @@ class MusicConversationContext {
       const raw = store.getItem(ALIASES_STORAGE_KEY);
       if (!raw) return null;
       const map = JSON.parse(raw);
-      const key = normalizeText(spokenTitle);
+      const cleanKey = extractCleanTitleFromQuery(spokenTitle) || spokenTitle;
+      const key = normalizeText(cleanKey);
       return map[key] || null;
     } catch {
       return null;
@@ -300,7 +413,8 @@ class MusicConversationContext {
       if (!store) return;
       const raw = store.getItem(ALIASES_STORAGE_KEY);
       const map = raw ? JSON.parse(raw) : {};
-      const key = normalizeText(spokenTitle);
+      const cleanKey = extractCleanTitleFromQuery(spokenTitle) || spokenTitle;
+      const key = normalizeText(cleanKey);
       map[key] = verifiedFavoriteId;
       store.setItem(ALIASES_STORAGE_KEY, JSON.stringify(map));
     } catch {}

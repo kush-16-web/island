@@ -179,10 +179,21 @@ async function pullAndDispatchCommand() {
   let primaryTab = await findOrElectPrimaryTab();
 
   if (!primaryTab) {
-    // If no tab exists anywhere, pull command to see if we should create a single tab
+    // If no tab exists anywhere, pull command to inspect action
     const res = await fetchFromIsland('/companion/command');
     if (res && res.ok && res.command) {
       const command = res.command;
+
+      // Volume and non-play commands must NOT attempt to open search tabs or hang
+      if (command.action === 'duck' || command.action === 'restore_volume' || command.action === 'set_volume' || command.action === 'pause' || command.action === 'resume') {
+        await postToIsland('/companion/ack', {
+          commandId: command.id,
+          status: 'no_player',
+          message: 'No YouTube Music tab open',
+        });
+        return;
+      }
+
       const targetUrl = command.videoId
         ? `https://music.youtube.com/watch?v=${command.videoId}`
         : (command.url || `https://music.youtube.com/search?q=${encodeURIComponent((command.title || '') + ' ' + (command.artist || ''))}`);
@@ -226,7 +237,17 @@ async function pullAndDispatchCommand() {
         },
         async (ack) => {
           if (chrome.runtime.lastError) {
-            console.warn('[Dynamic Island SW] Tab message port closed (tab may be navigating):', chrome.runtime.lastError.message);
+            console.warn('[Dynamic Island SW] Tab message port closed:', chrome.runtime.lastError.message);
+            // If command is volume/duck, fail fast immediately without waiting for navigation timeout
+            if (command.action === 'duck' || command.action === 'restore_volume' || command.action === 'set_volume') {
+              currentInFlightCommand = null;
+              await postToIsland('/companion/ack', {
+                commandId: command.id,
+                status: 'failed',
+                error: chrome.runtime.lastError.message,
+              });
+              return;
+            }
             // Tab might be navigating to watch URL; give it grace period to initialize before failing
             setTimeout(async () => {
               if (currentInFlightCommand && currentInFlightCommand.command.id === command.id) {

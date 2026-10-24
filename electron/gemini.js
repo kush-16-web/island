@@ -408,6 +408,8 @@ Supported music actions:
 - add_current_to_favorites
 - remove_current_from_favorites
 - show_favorites
+- list_favorites
+- count_favorites
 
 For normal conversation, NEVER include an [[ACTION:...]] tag.`;
 

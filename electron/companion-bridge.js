@@ -189,6 +189,26 @@ class CompanionBridge extends EventEmitter {
    */
   dispatchCommand({ action = 'play_track', videoId = null, title = '', artist = '', url = null, timeoutMs = null } = {}) {
     const now = Date.now();
+    const isVolumeCmd = action === 'duck' || action === 'restore_volume' || action === 'set_volume';
+
+    // 0. Best-effort volume commands: fail-fast immediately if companion is not connected or no YTM tab is active
+    if (isVolumeCmd && (!this.isConnected() || !this.companionInfo.isYtMusicActive)) {
+      return Promise.resolve({
+        ok: false,
+        status: 'no_player',
+        action,
+        message: 'No active YouTube Music tab to control volume',
+      });
+    }
+
+    // Deduplicate redundant restore_volume requests: return in-flight promise if active
+    if (action === 'restore_volume') {
+      for (const inFlight of this.inFlightCommands.values()) {
+        if (inFlight.command.action === 'restore_volume') {
+          return inFlight.promise;
+        }
+      }
+    }
 
     // 1. Deduplication: Check if identical command was dispatched in the last 1000ms
     for (const inFlight of this.inFlightCommands.values()) {
@@ -231,7 +251,7 @@ class CompanionBridge extends EventEmitter {
       timestamp: Date.now(),
     };
 
-    const effectiveTimeout = timeoutMs || this.commandTimeoutMs;
+    const effectiveTimeout = timeoutMs || (isVolumeCmd ? 2500 : this.commandTimeoutMs);
 
     let inFlightEntry;
     const promise = new Promise((resolve, reject) => {

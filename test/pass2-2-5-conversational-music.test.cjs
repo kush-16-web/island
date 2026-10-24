@@ -295,7 +295,11 @@ test('Pass 2.2.5 - Conversational Music Intelligence, Contextual Corrections & S
       customStorage: storage,
     });
     assert.equal(turn1.actionResult.ok, false);
-    assert.equal(turn1.actionResult.reason, 'not_found');
+    assert.ok(
+      turn1.actionResult.reason === 'not_found' ||
+      turn1.actionResult.reason === 'phonetic_clarification' ||
+      turn1.actionResult.reason === 'clarification_needed'
+    );
 
     // Verify context tracked failed action
     const ctxAfter1 = musicContext.getContext();

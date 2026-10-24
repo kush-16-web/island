@@ -431,7 +431,257 @@ Pass 2.2.6 repairs critical cross-provider favorites routing, elevates natural-l
   11. Music ducking and restoration remain correct.
   12. Non-music queries do not trigger playback.
 - **Full Project Test Suite**: 295 passed, 0 failed, 1 skipped (296 total tests across 77 suites).
-- **Production Bundle**: `npm run build` compiled cleanly in 1.94s with 0 errors.
+---
+
+## 11. Pass 2.2.6.1: Conversational Agent Reliability, Semantic Tool Execution & Companion Timeout Repair
+
+### A. Root Cause Analysis & Proven Divergences
+Real multi-turn voice conversations were thoroughly investigated across screen recordings and codebase traces, revealing four interconnected root causes:
+
+1. **"Play any random one from it" Literal Query Defaulting**:
+   - In `music-command-interpreter.js`, `playMatch = cleaned.match(/^play\s+(.+)$/i)` caught phrases like "Play any random one from it".
+   - The query `"any random one from it"` failed fuzzy resolution against favorites.
+   - Execution fell through to `executeMusicAction({ action: 'play_track', query: 'any random one from it' })`, searching Spotify / YouTube for the literal sentence instead of executing collection selection.
+2. **Count vs. List Inconsistency & Missing Inline Favorites Cards**:
+   - `list_favorites` and `count_favorites` existed solely in local regexes and were omitted from `ISLAND_MUSIC_TOOLS` in `electron/groq.js` and the Gemini system prompt in `electron/gemini.js`.
+   - When a user's natural phrasing deviated from local regexes, it fell through to the conversational LLM.
+   - The LLM could only call `show_favorites`. In `music-actions.js`, `show_favorites` returned `{ count: 8, spokenConfirmation: 'Opening your favorites. You have 8 saved songs.' }` with **NO `tracks` payload**, preventing `InlineFavorites.jsx` from rendering cards.
+   - Furthermore, `show_favorites` never recorded the tracks into `musicContext.setDisplayedFavorites(list)` or `musicContext.setLastReferencedCollection('favorites', list)`.
+3. **Chrome Companion Ducking & Restoration Command Timeouts (`12000ms`)**:
+   - In `electron/companion-bridge.js`, `dispatchCommand` queued commands into `inFlightCommands` with an unconditional 12,000ms timeout even when `!this.isConnected()` or `!this.companionInfo.isYtMusicActive`.
+   - In `extension/background.js`, when `!primaryTab` (no active YouTube Music tab), `pullAndDispatchCommand()` pulled `duck` and `restore_volume` from Island, attempted to create a search tab (`search?q=%20`), and **never posted an acknowledgment** back to `/companion/ack`.
+   - This caused Electron main to hang for 12,000ms and log repeated `Command "duck" timed out after 12000ms` and `Command "restore_volume" timed out after 12000ms` errors.
+4. **Context Loss on Multi-Turn Anaphoric Queries**:
+   - References like "from it", "from them", "those", "that list" were discarded after a single turn because previous collections were not preserved in session-scoped conversation context.
+
+---
+
+### B. Architectural Changes & Implementations
+
+1. **General Semantic Tool Planner (`src/lib/semantic-tool-planner.js`)**:
+   - Implements a validated `AgentAction` planning schema:
+     - `favorites.count` (filter?: 'all' | 'spotify' | 'youtube')
+     - `favorites.list` (filter?: 'all' | 'spotify' | 'youtube')
+     - `favorites.select` (selection: { kind: 'random' | 'ordinal' | 'track' }, collectionRef?: string)
+     - `music.play` (trackRef: string, provider?: string)
+     - `music.control` (operation: 'pause' | 'resume' | 'stop' | 'next' | 'previous' | 'volume')
+     - `conversation.clarify` (question: string)
+     - `conversation.dismiss` ()
+     - `conversation.info` (topic: string, query: string)
+   - Resolves conversational anaphora ("from it", "from them", "from those", "that list") against active session collection references.
+   - Guarantees runtime schema validation at the model-to-action boundary (`validateAgentAction`).
+   - Truthful handling of non-supported capabilities (e.g., weather): routes to `conversation.info` (`topic: 'weather'`), responding with an honest capability limitation rather than fabricating data or triggering playback.
+
+2. **Session-Scoped Multi-Turn Memory (`src/lib/music-conversation-context.js`)**:
+   - Added `setLastReferencedCollection(type, tracks, filter)` and `getLastReferencedCollection()`.
+   - Added `getRandomTrackFromCollection(filter)` to execute genuine collection-aware track selection.
+   - Maintained stable item references surviving across voice turns, state transitions, and TTS playback.
+
+3. **Deterministic Favorites List & UI Rendering Contract (`src/lib/music-actions.js`)**:
+   - Unified `show_favorites` and `list_favorites`: both query authoritative `island_favorites_v2` storage, update session context (`setDisplayedFavorites` and `setLastReferencedCollection`), and return structured payloads containing `tracks: list` and `totalCount: count`.
+   - Added `favorites_select_random` and `favorites_select_ordinal` allowlisted actions.
+   - Fixed companion playback execution in `play_random_favorite`: passes `companion` and `onDispatchCompanion` to `handlePlaybackExecution` (previously omitted).
+
+4. **LLM Tool Calling Alignment (`electron/groq.js` & `electron/gemini.js`)**:
+   - Added `list_favorites` and `count_favorites` to `ISLAND_MUSIC_TOOLS` in `electron/groq.js`.
+   - Added `list_favorites` and `count_favorites` to supported music actions in `electron/gemini.js` system prompt.
+
+5. **Chrome Companion Transport Repair (`electron/companion-bridge.js` & `extension/background.js`)**:
+   - **Fail-Fast for Disconnected State**: When `!this.isConnected()` or `!this.companionInfo.isYtMusicActive`, `dispatchCommand` for volume commands (`duck`, `restore_volume`, `set_volume`) resolves immediately with `{ ok: false, status: 'no_player' }` within `<200ms`, completely eliminating 12-second hanging promises.
+   - **Bounded Volume Command Timeout**: Reduced volume command timeout from 12,000ms to 2,500ms.
+   - **Deduplication of Restore Requests**: If a `restore_volume` command is already in flight, returns the in-flight promise.
+   - **Extension Ack on Zero Tabs**: When `!primaryTab`, `extension/background.js` immediately posts an ack `{ status: 'no_player' }` for volume and transport commands instead of opening an empty search tab.
+   - **Audio Coordinator Hardening (`src/lib/audio-coordinator.js`)**: `startDucking` and `restoreVolume` catch dispatch errors non-blockingly, guaranteeing the voice turn is never stalled by companion latency.
+
+6. **Structured Turn Diagnostics**:
+   - Added `recordTurnDiagnostic` logging `turn_id`, `session_id`, `transcript`, `intent_source`, `selected_intent`, `referenced_collection_id`, `tool_execution_status`, `tool_result_count`, `ui_payload_type`, `ui_render_status`, `companion_connection_state`, and `companion_command_duration` to `window.__islandTurnDiagnostics` (capped to 30 turns).
+
+---
+
+### C. Verification & Test Results
+- **Pass 2.2.6.1 Test Suite** (`test/pass2-2-6-1-semantic-agent.test.cjs`):
+  1. *Repeated Identical-Input Tests*: 5x identical queries for "Show me my favorite songs", "Name all of them", "How many do I have?", and "Play any random one from it" all pass with 100% determinism.
+  2. *Paraphrase Invariance Tests*: 15+ varied natural language phrasings correctly resolve to intended actions.
+  3. *Multi-turn State Transitions*: Complete 5-turn conversation (List -> Count -> Random select -> Ordinal correction -> Dismissal) maintains collection references throughout.
+  4. *Structured UI Result Contract*: Validates non-null `tracks` arrays, `totalCount`, and truthful limitation on weather queries.
+  5. *Companion Transport Timeout Repair*: Validates fail-fast resolution (<200ms) when disconnected, bounded 2500ms timeout, and deduplication of restore requests.
+- **Full Project Regression Test Suite**:
+  - **301 passed, 0 failed, 1 skipped** (302 tests across 78 test suites in 6.56s).
+- **Production Build**:
+  - `npm run build` compiled cleanly via Vite in 1.71s with 0 errors.
+
+---
+
+## 10. Pass 2.2.6.2: Multilingual Music Intelligence, Accurate Weather & Compact Agent Result UI
+
+### A. Root Cause Analysis
+
+1. **Multilingual Song Title Mismatches in Whisper Transcription**:
+   - Spoken Hindi titles like "Tuu" (from favorites) are frequently transcribed by Whisper as English homophones ("two", "too", "to", "2") or with alternative transliterations ("tu", "too").
+   - Previous matching strictly relied on character edit distance (`stringSimilarity`) and hardcoded word replacements, giving a low score (~0.33) between "two" and "Tuu", which resulted in `not_found` and prevented natural playback.
+
+2. **Weather Discrepancies (6–7°C offset from Windows Weather)**:
+   - **Timezone Mismatch**: Without explicit timezone specification, Open-Meteo defaulted to UTC, returning observations hours out of phase with the user's local diurnal cycle.
+   - **Location Ambiguity**: IP geolocation without validation could point to ISP gateway hubs hundreds of kilometers away rather than the user's actual city.
+   - **Apparent vs Current Temperature**: Conflating `temperature_2m` with `apparent_temperature` ("feels like") or daily maximums resulted in reported discrepancies.
+   - **Forecast Flattening**: Questions about tomorrow or rain were answered using current weather conditions only.
+
+3. **Overcrowded Agent Tool Results UI**:
+   - `InlineFavorites.jsx` rendered tall cards with oversized album art, multiple vertical text blocks, and huge margins, allowing only one song to be visible at a time inside the expanded Agent window.
+   - No bounded scrollable list existed, causing tool results to push the voice waveform and primary controls off-screen.
+   - There was no structured, native weather card with clean monochrome icons.
+
+---
+
+### B. Architecture & Implementations
+
+1. **Phonetic & Hindi-English Transliteration Similarity Engine (`src/lib/phonetic-transliteration.js`)**:
+   - **Homophone & Number Reduction**: Normalizes English number homophones to phonetic roots (`two`/`too`/`to`/`2` -> `tu`, `one`/`won`/`1` -> `wan`, `four`/`for`/`4` -> `for`).
+   - **Hindi Transliteration Invariants**: Maps equivalent vowel and consonant digraphs (`uu`/`oo` -> `u`, `ee`/`ii` -> `i`, `aa` -> `a`, `bh` -> `b`, `dh` -> `d`, `th` -> `t`, `w` <-> `v`, geminates `tt` -> `t`).
+   - **Phonetic Fingerprinting & Distance**: Computes composite phonetic similarity without requiring heavyweight local AI models, maintaining ultra-low latency on low-power hardware.
+
+2. **Natural Clarification & Confirmation Pipeline**:
+   - **Candidate Disambiguation**: In `favorites-resolver.js`, when a phonetic match occurs with text divergence, returns `{ clarificationNeeded: true, confidence: 'medium', suggestedCandidate, candidates, spokenConfirmation: "Did you mean Tuu by Arijit Singh?" }`.
+   - **Natural Confirmation Responses**: In `music-conversation-context.js`, handles natural affirmations ("Yes, that one", "Yes", "Yeah", "That one", "Play it") as well as ordinal/contrastive corrections ("No, the other one", "The second one", "The one by [artist]", "No, I meant the Hindi song").
+   - **Learned Alias Persistence**: After confirmed clarification, persists the spoken alias (e.g., `'two'` -> `track.id`) into local storage, enabling instant high-confidence direct execution on subsequent turns.
+
+3. **Accurate Weather Engine (`src/lib/weather.js`)**:
+   - **4-Tier Location Resolution**:
+     1. Explicitly named city in current query (e.g., "in Delhi", "for Mumbai").
+     2. Persistent user-configured default weather city (`island_weather_default_city`).
+     3. Approximate IP-based city (`http://ip-api.com/json/`) with explicit approximate attribution.
+     4. Clear conversational prompt when location cannot be determined.
+   - **Open-Meteo Integration**:
+     - Coordinates and elevation fetched via Open-Meteo Geocoding API.
+     - Fetches `current` (`temperature_2m`, `apparent_temperature`, `weather_code`, `relative_humidity_2m`, `wind_speed_10m`, `is_day`), `daily` (highs, lows, precipitation probabilities), and `hourly` with `timezone=auto`.
+   - **Intent-Aware Speech Generation**: Distinguishes current temperature, feels-like, heat queries ("Is it hot outside?"), rain forecasts ("Will it rain this evening?"), and future day forecasts ("How about tomorrow?").
+
+4. **Compact Agent Result UI (`src/components/`)**:
+   - **InlineFavorites (`src/components/InlineFavorites.jsx`)**:
+     - Compact rows (~48px height), 34px album artwork with lazy load & fallback.
+     - Single-line title and artist truncation with subtle provider icon (Spotify / YouTube Music).
+     - Bounded scroll container (`max-height: 180px`, custom thin scrollbars) displaying 3-4 songs simultaneously without window expansion.
+     - Play button and ordinal index matching voice reference numbering.
+   - **InlineWeather (`src/components/InlineWeather.jsx`)**:
+     - Compact structured card with temperature, condition, feels-like, daily high/low, precipitation chance, and update time.
+     - **Strict Monochrome Line Icons**: Uses Lucide SVG white line icons (`Sun`, `Moon`, `Cloud`, `CloudRain`, `CloudLightning`, `CloudSnow`, `CloudDrizzle`, `CloudFog`, `Thermometer`, `Wind`, `Droplets`). Zero emojis, zero colored backgrounds.
+   - **InlineClarification (`src/components/InlineClarification.jsx`)**:
+     - Displays up to 3 candidate rows matching clarification prompts for tap or voice selection.
+
+---
+
+### C. Verification & Test Results
+
+- **Pass 2.2.6.2 Test Suite** (`test/pass2-2-6-2-multilingual-weather-agent.test.cjs`):
+  1. *Phonetic & Transliteration Engine*: `two`/`too`/`to`/`tu` vs `Tuu` = 1.0; `pashmina` vs `Pasmina` = 1.0; `channa mereya` vs `Chana Merya` >= 0.90; `raataan lambiyan` vs `Ratan Lambiyan` >= 0.85; `Attention` vs `Starboy` < 0.3.
+  2. *Phonetic Candidate Ranking & Clarification*: "Play two from my list" triggers clarification with `Tuu` by Arijit Singh.
+  3. *Clarification Affirmation & Alias Learning*: "Yes, that one" confirms playback, saves alias, and makes next direct query execute immediately.
+  4. *Disambiguation Responses*: "No, the other one", "The second one", "By [artist]" accurately select candidates.
+  5. *Weather 4-Tier Location & Grounded Forecasts*: Explicit city ("Delhi"), IP fallback, feels-like distinction, tomorrow forecast, rain probability.
+  6. *Weather Conversational Follow-up*: "What's the weather outside?" -> "How about Mumbai instead?" resolves seamlessly.
+  7. *Structured UI Result Contracts*: Validates UI payload schema for favorites, clarification, and weather.
+  - **Result: 7/7 passed**.
+
+- **Full Project Regression Test Suite**:
+  - **309 passed, 0 failed, 1 skipped** (310 tests across 79 test suites).
+  - All Pass 2.2.5, 2.2.6.1, and 2.2.6.2 tests pass with 100% determinism.
+
+- **Production Build**:
+  - `npm run build` compiled cleanly via Vite in 9.44s with 0 errors.
+
+---
+
+## 11. Pass 2.2.6.3: AI Agent Speech Output, Natural Responses & Latency Repair
+
+### A. Root Cause Analysis
+
+1. **Conflation of Visual Responses & Spoken Speech**:
+   - The voice pipeline previously routed the same raw string to both visual chat bubbles and speech synthesis engines.
+   - When models or templates used Markdown (e.g. `**title**`, `*artist*`, headings `#`, bullets `* `, numbered lists `1. `), Windows SAPI literally attempted to speak formatting markers (pronouncing "asterisk asterisk", "one dot", etc.) or tripped on URLs, tables, and code snippets.
+
+2. **Excessive Spoken Narration on Visual Cards**:
+   - On Favorites list requests, the Agent audibly recited every song title and artist even though rich visual cards were already displayed simultaneously.
+   - Conversely, when the user explicitly asked to "read all of them aloud", there was no dedicated logic to cleanly enumerate tracks without Markdown artifacts.
+
+3. **Premature Speaking State (Visualizer Pulsing Before Audio)**:
+   - In `VoicePanel.jsx`, turn states `'acknowledging'` and `'completed'` were mapped directly to `currentStatus = 'speaking'`.
+   - This caused the living waveform to pulse and status to display "Speaking" while audio synthesis was still in-flight and before the audio hardware began playback.
+
+4. **Lack of End-to-End Pipeline Latency Instrumentation**:
+   - Turn timestamps between speech completion, transcription, intent classification, tool execution, and first audible playback were untracked, making it difficult to pinpoint real-world bottlenecks.
+
+5. **Agent Identity Dynamic Configuration**:
+   - Verified that the Agent identity is dynamically resolved via `getAssistantName()` (persisted in `island_assistant_name` with fallback to `Nova`).
+   - Confirmed zero hardcoded assumptions (such as "Jett") in system prompts, UI labels, TTS output, or new constants.
+
+---
+
+### B. Architecture & Implementations
+
+1. **Structured Agent Response Contract (`src/lib/agent-response-contract.js`)**:
+   - **Contract Fields**:
+     - `displayText`: Rich conversation content for UI display (Markdown, formatting, cards).
+     - `spokenText`: Concise, natural language strictly prepared for TTS.
+     - `toolResults`: Structured verified tool outputs (tracks, weather, candidates).
+     - `responseStatus`: `'success' | 'clarification' | 'failure' | 'info'`.
+   - Single-generation grounding: visual and spoken responses are formed together in a single step without redundant sequential LLM calls.
+
+2. **TTS-Safe Text Normalizer (`cleanTextForSpeech`)**:
+   - Structurally strips asterisks (`**`, `*`), underscores (`__`, `_`), strikethroughs, headers (`#`), blockquotes (`>`), and code fences.
+   - Normalizes numbered lists from `"1. Track\n2. Track"` into natural spoken pauses: `"1, Track. 2, Track."`.
+   - Converts Markdown links to title text and strips long URL query parameters.
+   - Translates units and currency into words (`24°C` $\to$ `24 degrees Celsius`, `60%` $\to$ `60 percent`, `$10` $\to$ `10 dollars`, `&` $\to$ `and`).
+   - Strips action tags `[[ACTION:...]]` and Unicode emojis.
+   - Applied at both the application response boundary and the Windows SAPI service boundary (`electron/windows-tts.js`).
+
+3. **Adaptive Speech Length & Read-Aloud Detection**:
+   - `isExplicitReadAloudRequest`: Detects commands like "read all of them aloud", "read them to me", "read my list aloud".
+   - `formatFavoritesResponse`:
+     - Standard request: Spoken response is concise (`"Here are your 4 favorites."`) while visual cards render tracks.
+     - Explicit read-aloud: Spoken response cleanly enumerates tracks without Markdown artifacts.
+   - `formatWeatherResponse`: Aligns visual card data with concise, grounded spoken conditions.
+
+4. **Real Voice Pipeline Latency Tracker (`src/lib/latency-tracker.js`)**:
+   - Measures all 8 key stages with high-precision timestamps:
+     1. `speech_end`: End of user speech / VAD silence trip
+     2. `stt_start` & `stt_end`: Whisper transcription
+     3. `intent_start` & `intent_end`: Semantic intent & grammar resolution
+     4. `tool_start` & `tool_end`: Tool execution
+     5. `llm_start` & `llm_end`: Conversational LLM generation
+     6. `tts_start` & `tts_end`: TTS synthesis
+     7. `audio_first_chunk`: Exact moment hardware begins audible playback (`onStart`)
+     8. `speech_completed`: End of speech audio output (`onEnded`)
+   - Computes `firstAudioLatencyMs` (`audio_first_chunk - speech_end`) and preserves history on `window.__islandLatencyMetrics`.
+
+5. **Honest Speaking State Synchronization**:
+   - In `VoicePanel.jsx`, mapped `acknowledging` and `completed` to `thinking` until hardware `onStart` actually fires.
+   - Waveform pulsing and "Speaking" state only activate when audible audio begins.
+   - Added `.voice-turn__caption` to render the exact spoken dialogue as a live caption subtitle when `spokenText` differs from `displayText`.
+
+---
+
+### C. Verification & Test Results
+
+- **Pass 2.2.6.3 Test Suite** (`test/pass2-2-6-3-speech-latency.test.cjs`):
+  1. *Bold Markdown*: Zero asterisks in spoken text (`**Attention**` $\to$ `Attention`).
+  2. *Numbered Lists*: Spoken naturally without "one dot" or linebreaks.
+  3. *Headers, Bullets, Code & Units*: Headers, code blocks, links, and units translated to spoken words.
+  4. *Favorites Concise Speech*: "Show my favorites" speaks concise count without narrating all songs.
+  5. *Explicit Read-Aloud*: "Read my favorites aloud" cleanly narrates all tracks without asterisks.
+  6. *Weather Agreement*: Visual card and spoken text agree on temperature and conditions.
+  7. *Contract Validation*: Validates `displayText`, `spokenText`, `toolResults`, `responseStatus`.
+  8. *Configurable Identity*: Changing name to "Aura" and "Zephyr" reflects dynamically with zero hardcoding.
+  9. *Latency Tracking*: Correctly records 8 stages and calculates `firstAudioLatencyMs`.
+  - **Result: 9/9 passed**.
+
+- **Full Project Regression Test Suite**:
+  - **319 passed, 0 failed, 1 skipped** (320 tests across 80 test suites in 7.26s).
+  - Pass 2.2.5, 2.2.6.1, 2.2.6.2, and 2.2.6.3 tests all pass with 100% determinism.
+
+- **Production Build**:
+  - `npm run build` compiled cleanly via Vite in 1.92s with 0 errors.
+
+
 
 
 

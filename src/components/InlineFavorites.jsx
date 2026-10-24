@@ -1,16 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { Icon } from './icons';
-import { playFavoriteTrack, getFriendlyProviderName } from '../lib/music-actions';
-import { SUPPORTED_PROVIDERS } from '../lib/favorites';
+import { playFavoriteTrack } from '../lib/music-actions';
 
 /**
- * InlineFavorites: Rich interactive Favorites collection rendered directly inside Agent chat turns.
- * Satisfies Pass 2.2.6 Part 3:
- * - Album artwork with fallback
- * - Song title & artist
- * - Source provider badge (Spotify, YouTube Music, Unknown)
- * - Provider-aware Play action (never redirects away for browsing)
- * - Compact horizontal or scrollable vertical list with filtering
+ * InlineFavorites: Compact, high-density Favorites collection rendered directly inside Agent chat turns.
+ * Satisfies Pass 2.2.6.2 Part C:
+ * - Ultra-compact row height (~46-50px) allowing multiple songs to be visible simultaneously
+ * - Small square album artwork (~36px)
+ * - Single-line truncated title & artist in muted typography
+ * - Subtle monochrome provider indicator
+ * - Small monochrome Play control
+ * - Compact index for clear voice references ("Play the third one")
+ * - Bounded, independently scrollable list area with smooth mousewheel & trackpad navigation
  */
 export default function InlineFavorites({ tracks = [], onPlay = null }) {
   const [filter, setFilter] = useState('all');
@@ -64,23 +65,16 @@ export default function InlineFavorites({ tracks = [], onPlay = null }) {
     return null;
   }
 
-  const getBadgeClass = (item) => {
-    if (item.isAmbiguousSource || item.provider === 'unknown') return 'unknown';
-    if (item.provider === SUPPORTED_PROVIDERS.SPOTIFY) return 'spotify';
-    if (item.provider === SUPPORTED_PROVIDERS.APPLE) return 'apple';
-    return 'youtube';
-  };
-
-  const getBadgeText = (item) => {
+  const getProviderLabel = (item) => {
     if (item.isAmbiguousSource || item.provider === 'unknown') return 'Unknown';
-    if (item.provider === SUPPORTED_PROVIDERS.SPOTIFY) return 'Spotify';
-    if (item.provider === SUPPORTED_PROVIDERS.APPLE) return 'Apple Music';
+    if (item.provider === 'spotify') return 'Spotify';
+    if (item.provider === 'apple') return 'Apple Music';
     return 'YouTube Music';
   };
 
   return (
     <div className="inline-favs" role="region" aria-label="Favorite Songs Collection">
-      {/* Optional Compact Filter Pills if multiple sources exist */}
+      {/* Compact Source Filters */}
       {availableProviders.length > 1 && (
         <div className="inline-favs__filters">
           <button
@@ -111,52 +105,50 @@ export default function InlineFavorites({ tracks = [], onPlay = null }) {
         </div>
       )}
 
-      {/* Interactive Song List */}
-      <div className="inline-favs__list">
+      {/* High-Density Compact Song List */}
+      <div className="inline-favs__list" tabIndex={0} role="list">
         {filteredTracks.map((item, idx) => {
           const isPlayingThis = playingId === (item.id || item.title);
-          const badgeClass = getBadgeClass(item);
-          const badgeText = getBadgeText(item);
+          const providerText = getProviderLabel(item);
 
           return (
             <div
               key={item.id || `${item.title}-${idx}`}
               className={`inline-favs__item ${isPlayingThis ? 'is-playing' : ''}`}
               onClick={(e) => handlePlayTrack(item, e)}
-              role="button"
+              role="listitem"
               tabIndex={0}
               title={`Play ${item.title}`}
             >
-              {/* Ordinal indicator */}
+              {/* Voice-reference index */}
               <span className="inline-favs__index">{idx + 1}</span>
 
-              {/* Artwork thumbnail */}
+              {/* Compact artwork thumbnail */}
               <div className="inline-favs__art-wrapper">
                 {item.artwork ? (
-                  <img src={item.artwork} alt={item.title} className="inline-favs__art" />
+                  <img src={item.artwork} alt="" className="inline-favs__art" loading="lazy" />
                 ) : (
                   <div className="inline-favs__art-fallback">
-                    <Icon.Music width={14} height={14} />
+                    <Icon.Music width={13} height={13} />
                   </div>
                 )}
               </div>
 
-              {/* Title & Artist */}
+              {/* Track Title, Artist & Provider */}
               <div className="inline-favs__info">
-                <div className="inline-favs__title-row">
-                  <span className="inline-favs__title" title={item.title}>
-                    {item.title}
-                  </span>
-                  <span className={`inline-favs__badge inline-favs__badge--${badgeClass}`}>
-                    {badgeText}
-                  </span>
+                <div className="inline-favs__title" title={item.title}>
+                  {item.title}
                 </div>
-                <div className="inline-favs__artist" title={item.artist || 'Unknown artist'}>
-                  {item.artist || 'Unknown artist'}
+                <div className="inline-favs__meta-row">
+                  <span className="inline-favs__artist" title={item.artist || 'Unknown artist'}>
+                    {item.artist || 'Unknown artist'}
+                  </span>
+                  <span className="inline-favs__provider-dot">•</span>
+                  <span className="inline-favs__provider">{providerText}</span>
                 </div>
               </div>
 
-              {/* Play Action */}
+              {/* Monochrome Play Control */}
               <button
                 type="button"
                 className={`inline-favs__play-btn ${isPlayingThis ? 'is-active' : ''}`}
@@ -164,7 +156,7 @@ export default function InlineFavorites({ tracks = [], onPlay = null }) {
                 aria-label={`Play ${item.title}`}
                 title={`Play ${item.title}`}
               >
-                <Icon.Play width={11} height={11} />
+                <Icon.Play width={10} height={10} />
               </button>
             </div>
           );

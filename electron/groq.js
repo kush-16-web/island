@@ -129,6 +129,32 @@ const ISLAND_MUSIC_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'list_favorites',
+      description: 'Show, list, or display user favorites and saved songs in chat',
+      parameters: {
+        type: 'object',
+        properties: {
+          filter: { type: 'string', enum: ['all', 'spotify', 'youtube'], description: 'Optional provider filter' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'count_favorites',
+      description: 'Count or report the number of saved favorite tracks the user has',
+      parameters: {
+        type: 'object',
+        properties: {
+          filter: { type: 'string', enum: ['all', 'spotify', 'youtube'], description: 'Optional provider filter' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_volume',
       description: 'Set or change the music playback volume level (0-100%)',
       parameters: {

@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from './icons';
 import { getAssistantName } from '../lib/assistant';
 import InlineFavorites from './InlineFavorites';
+import InlineWeather from './InlineWeather';
+import InlineClarification from './InlineClarification';
 
 function sanitizeError(msg) {
   if (!msg || typeof msg !== 'string') return '';
@@ -249,13 +251,13 @@ export default function VoicePanel({
     currentStatus = 'thinking';
     statusLabel = 'Understanding';
   } else if (status === 'acknowledging') {
-    currentStatus = 'speaking';
+    currentStatus = 'thinking';
     statusLabel = 'Opening';
   } else if (status === 'executing' || status === 'awaiting_result') {
     currentStatus = 'thinking';
     statusLabel = 'Connecting Player';
   } else if (status === 'completed') {
-    currentStatus = 'speaking';
+    currentStatus = 'thinking';
     statusLabel = 'Playing';
   } else if (status === 'needs_user_action') {
     currentStatus = 'cooldown';
@@ -423,9 +425,20 @@ export default function VoicePanel({
                     <div className="voice-turn__speaker">
                       {isAssistant ? assistantName : userName}
                     </div>
-                    <div className="voice-turn__text">{item.text}</div>
+                    <div className="voice-turn__text">{item.displayText || item.text}</div>
+                    {isAssistant && item.spokenText && item.spokenText !== (item.displayText || item.text) && (
+                      <div className="voice-turn__caption" title="Spoken dialogue">
+                        "{item.spokenText}"
+                      </div>
+                    )}
                     {isAssistant && item.tracks && item.tracks.length > 0 && (
                       <InlineFavorites tracks={item.tracks} />
+                    )}
+                    {isAssistant && item.candidates && item.candidates.length > 0 && (
+                      <InlineClarification candidates={item.candidates} />
+                    )}
+                    {isAssistant && item.weather && (
+                      <InlineWeather weather={item.weather} />
                     )}
                   </div>
                 );

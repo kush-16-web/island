@@ -46,6 +46,8 @@ export const ALLOWED_ACTIONS = Object.freeze([
   'show_favorites',
   'list_favorites',
   'count_favorites',
+  'favorites_select_random',
+  'favorites_select_ordinal',
   'compound_pause_play',
   'set_volume',
 ]);
@@ -355,11 +357,15 @@ export function executeMusicAction(intent, env = {}) {
       }
       const list = getAllFavorites(storage);
       const count = list.length;
+      musicContext.setDisplayedFavorites(list);
+      musicContext.setLastReferencedCollection('favorites', list);
       const countMsg = count > 0 ? ` You have ${count} saved song${count === 1 ? '' : 's'}.` : ' Your list is currently empty.';
       const res = {
         ok: true,
         action,
         count,
+        totalCount: count,
+        tracks: list,
         spokenConfirmation: `Opening your favorites.${countMsg}`,
       };
       logActionDiagnostic({ turnId, action, ok: true, count });
@@ -388,12 +394,13 @@ export function executeMusicAction(intent, env = {}) {
 
     case 'list_favorites': {
       let list = getAllFavorites(storage);
-      const targetProvider = explicitProvider || null;
+      const targetProvider = explicitProvider || (intent.filter && intent.filter !== 'all' ? intent.filter : null);
       if (targetProvider) {
         list = list.filter((f) => f.provider === targetProvider);
       }
       const totalCount = list.length;
-      musicContext.setDisplayedFavorites(list);
+      musicContext.setDisplayedFavorites(list, targetProvider || 'all');
+      musicContext.setLastReferencedCollection('favorites', list, targetProvider || 'all');
 
       let spokenConfirmation = '';
       const provName = targetProvider ? getFriendlyProviderName(targetProvider) : null;
@@ -401,14 +408,17 @@ export function executeMusicAction(intent, env = {}) {
         spokenConfirmation = provName
           ? `You don't have any songs from ${provName} in your favorites.`
           : 'Your favorites list is empty.';
+      } else if (intent.readAloud) {
+        const trackList = list
+          .map((t, i) => `${i + 1}, ${t.title}${t.artist ? ' by ' + t.artist : ''}`)
+          .join('. ');
+        spokenConfirmation = provName
+          ? `Here are your ${totalCount} ${provName} favorites: ${trackList}.`
+          : `Here are your ${totalCount} saved songs: ${trackList}.`;
       } else {
-        const top3 = list.slice(0, 3).map((t) => t.title).join(', ');
-        const moreCount = totalCount > 3 ? ` and ${totalCount - 3} more` : '';
-        if (provName) {
-          spokenConfirmation = `Here are your ${totalCount} ${provName} favorites, including ${top3}${moreCount}.`;
-        } else {
-          spokenConfirmation = `Here are your ${totalCount} saved songs, including ${top3}${moreCount}.`;
-        }
+        spokenConfirmation = provName
+          ? `Here are your ${totalCount} ${provName} favorites.`
+          : `Here are your ${totalCount} saved songs.`;
       }
 
       const res = {
@@ -417,7 +427,9 @@ export function executeMusicAction(intent, env = {}) {
         tracks: list,
         totalCount,
         provider: targetProvider,
+        readAloud: Boolean(intent.readAloud),
         spokenConfirmation,
+        displayText: provName ? `Here are your ${totalCount} ${provName} favorites:` : `Here are your ${totalCount} saved songs:`,
       };
       logActionDiagnostic({ turnId, action: 'list_favorites', ok: true, count: totalCount, provider: targetProvider });
       return res;
@@ -618,31 +630,88 @@ export function executeMusicAction(intent, env = {}) {
       return res;
     }
 
-    case 'play_random_favorite': {
+    case 'play_random_favorite':
+    case 'favorites_select_random': {
       let list = getAllFavorites(storage);
+      const targetProvider = explicitProvider || (intent.filter && intent.filter !== 'all' ? intent.filter : null);
+
+      if (targetProvider) {
+        list = list.filter((f) => (f.provider || '').toLowerCase() === targetProvider.toLowerCase());
+      }
+
+      // If selection is explicitly targeted at an active session collection subset
+      if (intent.collectionRef === 'active_collection') {
+        const activeCollection = musicContext.getLastReferencedCollection();
+        if (activeCollection && Array.isArray(activeCollection.tracks) && activeCollection.tracks.length > 0) {
+          let collTracks = activeCollection.tracks;
+          if (targetProvider) {
+            collTracks = collTracks.filter((t) => (t.provider || '').toLowerCase() === targetProvider.toLowerCase());
+          }
+          if (collTracks.length > 0) {
+            list = collTracks;
+          }
+        }
+      }
+
       if (list.length === 0) {
         return {
           ok: false,
           action,
           reason: 'empty_favorites',
-          spokenConfirmation: 'Your favorites list is empty.',
+          spokenConfirmation: targetProvider
+            ? `You don't have any saved songs from ${getFriendlyProviderName(targetProvider)}.`
+            : 'Your favorites list is empty.',
         };
-      }
-
-      // Check if user specifically requested a provider
-      if (explicitProvider) {
-        const filtered = list.filter((f) => f.provider === explicitProvider);
-        if (filtered.length > 0) list = filtered;
       }
 
       const randomIndex = Math.floor(Math.random() * list.length);
       const chosen = list[randomIndex];
 
       return handlePlaybackExecution(chosen, {
-        action: 'play_random_favorite',
+        action: 'play_favorite',
         media,
+        companion,
         onControl,
         onOpenUrl,
+        onDispatchCompanion,
+        turnId,
+      });
+    }
+
+    case 'favorites_select_ordinal': {
+      const index = typeof intent.index === 'number' ? intent.index : 0;
+      let targetTrack = musicContext.getDisplayedFavoriteByIndex(index);
+
+      if (!targetTrack) {
+        const activeCollection = musicContext.getLastReferencedCollection();
+        if (activeCollection && Array.isArray(activeCollection.tracks) && activeCollection.tracks[index]) {
+          targetTrack = activeCollection.tracks[index];
+        }
+      }
+
+      if (!targetTrack) {
+        const list = getAllFavorites(storage);
+        if (list && list[index]) {
+          targetTrack = list[index];
+        }
+      }
+
+      if (!targetTrack) {
+        return {
+          ok: false,
+          action: 'favorites_select_ordinal',
+          reason: 'out_of_bounds',
+          spokenConfirmation: `I couldn't find item number ${index + 1} in that list.`,
+        };
+      }
+
+      return handlePlaybackExecution(targetTrack, {
+        action: 'play_favorite',
+        media,
+        companion,
+        onControl,
+        onOpenUrl,
+        onDispatchCompanion,
         turnId,
       });
     }

@@ -5,7 +5,16 @@ import { getAssistantName } from '../lib/assistant';
 import { audioCoordinator } from '../lib/audio-coordinator';
 import { interpretLocalMusicCommand } from '../lib/music-command-interpreter';
 import { formatActionOutcomeSpeech } from '../lib/music-actions';
+import { getCurrentWeather } from '../lib/weather';
 import { playNativeWavBase64, stopActivePlayback, getPlaybackAnalyser } from '../lib/native-audio-player';
+import {
+  createAgentResponse,
+  cleanTextForSpeech,
+  formatFavoritesResponse,
+  formatWeatherResponse,
+  isExplicitReadAloudRequest,
+} from '../lib/agent-response-contract';
+import { latencyTracker } from '../lib/latency-tracker';
 const isDev = Boolean(import.meta.env?.DEV);
 
 function logDevStage(stageNumber, stageDescription, extra = {}) {
@@ -333,6 +342,7 @@ export function useRealtimeVoice(options = {}) {
           controller.beginSpeaking(turnId);
           setStatus('speaking');
           window.island?.setVoiceMood?.('speaking');
+          latencyTracker.recordStage(turnId, 'audio_first_chunk');
 
           logDevStage(9, 'Audio playback started', {
             method: 'native_wav_buffer',
@@ -342,6 +352,10 @@ export function useRealtimeVoice(options = {}) {
           });
         },
         onEnded: () => {
+          latencyTracker.recordStage(turnId, 'speech_completed');
+          if (!isIntermediate) {
+            latencyTracker.completeTurn(turnId, 'completed');
+          }
           logDevStage(9, 'Audio playback ended', {
             method: 'native_wav_buffer',
             durationMs: Date.now() - startTime,
@@ -436,6 +450,7 @@ export function useRealtimeVoice(options = {}) {
           controller.beginSpeaking(turnId);
           setStatus('speaking');
           window.island?.setVoiceMood?.('speaking');
+          latencyTracker.recordStage(turnId, 'audio_first_chunk');
 
           logDevStage(9, 'Audio playback started', {
             method: 'web_speech',
@@ -449,6 +464,10 @@ export function useRealtimeVoice(options = {}) {
 
         utterance.onend = () => {
           activeUtteranceRef.current = null;
+          latencyTracker.recordStage(turnId, 'speech_completed');
+          if (!isIntermediate) {
+            latencyTracker.completeTurn(turnId, 'completed');
+          }
           logDevStage(9, 'Audio playback ended', {
             method: 'web_speech',
             durationMs: Date.now() - startTime,
@@ -584,6 +603,7 @@ export function useRealtimeVoice(options = {}) {
       let geminiAudioBase64 = null;
 
       // 1. Stage 1: Speech-to-Text (STT)
+      latencyTracker.recordStage(turnId, 'stt_start');
       if (sttProvider === 'groq-whisper') {
         if (!window.island?.groq?.transcribe) {
           throw new Error('Groq Whisper speech recognition service is not available in Electron.');
@@ -594,6 +614,8 @@ export function useRealtimeVoice(options = {}) {
           model: groqWhisperModel,
           language: whisperLanguage,
         });
+
+        latencyTracker.recordStage(turnId, 'stt_end', { userText: sttRes?.text });
 
         if (!controller.isTurnActive(turnId)) return;
 
@@ -656,11 +678,13 @@ export function useRealtimeVoice(options = {}) {
       // Checks local-first command grammar to completely eliminate unnecessary Groq chat calls
       let localMusicResult = null;
       if (userText) {
+        latencyTracker.recordStage(turnId, 'intent_start');
         const localEval = interpretLocalMusicCommand(userText, {
           media: mediaRef.current || { active: false },
           onControl: onControlRef.current || ((act) => window.island?.media?.control?.(act)),
           turnId,
         });
+        latencyTracker.recordStage(turnId, 'intent_end', { isLocal: localEval.handledLocally });
         if (localEval.handledLocally && localEval.actionResult) {
           localMusicResult = localEval.actionResult;
         }
@@ -671,17 +695,59 @@ export function useRealtimeVoice(options = {}) {
       });
 
       if (localMusicResult) {
-        // Handled deterministically locally: 0 Groq chat API quota spent
-        // Keep truthful confirmation: "Opening Attention in YouTube Music", "Resuming Attention", etc.
-        const confirmation = localMusicResult.spokenConfirmation || 'Action completed.';
+        latencyTracker.recordStage(turnId, 'tool_start');
+        // Live Weather query: fetch real-time forecast asynchronously without paid API keys
+        if (localMusicResult.isWeather) {
+          setStatus('processing');
+          const weatherRes = await getCurrentWeather(localMusicResult.location, {
+            timeframe: localMusicResult.timeframe || 'current',
+            questionType: localMusicResult.questionType || 'general',
+          });
+          if (weatherRes && weatherRes.ok) {
+            localMusicResult.spokenConfirmation = weatherRes.speech;
+            localMusicResult.weather = weatherRes;
+          } else {
+            localMusicResult.spokenConfirmation =
+              weatherRes?.speech || "I couldn't retrieve the live weather right now. Please check your internet connection.";
+          }
+        }
+        latencyTracker.recordStage(turnId, 'tool_end');
+
+        let agentResponse;
+        if (localMusicResult.isWeather) {
+          agentResponse = formatWeatherResponse(localMusicResult.weather);
+        } else if (localMusicResult.action === 'list_favorites') {
+          agentResponse = formatFavoritesResponse(localMusicResult, {
+            readAloud: Boolean(localMusicResult.readAloud),
+          });
+        } else {
+          const display = localMusicResult.spokenConfirmation || 'Action completed.';
+          agentResponse = createAgentResponse({
+            displayText: localMusicResult.displayText || display,
+            spokenText: display,
+            toolResults: {
+              tracks: localMusicResult.tracks || null,
+              candidates: localMusicResult.candidates || null,
+              weather: localMusicResult.weather || null,
+            },
+            responseStatus: localMusicResult.clarificationNeeded
+              ? 'clarification'
+              : localMusicResult.ok === false
+              ? 'failure'
+              : 'success',
+          });
+        }
+
         turnResult = {
           executed: true,
           actionResult: localMusicResult,
-          spokenText: confirmation,
-          transcriptText: confirmation,
+          spokenText: agentResponse.spokenText,
+          transcriptText: agentResponse.displayText,
+          agentResponse,
         };
       } else {
         // 3. Stage 2: Conversational LLM (if not handled by direct local action)
+        latencyTracker.recordStage(turnId, 'llm_start');
         let llmReplyText = null;
         if (chatProvider === 'groq') {
           if (!window.island?.groq?.chat) {
@@ -746,6 +812,7 @@ export function useRealtimeVoice(options = {}) {
           llmReplyText = chatRes.text;
           geminiAudioBase64 = chatRes.audioBase64;
         }
+        latencyTracker.recordStage(turnId, 'llm_end');
 
         logDevStage(8, 'AI response text', {
           replyLength: llmReplyText?.length || 0,
@@ -753,10 +820,34 @@ export function useRealtimeVoice(options = {}) {
         });
 
         // 4. Stage 3: Truth-grounded Island Action Execution
+        latencyTracker.recordStage(turnId, 'tool_start');
         turnResult = processTurnIntent(llmReplyText, {
           media: mediaRef.current || { active: false },
           onControl: onControlRef.current || ((act) => window.island?.media?.control?.(act)),
         });
+        latencyTracker.recordStage(turnId, 'tool_end');
+
+        let agentResponse;
+        if (turnResult.actionResult?.action === 'list_favorites') {
+          agentResponse = formatFavoritesResponse(turnResult.actionResult, {
+            readAloud: isExplicitReadAloudRequest(userText),
+          });
+        } else {
+          agentResponse = createAgentResponse({
+            displayText: turnResult.transcriptText || llmReplyText,
+            spokenText: turnResult.spokenText || llmReplyText,
+            toolResults: turnResult.actionResult ? {
+              tracks: turnResult.actionResult.tracks || null,
+              candidates: turnResult.actionResult.candidates || null,
+              weather: turnResult.actionResult.weather || null,
+            } : null,
+            responseStatus: turnResult.actionResult?.ok === false ? 'failure' : 'success',
+          });
+        }
+
+        turnResult.agentResponse = agentResponse;
+        turnResult.spokenText = agentResponse.spokenText;
+        turnResult.transcriptText = agentResponse.displayText;
       }
 
       // 5. Stage 4: Context-Aware Action Lifecycle & Outcome Speech (PASS 2.2.4)
@@ -1069,17 +1160,35 @@ export function useRealtimeVoice(options = {}) {
         }
       } else {
         // Immediate deterministic or conversational response (pause, resume, info, or chat)
-        const finalSpokenText = turnResult.spokenText;
-        const finalTranscriptText = turnResult.transcriptText;
-        const inlineTracks = turnResult.actionResult?.tracks || null;
+        const agentResponse = turnResult.agentResponse || createAgentResponse({
+          displayText: turnResult.transcriptText || turnResult.spokenText,
+          spokenText: turnResult.spokenText,
+        });
+
+        const finalSpokenText = agentResponse.spokenText;
+        const finalDisplayText = agentResponse.displayText;
+        const inlineTracks = agentResponse.toolResults?.tracks || turnResult.actionResult?.tracks || null;
+        const inlineCandidates = agentResponse.toolResults?.candidates || turnResult.actionResult?.candidates || null;
+        const inlineWeather = agentResponse.toolResults?.weather || turnResult.actionResult?.weather || null;
 
         setTranscript((prev) => [
           ...prev,
-          { role: 'assistant', text: finalTranscriptText, tracks: inlineTracks },
+          {
+            role: 'assistant',
+            text: finalDisplayText,
+            displayText: finalDisplayText,
+            spokenText: finalSpokenText,
+            tracks: inlineTracks,
+            candidates: inlineCandidates,
+            weather: inlineWeather,
+            responseStatus: agentResponse.responseStatus,
+          },
         ]);
-        historyRef.current.push({ role: 'assistant', text: finalTranscriptText });
+        historyRef.current.push({ role: 'assistant', text: finalDisplayText });
 
+        latencyTracker.recordStage(turnId, 'tts_start');
         const spokenAudioBase64 = await synthesizeSpeechText(finalSpokenText);
+        latencyTracker.recordStage(turnId, 'tts_end');
 
         if (controller.isTurnActive(turnId)) {
           await speakAssistantResponse({
@@ -1127,6 +1236,7 @@ export function useRealtimeVoice(options = {}) {
   // Wire turn submission handler to controller
   useEffect(() => {
     controller.onTurnTriggered = (samples, turnId) => {
+      latencyTracker.startTurn(turnId, { sampleCount: samples.length, userSpeechEndTime: Date.now() });
       logDevStage(3, 'Speech segment finalized', {
         sampleCount: samples.length,
         durationMs: Math.round((samples.length / 16000) * 1000),
