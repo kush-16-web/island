@@ -5,18 +5,25 @@ import { upgradeProviderArtUrl, enrichTrackMetadata } from '../lib/art-resolver'
 const highResCache = new Map();
 
 /**
- * useHighResArt: Automatically resolves and preloads high-resolution artwork
- * for the currently playing track.
+ * useHighResArt: Authoritative resolution and caching of high-resolution artwork
+ * for the currently playing media track.
  *
- * Guarantees:
- * 1. Never shows a blank frame or white flash (maintains current art while preloading).
- * 2. Uses upgraded resolution (Spotify 640x640, Apple Music 1200x1200bb, YouTube maxresdefault, Google CDN =w1200-h1200).
- * 3. Preloads via background Image() before swapping display URL.
- * 4. Gracefully falls back to existing thumbnail if high-res fails or 404s.
+ * Guarantees (Phase 4):
+ * 1. Consistent state between Compact player and Full Lyrics.
+ * 2. Transient metadata gap bridging: Bounded grace window (1200ms) prevents blank flashes
+ *    when artwork arrives slightly after track metadata.
+ * 3. Never holds old song's artwork indefinitely under a new track title.
+ * 4. Async race prevention: Request sequencing and monotonic token ensure old slow requests
+ *    never overwrite newer tracks.
+ * 5. Cleans up immediately when media session is stopped/inactive.
  */
 export function useHighResArt(media) {
   const rawArt = media?.art || null;
-  const trackKey = `${media?.title || ''}__${media?.artist || ''}`;
+  const title = media?.title || '';
+  const artist = media?.artist || '';
+  const provider = media?.provider || media?.app || '';
+  const isActive = Boolean(media?.active && title);
+  const trackKey = isActive ? `${title}__${artist}__${provider}` : '';
 
   const [displayArt, setDisplayArt] = useState(() => {
     if (!rawArt) return null;
@@ -29,90 +36,121 @@ export function useHighResArt(media) {
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  const activeArtRef = useRef(rawArt);
-  activeArtRef.current = rawArt;
-
   const activeTrackRef = useRef(trackKey);
-  activeTrackRef.current = trackKey;
+  const activeArtRef = useRef(rawArt);
+  const reqSequenceRef = useRef(0);
 
   useEffect(() => {
-    if (!rawArt) {
-      // If no art provided, attempt enrichment via iTunes API if title is available
-      if (media?.title) {
-        let cancelled = false;
-        setIsLoading(true);
-        enrichTrackMetadata(media.title, media.artist || '').then((res) => {
-          if (cancelled) return;
-          if (res?.artwork && activeTrackRef.current === trackKey) {
-            preloadImage(res.artwork).then((ok) => {
-              if (cancelled) return;
-              if (ok && activeTrackRef.current === trackKey) {
-                setDisplayArt(res.artwork);
-                setIsUpgraded(true);
-                highResCache.set(trackKey, res.artwork);
-              }
-              setIsLoading(false);
-            });
-          } else {
-            setIsLoading(false);
-          }
-        });
-        return () => {
-          cancelled = true;
-        };
-      }
+    activeTrackRef.current = trackKey;
+    activeArtRef.current = rawArt;
+  }, [trackKey, rawArt]);
+
+  useEffect(() => {
+    const seq = ++reqSequenceRef.current;
+
+    // Case 1: Session stopped or inactive -> clear artwork state immediately
+    if (!isActive) {
       setDisplayArt(null);
       setIsUpgraded(false);
       setIsLoading(false);
       return;
     }
 
-    // Check cache first
-    const cached = highResCache.get(rawArt);
-    if (cached) {
-      setDisplayArt(cached);
-      setIsUpgraded(cached !== rawArt);
-      setIsLoading(false);
-      return;
-    }
+    // Case 2: Provider supplies rawArt
+    if (rawArt) {
+      // Check in-memory cache first
+      const cached = highResCache.get(rawArt);
+      if (cached) {
+        setDisplayArt(cached);
+        setIsUpgraded(cached !== rawArt);
+        setIsLoading(false);
+        return;
+      }
 
-    // Immediately show the current raw art to prevent blank frames or layout jumping
-    setDisplayArt(rawArt);
+      // Immediately display raw art to prevent blank layout jumping
+      setDisplayArt(rawArt);
 
-    const upgradedUrl = upgradeProviderArtUrl(rawArt);
-    if (!upgradedUrl || upgradedUrl === rawArt) {
-      // Already at provider's base resolution
-      highResCache.set(rawArt, rawArt);
-      setIsUpgraded(false);
-      setIsLoading(false);
-      return;
-    }
+      const upgradedUrl = upgradeProviderArtUrl(rawArt);
+      if (!upgradedUrl || upgradedUrl === rawArt) {
+        highResCache.set(rawArt, rawArt);
+        highResCache.set(trackKey, rawArt);
+        setIsUpgraded(false);
+        setIsLoading(false);
+        return;
+      }
 
-    // Preload upgraded high-res image in background
-    let cancelled = false;
-    setIsLoading(true);
-
-    preloadImage(upgradedUrl).then((ok) => {
-      if (cancelled) return;
-      if (activeArtRef.current === rawArt) {
+      // Preload upgraded high-res image in background
+      setIsLoading(true);
+      preloadImage(upgradedUrl).then((ok) => {
+        if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
         if (ok) {
           setDisplayArt(upgradedUrl);
           setIsUpgraded(true);
           highResCache.set(rawArt, upgradedUrl);
+          highResCache.set(trackKey, upgradedUrl);
         } else {
-          // Fallback to raw art if upgraded URL returned 404
           setDisplayArt(rawArt);
           setIsUpgraded(false);
           highResCache.set(rawArt, rawArt);
+          highResCache.set(trackKey, rawArt);
         }
         setIsLoading(false);
+      });
+      return;
+    }
+
+    // Case 3: rawArt is null/empty for an active track
+    // If we have cached art for this specific trackKey, use it immediately
+    if (highResCache.has(trackKey)) {
+      const cached = highResCache.get(trackKey);
+      setDisplayArt(cached);
+      setIsUpgraded(true);
+      setIsLoading(false);
+      return;
+    }
+
+    // Bounded transition: Keep current image briefly for at most 1200ms
+    // so rapid track updates don't cause harsh flashes.
+    setIsLoading(true);
+    let graceTimeout = setTimeout(() => {
+      if (seq === reqSequenceRef.current && activeTrackRef.current === trackKey) {
+        setDisplayArt(null);
+        setIsUpgraded(false);
       }
-    });
+    }, 1200);
+
+    // Concurrently try online enrichment (iTunes API)
+    enrichTrackMetadata(title, artist)
+      .then((res) => {
+        if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
+        if (res?.artwork) {
+          clearTimeout(graceTimeout);
+          preloadImage(res.artwork).then((ok) => {
+            if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
+            if (ok) {
+              setDisplayArt(res.artwork);
+              setIsUpgraded(true);
+              highResCache.set(trackKey, res.artwork);
+            } else {
+              setDisplayArt(null);
+              setIsUpgraded(false);
+            }
+            setIsLoading(false);
+          });
+        } else {
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (seq === reqSequenceRef.current && activeTrackRef.current === trackKey) {
+          setIsLoading(false);
+        }
+      });
 
     return () => {
-      cancelled = true;
+      clearTimeout(graceTimeout);
     };
-  }, [rawArt, trackKey]);
+  }, [isActive, trackKey, rawArt, title, artist]);
 
   return {
     displayArt: displayArt || rawArt,

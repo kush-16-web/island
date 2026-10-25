@@ -77,12 +77,17 @@ export default function NowPlaying({
     };
   }, []);
 
-  // Automatically reset to cinema view for video/trailers, or standard player for music
+  // Video source transition: only switch to cinema if a dedicated video source begins
+  // and user is not currently in Full Lyrics
+  const prevIsVideoSourceRef = useRef(isVideoSource);
   useEffect(() => {
-    const nextMode = isVideoSource ? 'cinema' : 'player';
-    setViewMode(nextMode);
-    onLyricsViewChange?.(nextMode === 'player' ? false : nextMode);
-  }, [isVideoSource, media.title]);
+    if (isVideoSource && !prevIsVideoSourceRef.current) {
+      if (viewMode !== 'lyrics') {
+        handleSetViewMode('cinema');
+      }
+    }
+    prevIsVideoSourceRef.current = isVideoSource;
+  }, [isVideoSource, viewMode]);
   const playing = media.status === 'playing';
   const [localNow, setLocalNow] = useState(Date.now);
 
@@ -137,17 +142,27 @@ export default function NowPlaying({
   // Fetch and synchronize lyrics using current playback position
   const { lyricsData, loading, activeLineIndex } = useLyrics(media, displayPosition);
 
-  // Notify parent of view mode change for dynamic height adjustment
-  const handleSetViewMode = (mode) => {
-    setViewMode(mode);
-    onLyricsViewChange?.(mode === 'player' ? false : mode);
-  };
-
   const npContainerRef = useRef(null);
   const playerCoverRef = useRef(null);
   const popoverRef = useRef(null);
   const [isSourceCoverHidden, setIsSourceCoverHidden] = useState(false);
   const [travelDelta, setTravelDelta] = useState({ x: -153, y: 2, scale: 64 / 126 });
+
+  // Safety: whenever viewMode is not 'lyrics', ensure source cover is NEVER hidden
+  useEffect(() => {
+    if (viewMode !== 'lyrics' && isSourceCoverHidden) {
+      setIsSourceCoverHidden(false);
+    }
+  }, [viewMode, isSourceCoverHidden]);
+
+  // Notify parent of view mode change for dynamic height adjustment
+  const handleSetViewMode = (mode) => {
+    if (mode !== 'lyrics') {
+      setIsSourceCoverHidden(false);
+    }
+    setViewMode(mode);
+    onLyricsViewChange?.(mode === 'player' ? false : mode);
+  };
 
   // Lyrics Appearance & Layout State (floating/normal, classic/kinetic)
   const [lyricsStyle, setLyricsStyleState] = useState(getLyricsStyle);
@@ -318,19 +333,11 @@ export default function NowPlaying({
     return res;
   };
 
-  // Update view mode when active track or source changes
+  // Reset scrubbing and optimistic seek on track change without altering player view navigation
   useEffect(() => {
-    handleSetViewMode(isVideoSource ? 'cinema' : 'player');
     setIsScrubbing(false);
     setScrubPositionMs(null);
-  }, [media.title, media.artist, isVideoSource]);
-
-  // If synchronized lyrics are found for this track, ensure we show the music/lyrics player
-  useEffect(() => {
-    if (lyricsData?.lines && lyricsData.lines.length > 0) {
-      handleSetViewMode('player');
-    }
-  }, [lyricsData?.lines?.length]);
+  }, [media.title, media.artist]);
 
   // Scrubbing handlers
   const calculatePositionFromPointer = (e) => {
@@ -381,7 +388,9 @@ export default function NowPlaying({
     );
   }
 
-  if (!media.active) {
+  // If not in full lyrics mode and media is inactive, show empty state.
+  // Full Lyrics stays mounted during track changes and transient metadata gaps.
+  if (!media.active && viewMode !== 'lyrics') {
     let emptyTitle = 'Nothing playing';
     let emptyHint = 'Start audio or video in Spotify, your browser, or any media player and it will show up here.';
 

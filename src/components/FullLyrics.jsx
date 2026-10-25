@@ -177,6 +177,15 @@ export default function FullLyrics({
     setIsClosing(true);
   };
 
+  // Safety timer: guarantees onClose is invoked even if animation complete event is throttled
+  useEffect(() => {
+    if (!isClosing) return;
+    const timer = setTimeout(() => {
+      onClose?.();
+    }, 420);
+    return () => clearTimeout(timer);
+  }, [isClosing, onClose]);
+
   // Keyboard navigation: Escape key returns smoothly to player
   useEffect(() => {
     const handleKeyDown = (e) => {

@@ -1820,4 +1820,132 @@ Pass 2.2.10.3 upgrades Floating Lyrics from a fixed-anchor slot system to an int
   - `screenshot_music_note_hidden.png`: Clean centered artwork with lyrics hidden via toggle.
   - `screenshot_debug_overlay.png`: Dev-only visualization of stage exclusion zones and candidate rectangles.
 
+---
+
+# Island — Pass 2.2.10.4: Player View Persistence & Artwork State Synchronization Report
+
+## 1. Executive Summary
+Pass 2.2.10.4 resolves two interrelated bugs in Island's music player without superficial workarounds:
+1. **BUG A — Unexpected view reset**: Playback events (pausing, resuming, next song, previous song, autoplay, seeking, and lyrics resolution) unexpectedly closed Full Lyrics and returned the user to the compact player.
+2. **BUG B — Missing album artwork**: Returning to the compact player (either via the unexpected reset or during transitions) sometimes caused the album artwork to completely disappear (`opacity: 0`), requiring the user to open Full Lyrics and manually close it to restore visibility.
+
+Both root causes were diagnosed, architecturally decoupled, and verified under real Electron runtime and automated regression suites.
+
+---
+
+## 2. Root Cause Analysis
+
+### BUG A: Unexpected View Reset
+1. **Unconditional Track Change Effect** (`src/components/NowPlaying.jsx` lines 81–85 & 321–326):
+   - An effect listening to `[isVideoSource, media.title]` unconditionally called `setViewMode(nextMode)`.
+   - A duplicate effect listening to `[media.title, media.artist, isVideoSource]` unconditionally called `handleSetViewMode(isVideoSource ? 'cinema' : 'player')`.
+   - Whenever the song changed, skipped, or autoplayed, these effects stomped on `viewMode === 'lyrics'` and demoted it to `'player'`.
+2. **Lyrics Arrival View Reset** (`src/components/NowPlaying.jsx` lines 328–333):
+   - An effect listening to `[lyricsData?.lines?.length]` executed `handleSetViewMode('player')` whenever lyrics lines were fetched for an active track.
+   - Even if track change effects were bypassed, the asynchronous arrival of lyrics actively ejected the user from Full Lyrics.
+3. **Premature Empty-State Unmounting** (`src/components/NowPlaying.jsx` line 384):
+   - `if (!media.active)` immediately returned `<Empty>` before checking `viewMode === 'lyrics'`.
+   - When providers emitted transient heartbeat gaps or metadata pauses during track switches, `FullLyrics` was prematurely unmounted.
+4. **Dynamic Height Collapsing** (`src/components/Island.jsx` line 220):
+   - In `getDynamicHubHeight()`, `if (!media.active) return 240;` preceded `if (isLyricsFull === 'lyrics') return 390;`, causing the Electron window to collapse from 390px to 240px during brief provider metadata gaps.
+
+### BUG B: Missing Album Artwork
+1. **Stale Hidden Cover State** (`src/components/NowPlaying.jsx` lines 209 & 619–621):
+   - When entering Full Lyrics, `openFullLyricsWithGlide()` set `isSourceCoverHidden(true)`.
+   - The compact cover wrap rendered with `style={{ opacity: isSourceCoverHidden ? 0 : 1 }}` to hide the source artwork during flight.
+   - When Bug A unexpectedly reset `viewMode` to `'player'`, the normal `onClose` callback (`setIsSourceCoverHidden(false)`) was bypassed!
+   - As a result, `isSourceCoverHidden` remained stuck at `true`, rendering the compact player's album cover at `opacity: 0` (completely invisible).
+   - The cover only reappeared after the user opened Full Lyrics and manually clicked Close, which finally ran `setIsSourceCoverHidden(false)`.
+2. **Transient Artwork Erasure** (`src/hooks/useHighResArt.js`):
+   - Providers (Spotify SMTC, YouTube Music) occasionally emit track metadata milliseconds before the artwork URL is extracted.
+   - When `media.art` was temporarily omitted in a playback heartbeat, `useHighResArt` did not bridge the gap with a bounded grace window, causing blank image flashes.
+
+---
+
+## 3. Architecture & Implementation Fixes
+
+### A. Separation of UI Navigation from Playback State
+- **Explicit Navigation Only**: `viewMode` remains `'lyrics'` until the user explicitly clicks the Close button or presses `Escape`.
+- **Playback Immunity**: Pausing, resuming, next track, previous track, seeking, autoplay, and lyric loading NEVER modify `viewMode`.
+- **Track Scrubbing Cleanup**: Resetting scrubbing and optimistic seek on track change was decoupled from view mode:
+  ```js
+  useEffect(() => {
+    setIsScrubbing(false);
+    setScrubPositionMs(null);
+  }, [media.title, media.artist]);
+  ```
+- **Guarded Empty State**: `NowPlaying` now guards empty states with `if (!media.active && viewMode !== 'lyrics')`, ensuring Full Lyrics remains mounted across metadata buffering gaps.
+- **Window Height Preservation**: In `Island.jsx`, `isLyricsFull === 'lyrics'` takes precedence over transient `!media.active`, keeping the Electron window at 390px.
+
+### B. Reliable Artwork State Synchronization
+- **Guaranteed Compact Cover Visibility**:
+  ```js
+  // Inside handleSetViewMode:
+  if (mode !== 'lyrics') {
+    setIsSourceCoverHidden(false);
+  }
+  // Safety effect:
+  useEffect(() => {
+    if (viewMode !== 'lyrics' && isSourceCoverHidden) {
+      setIsSourceCoverHidden(false);
+    }
+  }, [viewMode, isSourceCoverHidden]);
+  ```
+  Whenever the user is in compact mode (`'player'`), `isSourceCoverHidden` is guaranteed to be `false` (`opacity: 1`).
+- **Bounded Grace Window in `useHighResArt.js`**:
+  - Distinguishes between transient metadata gaps, confirmed new tracks, and stopped sessions.
+  - Maintains previous artwork for up to 1200ms during track transitions, preventing harsh blank flashes.
+  - Falls back to procedural neutral artwork (`<Art seed={seed} />`) if no artwork is available after the grace window.
+  - Immediately clears artwork when media session is stopped/inactive.
+- **Async Race Prevention**:
+  - Request sequence tracking (`reqSequenceRef`) and active track checking (`activeTrackRef`) ensure slow artwork responses from previous tracks never overwrite newer tracks.
+- **Safety Exit Timer in `FullLyrics.jsx`**:
+  - Added a 420ms fallback timer to ensure `onClose()` is always called even if background throttling delays Framer Motion's `onAnimationComplete`.
+
+### C. Dynamic Artwork Color Stability
+- In `src/components/Island.jsx`, `colorArtRef` and cancellation tokens ensure:
+  - Pause/resume cycles do not unnecessarily re-extract or erase the dynamic palette.
+  - Temporary art omissions do not cause harsh color flashes to fallbacks.
+  - Slower asynchronous extractions from previous tracks cannot overwrite the current track's palette.
+
+---
+
+## 4. Verification Evidence
+
+### Automated Regression Suites
+- `test/pass2-2-10-4-view-persistence.test.cjs`: **8/8 PASS**
+  - Navigation separation (track changes and lyrics arrivals never reset viewMode).
+  - View persistence during transient provider drops.
+  - Compact artwork restoration (`isSourceCoverHidden` cannot be true outside lyrics).
+  - Bounded grace window and race protection in `useHighResArt`.
+  - Dynamic color preservation across pause/resume and transient gaps.
+  - State machine simulation of user and playback flows.
+  - Artwork race condition rejection.
+  - Adaptive Floating Lyrics integrity.
+- `test/pass2-2-10-adaptive-lyrics.test.cjs`: **10/10 PASS**
+- `test/pass2-2-10-floating-lyrics.test.cjs`: **13/13 PASS**
+- `test/pass2-2-7-revised-full-lyrics.test.cjs`: **10/10 PASS**
+- `test/pass2-2-6-5-lyrics-appearance-controls.test.cjs`: **10/10 PASS**
+- `test/precision-lyrics.test.cjs`: **11/11 PASS**
+- **Total Automated Tests Passing**: **75/75 PASS** (0 failures).
+
+### Real Electron Application Validation (`test/pass2-2-10-4-real-electron-validation.cjs`)
+Executed against `dist/index.html` in real Electron runtime:
+- **ok 1** - Full Lyrics successfully opened and mounted.
+- **ok 2** - Scenario A: Pause preserves Full Lyrics without view reset.
+- **ok 3** - Scenario A2: Resume preserves Full Lyrics.
+- **ok 4** - Scenario B: Next song updates inside Full Lyrics without returning to compact mode.
+- **ok 5** - Scenario C: Autoplay preserves Full Lyrics screen.
+- **ok 6** - Scenario D: Album artwork remains valid and stable.
+- **ok 7** - Scenario F1: Explicit close returns cleanly to compact player.
+- **ok 8** - Scenario E & F2: Compact artwork is fully visible (`opacity: 1`) without reopening Full Lyrics.
+- **Result**: `# All real Electron scenarios verified successfully with 0 failures`.
+
+### Visual Artifacts
+- `screenshot_scenario_a_pause.png`: Full Lyrics remains visible during pause with centered artwork and dynamic background.
+- `screenshot_scenario_b_next_song.png`: Next track updates seamlessly inside Full Lyrics.
+- `screenshot_scenario_c_autoplay.png`: Autoplay preserves Full Lyrics screen.
+- `screenshot_scenario_f_compact_cover_restored.png`: Compact player album cover is fully rendered with `opacity: 1` immediately after closing Full Lyrics.
+
+
 

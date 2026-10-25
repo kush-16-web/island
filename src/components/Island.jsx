@@ -217,9 +217,9 @@ export default function Island() {
         return 340;
       case 'playing':
         if (isLyricsFull === 'favorites') return 380;
-        if (!media.active) return 240;
-        if (isLyricsFull === 'cinema') return 315;
         if (isLyricsFull === 'lyrics' || isLyricsFull === true) return 390;
+        if (isLyricsFull === 'cinema') return 315;
+        if (!media.active) return 240;
         return 276;
       case 'clock': {
         const count = schedule.length;
@@ -434,15 +434,29 @@ export default function Island() {
   }, [ringing]);
 
   const [dynamicColor, setDynamicColor] = useState(null);
+  const colorArtRef = useRef(null);
 
   useEffect(() => {
-    if (media.active && media.art) {
-      extractCoverColor(media.art, (extracted) => {
-        setDynamicColor(extracted);
-      });
-    } else {
+    if (!media.active) {
       setDynamicColor(null);
+      colorArtRef.current = null;
+      return;
     }
+    if (!media.art) {
+      // Temporary gap: preserve current extracted color briefly, avoid harsh flash
+      return;
+    }
+    if (colorArtRef.current === media.art) return;
+    colorArtRef.current = media.art;
+    let cancelled = false;
+    extractCoverColor(media.art, (extracted) => {
+      if (!cancelled && extracted) {
+        setDynamicColor(extracted);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [media.active, media.art]);
 
   const isVideo = isVideoMedia(media);
