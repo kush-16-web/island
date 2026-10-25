@@ -19,7 +19,13 @@ export const LYRICS_STYLES = {
   KINETIC: 'kinetic',
 };
 
+export const LYRICS_LAYOUTS = {
+  FLOATING: 'floating',
+  NORMAL: 'normal',
+};
+
 const STORAGE_KEY = 'island_lyrics_style';
+const LAYOUT_STORAGE_KEY = 'island_lyrics_layout';
 
 export function getLyricsStyle() {
   if (typeof window === 'undefined') return LYRICS_STYLES.CLASSIC;
@@ -48,10 +54,28 @@ export function setLyricsStyle(style) {
   } catch {}
 }
 
+export function getLyricsLayout() {
+  if (typeof window === 'undefined') return LYRICS_LAYOUTS.FLOATING;
+  try {
+    const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (saved === LYRICS_LAYOUTS.NORMAL) return LYRICS_LAYOUTS.NORMAL;
+    if (saved === LYRICS_LAYOUTS.FLOATING) return LYRICS_LAYOUTS.FLOATING;
+  } catch {}
+  return LYRICS_LAYOUTS.FLOATING;
+}
+
+export function setLyricsLayout(layout) {
+  if (typeof window === 'undefined') return;
+  try {
+    const valid = layout === LYRICS_LAYOUTS.NORMAL ? LYRICS_LAYOUTS.NORMAL : LYRICS_LAYOUTS.FLOATING;
+    localStorage.setItem(LAYOUT_STORAGE_KEY, valid);
+  } catch {}
+}
+
 /**
  * Fast deterministic string hash (djb2 variant)
  */
-function hashString(str = '') {
+export function hashString(str = '') {
   let h = 5381;
   for (let i = 0; i < str.length; i++) {
     h = ((h << 5) + h) + str.charCodeAt(i);

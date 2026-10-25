@@ -191,21 +191,18 @@ test('Pass 2.2.7.3: Artwork Compositor Glide, Wide Metadata & Concert Layering S
     );
   });
 
-  await t.test('9. Six-Button Toolbar: Approved 6 controls preserved with no extra seek buttons', () => {
+  await t.test('9. Playback Toolbar: Left controls and right controls with 5s seek buttons (Pass 2.2.10)', () => {
     // Left controls
     assert.ok(flCode.includes('heart-btn--bottom'), 'Must include favorite heart button');
     assert.ok(flCode.includes('lyrics-toggle-btn'), 'Must include music note show/hide button');
     assert.ok(flCode.includes('full-lyrics__vol-ctrl'), 'Must include volume control with popover');
 
-    // Right controls
+    // Right controls: Previous | Back 5s | Play/Pause | Forward 5s | Next
     assert.ok(flCode.includes("onControl('previous')"), 'Must include previous button');
     assert.ok(flCode.includes("onControl('playpause')"), 'Must include play/pause button');
     assert.ok(flCode.includes("onControl('next')"), 'Must include next button');
-
-    // No extra seek buttons in FullLyrics
-    const controlsRowSlice = flCode.slice(flCode.indexOf('full-lyrics__controls-row'));
-    assert.ok(!controlsRowSlice.includes('Icon.Replay5'), 'FullLyrics toolbar must not have Replay5');
-    assert.ok(!controlsRowSlice.includes('Icon.Forward5'), 'FullLyrics toolbar must not have Forward5');
+    assert.ok(flCode.includes('Icon.Replay5'), 'FullLyrics toolbar includes Replay5');
+    assert.ok(flCode.includes('Icon.Forward5'), 'FullLyrics toolbar includes Forward5');
   });
 
   await t.test('10. Normal Now Playing Unchanged: Preserves standard UI and 5s skip buttons', () => {

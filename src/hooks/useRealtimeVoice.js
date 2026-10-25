@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { VoiceTurnController, ACTION_LIFECYCLE_STATES } from '../lib/voice-turn-controller';
-import { processTurnIntent } from '../lib/voice-intent';
+import { processTurnIntent, deriveSpecificActionConfirmation } from '../lib/voice-intent';
 import { getAssistantName } from '../lib/assistant';
 import { audioCoordinator } from '../lib/audio-coordinator';
 import { interpretLocalMusicCommand } from '../lib/music-command-interpreter';
@@ -16,6 +16,7 @@ import {
 } from '../lib/agent-response-contract';
 import { latencyTracker } from '../lib/latency-tracker';
 import { parseSchedulerIntent, executeSchedulerIntent } from '../lib/scheduler-commands';
+import { splitIntoSpeechSentences } from '../lib/sentence-chunker';
 const isDev = Boolean(import.meta.env?.DEV);
 
 function logDevStage(stageNumber, stageDescription, extra = {}) {
@@ -611,6 +612,7 @@ export function useRealtimeVoice(options = {}) {
 
       // 1. Stage 1: Speech-to-Text (STT) if not already provided as direct text
       if (!isDirectText) {
+        setStatus('transcribing');
         latencyTracker.recordStage(turnId, 'stt_start');
         if (sttProvider === 'groq-whisper') {
           if (!window.island?.groq?.transcribe) {
@@ -669,6 +671,8 @@ export function useRealtimeVoice(options = {}) {
           userText = sttRes.text.trim();
         }
       }
+
+      setStatus('thinking');
 
       // Add user speech entry to transcript
       const displayedUserText = userText || `Voice message to ${assistantName}`;
@@ -731,7 +735,14 @@ export function useRealtimeVoice(options = {}) {
         const agentResponse = createAgentResponse({
           displayText: display,
           spokenText: schedulerActionResult.spokenConfirmation,
-          toolResults: null,
+          toolResults: {
+            type: 'scheduler',
+            action: schedulerActionResult.action,
+            item: schedulerActionResult.item,
+            activeTimers: schedulerActionResult.activeTimers,
+            activeAlarms: schedulerActionResult.activeAlarms,
+            scheduler: schedulerActionResult,
+          },
           responseStatus: schedulerActionResult.clarificationNeeded
             ? 'clarification'
             : schedulerActionResult.ok === false
@@ -774,7 +785,7 @@ export function useRealtimeVoice(options = {}) {
             readAloud: Boolean(localMusicResult.readAloud),
           });
         } else {
-          const display = localMusicResult.spokenConfirmation || 'Action completed.';
+          const display = localMusicResult.spokenConfirmation || deriveSpecificActionConfirmation(localMusicResult);
           agentResponse = createAgentResponse({
             displayText: localMusicResult.displayText || display,
             spokenText: display,
@@ -1231,25 +1242,81 @@ export function useRealtimeVoice(options = {}) {
             text: finalDisplayText,
             displayText: finalDisplayText,
             spokenText: finalSpokenText,
+            toolResults: agentResponse.toolResults,
             tracks: inlineTracks,
             candidates: inlineCandidates,
             weather: inlineWeather,
+            scheduler: agentResponse.toolResults?.scheduler || null,
             responseStatus: agentResponse.responseStatus,
           },
         ]);
         historyRef.current.push({ role: 'assistant', text: finalDisplayText });
 
+        // Phase B & G: Pipelined Speech Synthesis and Low-Latency Playback
+        setStatus('preparing_speech');
         latencyTracker.recordStage(turnId, 'tts_start');
-        const spokenAudioBase64 = await synthesizeSpeechText(finalSpokenText);
-        latencyTracker.recordStage(turnId, 'tts_end');
 
         if (controller.isTurnActive(turnId)) {
-          await speakAssistantResponse({
-            audioBase64: spokenAudioBase64,
-            text: finalSpokenText,
-            turnId,
-            isIntermediate: false,
-          });
+          const speechSentences = splitIntoSpeechSentences(finalSpokenText);
+
+          if (speechSentences.length <= 1) {
+            const spokenAudioBase64 = await synthesizeSpeechText(finalSpokenText);
+            latencyTracker.recordStage(turnId, 'tts_end');
+
+            if (controller.isTurnActive(turnId)) {
+              await speakAssistantResponse({
+                audioBase64: spokenAudioBase64,
+                text: finalSpokenText,
+                turnId,
+                isIntermediate: false,
+              });
+            }
+          } else {
+            // Pipelined sentence playback:
+            // Synthesize sentence 1 immediately so first audio starts in <200ms
+            const sentence1 = speechSentences[0];
+            const synth1Promise = synthesizeSpeechText(sentence1);
+
+            // Concurrently launch background syntheses for remaining sentences
+            const backgroundPromises = speechSentences.slice(1).map((s) => synthesizeSpeechText(s));
+
+            const audio1 = await synth1Promise;
+            latencyTracker.recordStage(turnId, 'tts_end');
+
+            if (controller.isTurnActive(turnId) && audio1) {
+              // First chunk begins audible playback immediately!
+              await speakAssistantResponse({
+                audioBase64: audio1,
+                text: sentence1,
+                turnId,
+                isIntermediate: true,
+              });
+
+              // Play subsequent sentences seamlessly as background synthesis completes
+              for (let i = 0; i < backgroundPromises.length; i++) {
+                if (!controller.isTurnActive(turnId)) break;
+                const nextAudio = await backgroundPromises[i];
+                const isLast = i === backgroundPromises.length - 1;
+                if (controller.isTurnActive(turnId) && nextAudio) {
+                  await speakAssistantResponse({
+                    audioBase64: nextAudio,
+                    text: speechSentences[i + 1],
+                    turnId,
+                    isIntermediate: !isLast,
+                  });
+                }
+              }
+            } else if (controller.isTurnActive(turnId)) {
+              // Fallback to full speech if chunk 1 was empty
+              const fullAudio = await synthesizeSpeechText(finalSpokenText);
+              await speakAssistantResponse({
+                audioBase64: fullAudio,
+                text: finalSpokenText,
+                turnId,
+                isIntermediate: false,
+              });
+            }
+          }
 
           // Priority 2: Transient dismissal for confirmed music playback commands or polite session closings
           const action = turnResult.actionResult?.action;

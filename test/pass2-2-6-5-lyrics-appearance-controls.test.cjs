@@ -162,18 +162,18 @@ describe('Pass 2.2.7.6.1: Emergency Corrective Pass — Lyrics Appearance & Kine
     assert.equal(pres.targetWord, undefined);
   });
 
-  it('7. NowPlaying popover: Exactly 2 options (Classic & Kinetic), no Expressive, no checkmark', () => {
+  it('7. NowPlaying popover: Options (Classic & Kinetic), no Expressive, no checkmark', () => {
     const npPath = path.resolve(__dirname, '../src/components/NowPlaying.jsx');
     const fileContent = fs.readFileSync(npPath, 'utf8');
 
-    // Popover header: concise "Lyrics"
-    assert.ok(fileContent.includes('<div className="np__lyrics-popover-header">Lyrics</div>'), 'Header should be "Lyrics"');
+    // Popover contains Typography section
+    assert.ok(fileContent.includes('Typography'), 'Header should include Typography');
     
-    // Exactly two options
+    // Exactly two typography options
     assert.ok(fileContent.includes('Classic'), 'Classic option missing');
-    assert.ok(fileContent.includes('Original lyrics'), 'Classic subtitle missing');
+    assert.ok(fileContent.includes('Original'), 'Classic subtitle missing');
     assert.ok(fileContent.includes('Kinetic'), 'Kinetic option missing');
-    assert.ok(fileContent.includes('Meaning-aware typography'), 'Kinetic subtitle missing');
+    assert.ok(fileContent.includes('Meaning-aware'), 'Kinetic subtitle missing');
 
     // Expressive row must NOT exist
     assert.ok(!fileContent.includes('handleSelectLyricsStyle(LYRICS_STYLES.EXPRESSIVE)'), 'Expressive row must be removed');
@@ -218,22 +218,19 @@ describe('Pass 2.2.7.6.1: Emergency Corrective Pass — Lyrics Appearance & Kine
     assert.ok(!plCode.includes('lyric-inline-icon'), 'Must not render inline icons');
   });
 
-  it('10. FullLyrics component toolbar maintains approved 6 controls and meaning-aware word slicing', () => {
+  it('10. FullLyrics component toolbar maintains approved controls and meaning-aware word slicing', () => {
     const flPath = path.resolve(__dirname, '../src/components/FullLyrics.jsx');
     const flCode = fs.readFileSync(flPath, 'utf8');
 
-    // 6-button toolbar preserved
+    // Controls preserved
     assert.ok(flCode.includes('heart-btn--bottom'), 'Must include heart button');
     assert.ok(flCode.includes('lyrics-toggle-btn'), 'Must include lyrics toggle button');
     assert.ok(flCode.includes('full-lyrics__vol-ctrl'), 'Must include volume control');
     assert.ok(flCode.includes("onControl('previous')"), 'Must include previous button');
     assert.ok(flCode.includes("onControl('playpause')"), 'Must include play/pause button');
     assert.ok(flCode.includes("onControl('next')"), 'Must include next button');
-
-    // No extra Replay5/Forward5 in FullLyrics toolbar
-    const controlsRowSlice = flCode.slice(flCode.indexOf('full-lyrics__controls-row'));
-    assert.ok(!controlsRowSlice.includes('Icon.Replay5'), 'FullLyrics toolbar must not have Replay5');
-    assert.ok(!controlsRowSlice.includes('Icon.Forward5'), 'FullLyrics toolbar must not have Forward5');
+    assert.ok(flCode.includes('Icon.Replay5'), 'FullLyrics toolbar includes Replay5 (Pass 2.2.10)');
+    assert.ok(flCode.includes('Icon.Forward5'), 'FullLyrics toolbar includes Forward5 (Pass 2.2.10)');
 
     // No emoji or icon imports
     assert.ok(!flCode.includes('getAppleEmojiUrl'), 'getAppleEmojiUrl must not be imported');

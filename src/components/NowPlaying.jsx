@@ -13,7 +13,14 @@ import VideoPiP from './VideoPiP';
 import FavoritesMenu from './FavoritesMenu';
 import { isTrackFavorite, addFavorite, removeFavorite, healFavoriteWithExactId } from '../lib/favorites';
 import { playFavoriteTrack, getFriendlyProviderName } from '../lib/music-actions';
-import { getLyricsStyle, setLyricsStyle, LYRICS_STYLES } from '../lib/lyrics-style-engine';
+import {
+  getLyricsStyle,
+  setLyricsStyle,
+  LYRICS_STYLES,
+  getLyricsLayout,
+  setLyricsLayout,
+  LYRICS_LAYOUTS,
+} from '../lib/lyrics-style-engine';
 
 // Living Canvas fine-art mode is dormant during Pass 2.2.6 while building toward Cinema Mode
 const ENABLE_CANVAS_ART = false;
@@ -142,8 +149,9 @@ export default function NowPlaying({
   const [isSourceCoverHidden, setIsSourceCoverHidden] = useState(false);
   const [travelDelta, setTravelDelta] = useState({ x: -153, y: 2, scale: 64 / 126 });
 
-  // Lyrics Appearance State (classic, kinetic)
+  // Lyrics Appearance & Layout State (floating/normal, classic/kinetic)
   const [lyricsStyle, setLyricsStyleState] = useState(getLyricsStyle);
+  const [lyricsLayout, setLyricsLayoutState] = useState(getLyricsLayout);
   const [showLyricsStylePopover, setShowLyricsStylePopover] = useState(false);
 
   useEffect(() => {
@@ -169,7 +177,11 @@ export default function NowPlaying({
   const handleSelectLyricsStyle = (newStyle) => {
     setLyricsStyleState(newStyle);
     setLyricsStyle(newStyle);
-    setShowLyricsStylePopover(false);
+  };
+
+  const handleSelectLyricsLayout = (newLayout) => {
+    setLyricsLayoutState(newLayout);
+    setLyricsLayout(newLayout);
   };
 
   const openFullLyricsWithGlide = () => {
@@ -567,6 +579,9 @@ export default function NowPlaying({
                 toggleFavorite={toggleFavorite}
                 travelDelta={travelDelta}
                 lyricsStyle={lyricsStyle}
+                onLyricsStyleChange={setLyricsStyleState}
+                lyricsLayout={lyricsLayout}
+                onLyricsLayoutChange={setLyricsLayoutState}
                 onSeek={(posSec) => {
                   setOptimisticSeek({ posMs: posSec * 1000, timestamp: Date.now() });
                   island?.media?.seek?.(posSec);
@@ -679,7 +694,29 @@ export default function NowPlaying({
                               '--popover-accent': accentColor || 'var(--accent, #ff3b69)',
                             }}
                           >
-                            <div className="np__lyrics-popover-header">Lyrics</div>
+                            <div className="np__lyrics-popover-header">Lyrics Layout</div>
+                            <button
+                              type="button"
+                              className={`np__lyrics-popover-option${lyricsLayout === LYRICS_LAYOUTS.FLOATING ? ' is-active' : ''}`}
+                              onClick={() => handleSelectLyricsLayout(LYRICS_LAYOUTS.FLOATING)}
+                            >
+                              <div className="np__lyrics-option-info">
+                                <span className="np__lyrics-option-title">Floating</span>
+                                <span className="np__lyrics-option-desc">Cinematic typography around artwork</span>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              className={`np__lyrics-popover-option${lyricsLayout === LYRICS_LAYOUTS.NORMAL ? ' is-active' : ''}`}
+                              onClick={() => handleSelectLyricsLayout(LYRICS_LAYOUTS.NORMAL)}
+                            >
+                              <div className="np__lyrics-option-info">
+                                <span className="np__lyrics-option-title">Normal</span>
+                                <span className="np__lyrics-option-desc">Classic synchronized scrolling</span>
+                              </div>
+                            </button>
+
+                            <div className="np__lyrics-popover-header" style={{ marginTop: '6px' }}>Typography</div>
                             <button
                               type="button"
                               className={`np__lyrics-popover-option${lyricsStyle === LYRICS_STYLES.CLASSIC ? ' is-active' : ''}`}
@@ -687,7 +724,7 @@ export default function NowPlaying({
                             >
                               <div className="np__lyrics-option-info">
                                 <span className="np__lyrics-option-title">Classic</span>
-                                <span className="np__lyrics-option-desc">Original lyrics</span>
+                                <span className="np__lyrics-option-desc">Original clean typography</span>
                               </div>
                             </button>
                             <button
@@ -697,7 +734,7 @@ export default function NowPlaying({
                             >
                               <div className="np__lyrics-option-info">
                                 <span className="np__lyrics-option-title">Kinetic</span>
-                                <span className="np__lyrics-option-desc">Meaning-aware typography</span>
+                                <span className="np__lyrics-option-desc">Meaning-aware subtle effects</span>
                               </div>
                             </button>
                           </div>

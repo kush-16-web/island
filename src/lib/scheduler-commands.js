@@ -124,21 +124,163 @@ function cleanUtterance(text) {
 }
 
 /**
+ * Format label preserving user's intentional casing while title-casing lowercase inputs.
+ */
+export function formatLabelPreservingCase(str) {
+  if (!str || typeof str !== 'string') return '';
+  let clean = str.trim().replace(/^["']+|["']+$/g, '').trim();
+  clean = clean.replace(/[.!?]+$/, '').trim();
+  if (!clean) return '';
+  // If user provided mixed or capital letters (e.g. "Drink Water" or "Study"), preserve it!
+  if (/[A-Z]/.test(clean)) {
+    return clean;
+  }
+  // If all lowercase, title-case words (e.g. "drink water" -> "Drink Water")
+  return clean.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Extract an explicit label marker from natural language utterance.
+ * Supports:
+ * - "and label it Drink Water", "label it Drink Water", "labeled Drink Water"
+ * - "called Study", "named Stretch", "titled Focus"
+ * - "with label Drink Water", "with the label Drink Water", "with the name Study"
+ * - Inline variants: "start a timer called Study for 5 minutes"
+ */
+export function extractExplicitLabel(text) {
+  if (!text || typeof text !== 'string') return { label: null, strippedText: text };
+
+  const trimmed = text.trim();
+
+  // Pattern 1: Tail label:
+  // "... and label it Drink Water", "... called Study", "... named Stretch", "... and call it Tea", "... with label Tea"
+  const tailRegex = /[\s,]+(?:and\s+)?(?:label(?:ed)?(?:\s+it)?|called|named|titled|call(?:\s+it)?|name(?:\s+it)?|with\s+(?:the\s+)?(?:label|title|name)(?:\s+of)?)\s+[:"']?([^"'.!?,;]+?)["']?[.!?\s]*$/i;
+  const tailMatch = trimmed.match(tailRegex);
+  if (tailMatch) {
+    const candidate = tailMatch[1].trim();
+    if (candidate && !/^(?:timer|alarm|seconds?|minutes?|hours?)$/i.test(candidate)) {
+      const strippedText = trimmed.slice(0, tailMatch.index).trim();
+      return {
+        label: formatLabelPreservingCase(candidate),
+        strippedText,
+      };
+    }
+  }
+
+  // Pattern 2: Inline label:
+  // "start a timer called Study for 5 minutes", "set an alarm named Gym for 7 AM"
+  const inlineRegex = /\b(?:called|named|titled)\s+[:"']?([^"'.!?,;]+?)["']?\s+(for|in|at)\b/i;
+  const inlineMatch = trimmed.match(inlineRegex);
+  if (inlineMatch) {
+    const candidate = inlineMatch[1].trim();
+    if (candidate && !/^(?:timer|alarm|seconds?|minutes?|hours?)$/i.test(candidate)) {
+      const strippedText = trimmed.replace(inlineMatch[0], inlineMatch[2]).trim();
+      return {
+        label: formatLabelPreservingCase(candidate),
+        strippedText,
+      };
+    }
+  }
+
+  return { label: null, strippedText: text };
+}
+
+/**
+ * Validate that a string is a genuine purpose or activity label,
+ * not a number word, duration unit, or generic command token.
+ */
+function isValidPurposeCandidate(candidate) {
+  if (!candidate || typeof candidate !== 'string') return false;
+  const clean = candidate.trim().toLowerCase();
+  if (clean.length <= 1) return false;
+  // Reject pure numbers or number words ("one", "two", "thirty")
+  if (/^\d+$/.test(clean) || parseNumberWord(clean) !== null) return false;
+  // Reject duration units ("seconds", "minutes", "hours", "mins", "secs")
+  if (/^(?:seconds?|minutes?|hours?|mins?|secs?|hrs?|h|m|s)$/i.test(clean)) return false;
+  // Reject clock time patterns ("7 am", "6:30 pm", "12 pm", "7:00", "7am")
+  if (/\b(?:\d{1,2}(?::\d{2})?)\s*(?:am|pm|a\.m\.|p\.m\.)\b/i.test(clean) || /^\d{1,2}(?::\d{2})?$/i.test(clean)) return false;
+  if (/^(?:am|pm|a\.m\.|p\.m\.|morning|evening|night|tonight|tomorrow|today)$/i.test(clean)) return false;
+  // Reject generic command words & stop words
+  if (/^(?:timer|alarm|set|start|put|cancel|stop|delete|new|me|my|a|an|the|this|that|it|give|need|take|for|to)$/i.test(clean)) return false;
+  // Reject if string contains duration patterns like "10 minutes" or "thirty seconds"
+  if (/\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|fifty|sixty)\s+(?:seconds?|minutes?|hours?|mins?|secs?)\b/i.test(clean)) return false;
+  return true;
+}
+
+/**
+ * Extract a high-confidence purpose-derived label from natural phrasing.
+ * Priority: Explicit Label > Purpose-Derived Label > Neutral Default.
+ * Supports:
+ * - "to <purpose>": "to drink water", "to stretch", "to go to the gym", "to study"
+ * - "for <purpose>": "for cooking pasta", "for tea", "for break"
+ * - "<purpose> timer": "break timer", "pasta timer", "focus timer"
+ */
+export function extractPurposeLabel(norm, rawText = '') {
+  if (!norm || typeof norm !== 'string') return null;
+
+  // 1. "to <purpose>" clause:
+  // e.g. "set a timer for one minute to drink water", "give me five minutes to stretch", "alarm at seven to go to the gym"
+  const toMatch = norm.match(/\bto\s+([a-z0-9\s]+?)(?:[.,;!?]|$)/i);
+  if (toMatch) {
+    let candidate = toMatch[1].trim();
+    // Normalize phrases like "go to the gym" -> "Gym"
+    if (/\b(?:go\s+to\s+the\s+)?gym\b/i.test(candidate)) {
+      return 'Gym';
+    }
+    candidate = candidate.replace(/^(?:the\s+|a\s+|an\s+|my\s+)/i, '').trim();
+    if (isValidPurposeCandidate(candidate)) {
+      return formatLabelPreservingCase(candidate);
+    }
+  }
+
+  // 2. "for <purpose>" clause when purpose is NOT a duration:
+  // e.g. "set a timer for cooking pasta, fifteen minutes", "10 minutes for cooking pasta"
+  const forMatch = norm.match(/\bfor\s+([a-z0-9\s]+?)(?:[,\s]+(?:\d+|[a-z]+)\s*(?:seconds?|minutes?|hours?|mins?|secs?)|[.,;!?]|$)/i);
+  if (forMatch) {
+    let candidate = forMatch[1]
+      .replace(/\b(?:timer|alarm)\b/gi, '')
+      .replace(/^(?:the\s+|a\s+|an\s+|my\s+)/i, '')
+      .trim();
+    if (isValidPurposeCandidate(candidate)) {
+      return formatLabelPreservingCase(candidate);
+    }
+  }
+
+  // 3. Modifier before "timer" or "alarm": e.g. "ten-minute break timer", "focus timer"
+  const modifierMatch = norm.match(/\b([a-z0-9]+)\s+(?:timer|alarm)\b/i);
+  if (modifierMatch) {
+    const candidate = modifierMatch[1].trim();
+    if (isValidPurposeCandidate(candidate)) {
+      return formatLabelPreservingCase(candidate);
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse relative countdown duration from natural language.
  * Returns durationMs and optional label, or null.
  */
 export function parseRelativeCountdown(text) {
   if (!text || typeof text !== 'string') return null;
-  const norm = cleanUtterance(text);
+
+  // Extract explicit label first before cleaning utterance to preserve case and prevent token interference
+  const { label: explicitLabel, strippedText } = extractExplicitLabel(text);
+  const norm = cleanUtterance(strippedText || text);
+
+  // Extract purpose label if no explicit label
+  const purposeLabel = extractPurposeLabel(norm, text);
+  const effectiveLabel = explicitLabel || purposeLabel || extractLabel(norm) || null;
 
   // Special cases:
   // "half an hour" / "half hour"
   if (/\bhalf\s+(?:an\s+)?hour\b/i.test(norm)) {
-    return { durationMs: 30 * 60 * 1000, label: extractLabel(norm) };
+    return { durationMs: 30 * 60 * 1000, label: effectiveLabel };
   }
   // "hour and a half"
   if (/\b(?:an?\s+)?hour\s+and\s+(?:a\s+)?half\b/i.test(norm)) {
-    return { durationMs: 90 * 60 * 1000, label: extractLabel(norm) };
+    return { durationMs: 90 * 60 * 1000, label: effectiveLabel };
   }
 
   // Regex for compound units: e.g. "1 hour 30 minutes", "5 minutes and 10 seconds", "30 seconds", "10m"
@@ -192,7 +334,7 @@ export function parseRelativeCountdown(text) {
   }
 
   if (matched && totalMs > 0) {
-    return { durationMs: totalMs, label: extractLabel(norm) };
+    return { durationMs: totalMs, label: effectiveLabel };
   }
 
   return null;
@@ -203,16 +345,16 @@ export function parseRelativeCountdown(text) {
  * e.g. "for cooking pasta", "for tea", "tea timer", "study timer"
  */
 function extractLabel(norm) {
-  // Pattern 1: "... for <label>"
-  const forMatch = norm.match(/\bfor\s+([a-z0-9\s]+)$/i);
-  if (forMatch) {
-    let candidate = forMatch[1]
+  // Pattern 1: "... for <label>" only when following a duration: e.g. "10 minutes for cooking pasta"
+  const forAfterDurationMatch = norm.match(/\b(?:\d+|[a-z]+)\s*(?:seconds?|minutes?|hours?|mins?|secs?)\s+for\s+([a-z0-9\s]+)$/i);
+  if (forAfterDurationMatch) {
+    let candidate = forAfterDurationMatch[1]
       .replace(/\b(?:timer|alarm|minutes?|seconds?|hours?|\d+)\b/gi, '')
       .trim()
       .replace(/^(?:for\s+)+/i, '')
       .trim();
-    if (candidate.length > 1 && !/^(?:a|an|the|me|my)$/i.test(candidate)) {
-      return candidate.charAt(0).toUpperCase() + candidate.slice(1);
+    if (isValidPurposeCandidate(candidate)) {
+      return formatLabelPreservingCase(candidate);
     }
   }
 
@@ -220,8 +362,8 @@ function extractLabel(norm) {
   const tagMatch = norm.match(/\b([a-z0-9]+)\s+(?:timer|alarm)\b/i);
   if (tagMatch) {
     const candidate = tagMatch[1].trim();
-    if (candidate.length > 1 && !/^(?:a|an|the|set|start|put|cancel|stop|my|new|\d+)$/i.test(candidate) && parseNumberWord(candidate) === null) {
-      return candidate.charAt(0).toUpperCase() + candidate.slice(1);
+    if (isValidPurposeCandidate(candidate)) {
+      return formatLabelPreservingCase(candidate);
     }
   }
 
@@ -234,7 +376,10 @@ function extractLabel(norm) {
  */
 export function parseAbsoluteClockTime(text, now = new Date()) {
   if (!text || typeof text !== 'string') return null;
-  const norm = cleanUtterance(text);
+
+  // Extract explicit label first
+  const { label: explicitLabel, strippedText } = extractExplicitLabel(text);
+  const norm = cleanUtterance(strippedText || text);
 
   // Do NOT match relative countdown phrases (e.g. "in 7 minutes", "for 10 minutes")
   if (/\b(?:in|for)\s+\d+\s*(?:minutes?|seconds?|hours?)\b/i.test(norm)) {
@@ -356,8 +501,8 @@ export function parseAbsoluteClockTime(text, now = new Date()) {
   const mm = String(minutes).padStart(2, '0');
   const timeStr = `${hh}:${mm}`;
 
-  // Extract label: e.g. "Wake up" if user said "wake me up"
-  let label = extractLabel(norm);
+  // Extract label: explicit label overrides purpose label overrides inferred label
+  let label = explicitLabel || extractPurposeLabel(norm, text) || extractLabel(norm);
   if (!label && /\bwake\b/i.test(norm)) {
     label = 'Wake up';
   } else if (!label) {
@@ -391,7 +536,7 @@ export function parseSchedulerIntent(rawText, options = {}) {
   const schedule = Array.isArray(options.schedule) ? options.schedule : [];
 
   // 1. Cancellation Commands
-  // e.g. "Cancel my timer", "Stop my timer", "Cancel the alarm", "Cancel my 7 AM alarm", "Delete my timer"
+  // e.g. "Cancel my timer", "Stop my timer", "Cancel the alarm", "Cancel my 7 AM alarm", "Delete my timer", "Cancel the Study timer"
   if (
     /^(?:cancel|stop|delete|remove|clear|turn\s+off|dismiss)\s+(?:the\s+|my\s+|all\s+)?(?:timers?|alarms?)/i.test(norm) ||
     /^(?:cancel|stop|delete|remove|clear|turn\s+off)\b/i.test(norm) && /\b(?:timer|alarm)\b/i.test(norm)
@@ -402,6 +547,8 @@ export function parseSchedulerIntent(rawText, options = {}) {
 
     // Look for specific time to cancel: "cancel my 7 am alarm", "cancel the 6:30 alarm"
     const parsedTime = parseAbsoluteClockTime(rawText, now);
+    const explicit = extractExplicitLabel(rawText);
+    const labelCandidate = explicit.label || extractPurposeLabel(norm, rawText) || extractLabel(norm);
 
     return {
       isScheduler: true,
@@ -409,7 +556,7 @@ export function parseSchedulerIntent(rawText, options = {}) {
       target: isAlarm ? 'alarm' : isTimer ? 'timer' : 'any',
       isAll,
       specificTime: parsedTime ? parsedTime.time : null,
-      label: extractLabel(norm),
+      label: labelCandidate,
       rawText,
     };
   }
@@ -438,14 +585,16 @@ export function parseSchedulerIntent(rawText, options = {}) {
   }
 
   // 3. Relative Countdown / Timers
-  // Matches "timer for 1 minute", "set an alarm for one minute", "start a 30 second timer"
-  // Note: "alarm for one minute" is a countdown duration (Pass 2.2.8 Step 2)
+  // Matches "timer for 1 minute", "set an alarm for one minute", "start a 30 second timer",
+  // "give me five minutes to stretch", "start a ten-minute break timer"
   const isTimerTrigger =
     /\b(?:timer|countdown)\b/i.test(norm) ||
-    (/\balarm\b/i.test(norm) && /\b(?:for|in)\s+(\d+|[a-z]+)\s*(?:seconds?|minutes?|hours?|secs?|mins?)\b/i.test(norm));
+    (/\balarm\b/i.test(norm) && /\b(?:for|in)\s+(\d+|[a-z]+)\s*(?:seconds?|minutes?|hours?|secs?|mins?)\b/i.test(norm)) ||
+    /\b(?:give\s+me|need|take)\s+(?:\d+|[a-z]+)\s*(?:seconds?|minutes?|hours?|mins?|secs?)\b/i.test(norm) ||
+    /^(?:start|set|put\s+on)\s+(?:a\s+)?(?:\d+|[a-z]+)[-\s](?:second|minute|hour)\b/i.test(norm);
 
   if (isTimerTrigger) {
-    const countdown = parseRelativeCountdown(norm);
+    const countdown = parseRelativeCountdown(rawText) || parseRelativeCountdown(norm);
     if (countdown) {
       // Validate range: 1 second to 99 hours
       if (countdown.durationMs < 1000) {
@@ -493,7 +642,7 @@ export function parseSchedulerIntent(rawText, options = {}) {
     /^(?:set\s+an?\s+alarm|wake\s+me\s+up|alarm\s+at)\b/i.test(norm);
 
   if (isAlarmTrigger) {
-    const absolute = parseAbsoluteClockTime(norm, now);
+    const absolute = parseAbsoluteClockTime(rawText, now) || parseAbsoluteClockTime(norm, now);
 
     // Check for ambiguous time: e.g. "set an alarm for 7" without AM/PM or duration
     const ambiguousHourMatch = norm.match(/\b(?:at|for)\s+(\d{1,2}|[a-z]+)$/i);
@@ -599,15 +748,26 @@ export async function executeSchedulerIntent(parsed, env = {}) {
 
       const item = res.item || res;
       const durationSpeech = formatDurationSpeech(parsed.durationMs);
+      const hasCustomLabel = parsed.label && parsed.label !== 'Timer' && parsed.label !== 'Alarm';
 
-      // "Okay, your alarm is set for one minute from now." (Pass 2.2.8 Step 4)
+      // Specific confirmations from real result (Phase 3)
+      // "Your Drink Water timer is running for one minute."
       const spokenConfirmation = parsed.userSaidAlarm
-        ? `Okay, your alarm is set for ${durationSpeech} from now.`
-        : `Okay, your timer is set for ${durationSpeech} from now.`;
+        ? (hasCustomLabel
+            ? `Your ${parsed.label} alarm is set for ${durationSpeech}.`
+            : `Your alarm is set for ${durationSpeech}.`)
+        : (hasCustomLabel
+            ? `Your ${parsed.label} timer is running for ${durationSpeech}.`
+            : `Your timer is running for ${durationSpeech}.`);
 
       return {
         ok: true,
         action: 'set_timer',
+        status: 'success',
+        entityId: item.id,
+        entityType: 'timer',
+        label: item.label,
+        durationSeconds: Math.round(item.durationMs / 1000),
         item,
         spokenConfirmation,
         displayText: spokenConfirmation,
@@ -657,15 +817,26 @@ export async function executeSchedulerIntent(parsed, env = {}) {
       const targetToday = new Date(now);
       targetToday.setHours(h, m, 0, 0);
       const isTomorrow = parsed.isTomorrow || targetToday.getTime() <= now;
+      const hasCustomAlarmLabel = parsed.label && parsed.label !== 'Alarm' && parsed.label !== 'Wake up';
 
-      // "Your alarm is set for 7 AM tomorrow." (Pass 2.2.8 Step 4)
+      // Specific confirmation from real result (Phase 3)
+      // "Your Gym alarm is set for 7 AM."
       const spokenConfirmation = isTomorrow
-        ? `Your alarm is set for ${timeSpeech} tomorrow.`
-        : `Your alarm is set for ${timeSpeech} today.`;
+        ? (hasCustomAlarmLabel
+            ? `Your ${parsed.label} alarm is set for ${timeSpeech} tomorrow.`
+            : `Your alarm is set for ${timeSpeech} tomorrow.`)
+        : (hasCustomAlarmLabel
+            ? `Your ${parsed.label} alarm is set for ${timeSpeech}.`
+            : `Your alarm is set for ${timeSpeech}.`);
 
       return {
         ok: true,
         action: 'set_alarm',
+        status: 'success',
+        entityId: item.id,
+        entityType: 'alarm',
+        label: item.label,
+        time: item.time,
         item,
         spokenConfirmation,
         displayText: spokenConfirmation,
@@ -773,6 +944,11 @@ export async function executeSchedulerIntent(parsed, env = {}) {
         return {
           ok: true,
           action: 'cancel_alarm',
+          status: 'success',
+          entityId: match.id,
+          entityType: 'alarm',
+          label: match.label,
+          item: match,
           spokenConfirmation: speech,
           displayText: speech,
         };
@@ -794,21 +970,40 @@ export async function executeSchedulerIntent(parsed, env = {}) {
             displayText: "No active timers.",
           };
         }
-      } else if (activeTimers.length === 1) {
-        const timer = activeTimers[0];
-        await scheduler.remove(timer.id);
-        const durationSpeech = formatDurationSpeech(timer.durationMs);
-        const speech = `I've canceled your ${durationSpeech} timer.`;
-        return {
-          ok: true,
-          action: 'cancel_timer',
-          spokenConfirmation: speech,
-          displayText: speech,
-        };
       } else {
-        // Multiple timers: ask which one to cancel (Pass 2.2.8 Step 5)
+        // Find matching timer by label if user asked to cancel e.g. "cancel the Study timer"
+        let timer = null;
+        if (parsed.label) {
+          timer = activeTimers.find(
+            (t) => t.label && t.label.toLowerCase() === parsed.label.toLowerCase()
+          );
+        }
+        if (!timer && activeTimers.length === 1) {
+          timer = activeTimers[0];
+        }
+
+        if (timer) {
+          await scheduler.remove(timer.id);
+          const hasCustom = timer.label && timer.label !== 'Timer' && timer.label !== 'Alarm';
+          const speech = hasCustom
+            ? `I cancelled the ${timer.label} timer.`
+            : `I cancelled your timer.`;
+          return {
+            ok: true,
+            action: 'cancel_timer',
+            status: 'success',
+            entityId: timer.id,
+            entityType: 'timer',
+            label: timer.label,
+            item: timer,
+            spokenConfirmation: speech,
+            displayText: speech,
+          };
+        }
+
+        // Multiple timers and no matching label: ask which one to cancel (Pass 2.2.8 Step 5)
         const optionsStr = activeTimers
-          .map((t) => formatDurationSpeech(t.durationMs))
+          .map((t) => (t.label && t.label !== 'Timer' ? `${t.label} (${formatDurationSpeech(t.durationMs)})` : formatDurationSpeech(t.durationMs)))
           .join(' or ');
         const speech = `You have ${activeTimers.length} active timers: ${optionsStr}. Which one would you like to cancel?`;
         return {
@@ -830,17 +1025,36 @@ export async function executeSchedulerIntent(parsed, env = {}) {
           displayText: "No upcoming alarms.",
         };
       }
-      if (activeAlarms.length === 1) {
-        const alarm = activeAlarms[0];
+
+      let alarm = null;
+      if (parsed.label) {
+        alarm = activeAlarms.find(
+          (a) => a.label && a.label.toLowerCase() === parsed.label.toLowerCase()
+        );
+      }
+      if (!alarm && activeAlarms.length === 1) {
+        alarm = activeAlarms[0];
+      }
+
+      if (alarm) {
         await scheduler.remove(alarm.id);
-        const speech = `I've canceled your ${formatTimeSpeech(alarm.time)} alarm.`;
+        const hasCustom = alarm.label && alarm.label !== 'Alarm' && alarm.label !== 'Wake up';
+        const speech = hasCustom
+          ? `I cancelled the ${alarm.label} alarm.`
+          : `I cancelled your ${formatTimeSpeech(alarm.time)} alarm.`;
         return {
           ok: true,
           action: 'cancel_alarm',
+          status: 'success',
+          entityId: alarm.id,
+          entityType: 'alarm',
+          label: alarm.label,
+          item: alarm,
           spokenConfirmation: speech,
           displayText: speech,
         };
       }
+
       // Multiple alarms
       const times = activeAlarms.map((a) => formatTimeSpeech(a.time)).join(' or ');
       const speech = `You have ${activeAlarms.length} alarms set: ${times}. Which one would you like to cancel?`;

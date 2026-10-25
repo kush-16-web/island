@@ -30,3 +30,7 @@ scratch_logs/
 .idea/
 *.sublime-project
 *.sublime-workspace
+
+# Test Artifacts & Screenshots
+test/artifacts/
+.temp_screenshots/

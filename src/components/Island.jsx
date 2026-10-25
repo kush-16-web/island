@@ -138,7 +138,7 @@ function RingView({ ring, actions }) {
   return (
     <View w={SIZE.ring.w} h={SIZE.ring.h} className="ringing">
       <div className={`ringing__icon ${isAlarm ? 'is-alarm' : 'is-timer'}`}>
-        {isAlarm ? <Icon.Bell width={24} height={24} /> : <Icon.Timer width={24} height={24} />}
+        {isAlarm ? <Icon.Bell width={18} height={18} /> : <Icon.Timer width={18} height={18} />}
       </div>
       <div className="ringing__text">
         <div className="ringing__title">{title}</div>

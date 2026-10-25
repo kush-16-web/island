@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Island Full Lyrics & Floating Mode Exact Reference (Pass 2.2.10.1)</title>
+  <link rel="stylesheet" href="../src/styles.css">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #090a0f;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      color: #fff;
+      -webkit-font-smoothing: antialiased;
+    }
+    .island-shell {
+      --lyric-accent: #c084fc;
+      --music-accent: #c084fc;
+      --accent: #c084fc;
+      --fill-1: rgba(255, 255, 255, 0.04);
+      --fill-2: rgba(255, 255, 255, 0.07);
+      --fill-3: rgba(255, 255, 255, 0.12);
+      --hair: rgba(255, 255, 255, 0.08);
+      --text: #ffffff;
+      --text-2: rgba(255, 255, 255, 0.72);
+      --text-3: rgba(255, 255, 255, 0.44);
+      width: 440px;
+      height: 480px;
+      background: radial-gradient(130% 130% at 50% -10%, rgba(126, 34, 206, 0.38) 0%, rgba(18, 12, 32, 0.98) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 24px;
+      backdrop-filter: blur(32px);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      padding: 10px 14px 10px;
+    }
+  </style>
+</head>
+<body class="theme-dark">
+  <div class="island-shell">
+    <div class="full-lyrics" style="position: relative; height: 100%; display: flex; flex-direction: column; justify-content: space-between;">
+      
+      <!-- Top Bar: Segmented Tabs + Settings + Close -->
+      <div class="full-lyrics__top-bar">
+        <div class="full-lyrics__seg-control" role="tablist" aria-label="View selector">
+          <button type="button" class="full-lyrics__seg-btn is-active">
+            <span>Artwork</span>
+          </button>
+          <button type="button" class="full-lyrics__seg-btn">
+            <span>Concert</span>
+          </button>
+        </div>
+
+        <div class="full-lyrics__top-actions">
+          <div class="full-lyrics__settings-anchor" id="settings-anchor">
+            <button type="button" class="full-lyrics__icon-btn" id="settings-btn" title="Lyrics Settings">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+
+            <!-- Settings Popover Slot -->
+            <div id="settings-popover-slot" style="display: none;">
+              <div class="full-lyrics__settings-popover">
+                <div class="full-lyrics__settings-section">
+                  <div class="full-lyrics__settings-heading">Lyrics Layout</div>
+                  <button type="button" class="full-lyrics__settings-opt is-active" id="opt-layout-floating">
+                    <div class="full-lyrics__opt-info">
+                      <span class="full-lyrics__opt-title">Floating</span>
+                      <span class="full-lyrics__opt-desc">Cinematic typography around artwork</span>
+                    </div>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </button>
+                  <button type="button" class="full-lyrics__settings-opt" id="opt-layout-normal">
+                    <div class="full-lyrics__opt-info">
+                      <span class="full-lyrics__opt-title">Normal</span>
+                      <span class="full-lyrics__opt-desc">Classic synchronized scrolling</span>
+                    </div>
+                  </button>
+                </div>
+
+                <div class="full-lyrics__settings-divider"></div>
+
+                <div class="full-lyrics__settings-section">
+                  <div class="full-lyrics__settings-heading">Typography</div>
+                  <button type="button" class="full-lyrics__settings-opt is-active">
+                    <div class="full-lyrics__opt-info">
+                      <span class="full-lyrics__opt-title">Classic</span>
+                      <span class="full-lyrics__opt-desc">Original clean typography</span>
+                    </div>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </button>
+                  <button type="button" class="full-lyrics__settings-opt">
+                    <div class="full-lyrics__opt-info">
+                      <span class="full-lyrics__opt-title">Kinetic</span>
+                      <span class="full-lyrics__opt-desc">Meaning-aware subtle effects</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" class="full-lyrics__icon-btn" title="Close">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Stage Slot (Injected by Scenario) -->
+      <div id="main-stage-slot" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+      </div>
+
+      <!-- Bottom Progress Bar & Toolbar -->
+      <div class="full-lyrics__bottom-bar">
+        <div class="full-lyrics__progress">
+          <span class="time-text">0:48</span>
+          <div class="full-lyrics__progress-bar">
+            <div class="full-lyrics__progress-fill" style="width: 28%;"></div>
+            <div class="full-lyrics__progress-thumb" style="left: 28%;"></div>
+          </div>
+          <span class="time-text">2:52</span>
+        </div>
+
+        <div class="full-lyrics__controls-row">
+          <!-- Left: Favorite, Lyrics toggle, Volume -->
+          <div class="full-lyrics__controls-left">
+            <button type="button" class="heart-btn heart-btn--bottom is-favorite" title="Favorited">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="#c084fc"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </button>
+            <button type="button" class="lyrics-toggle-btn is-active" title="Hide Lyrics">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            </button>
+            <div class="full-lyrics__vol-ctrl">
+              <button type="button" class="icon-btn icon-btn--sm full-lyrics__vol-btn" title="Volume: 80%">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Previous, Back 5s, Play/Pause, Forward 5s, Next -->
+          <div class="full-lyrics__controls-right">
+            <button type="button" class="icon-btn icon-btn--skip" title="Previous Track">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+            </button>
+            <button type="button" class="icon-btn icon-btn--skip" title="Back 5 seconds" aria-label="Back 5 seconds">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/><text x="12" y="15" font-size="8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle" dominant-baseline="middle">5</text></svg>
+            </button>
+            <button type="button" class="icon-btn icon-btn--play" title="Pause">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+            <button type="button" class="icon-btn icon-btn--skip" title="Forward 5 seconds" aria-label="Forward 5 seconds">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/><text x="12" y="15" font-size="8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="bold" fill="currentColor" text-anchor="middle" dominant-baseline="middle">5</text></svg>
+            </button>
+            <button type="button" class="icon-btn icon-btn--skip" title="Next Track">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Visual scenario injector
+    window.setViewScenario = function(scenarioName) {
+      const stage = document.getElementById('main-stage-slot');
+      const settingsSlot = document.getElementById('settings-popover-slot');
+      const settingsBtn = document.getElementById('settings-btn');
+
+      settingsSlot.style.display = scenarioName === 'layout_settings' ? 'block' : 'none';
+      if (settingsBtn) {
+        settingsBtn.className = scenarioName === 'layout_settings' ? 'full-lyrics__icon-btn is-active' : 'full-lyrics__icon-btn';
+      }
+
+      if (scenarioName === 'normal_mode') {
+        stage.innerHTML = `
+          <div class="full-lyrics__body full-lyrics__body--normal">
+            <div class="full-lyrics__hero">
+              <div class="full-lyrics__hero-art-wrap">
+                <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #7e22ce, #db2777); display: flex; align-items: center; justify-content: center; font-size: 28px;">
+                  🎵
+                </div>
+              </div>
+              <div class="full-lyrics__hero-meta">
+                <div class="full-lyrics__hero-title">Chest Pain (I Love)</div>
+                <div class="full-lyrics__hero-artist">Malcolm Todd</div>
+              </div>
+            </div>
+
+            <div class="full-lyrics__right">
+              <div class="full-lyrics__scroller">
+                <div class="full-lyrics__line is-past">I can't feel my fingers now</div>
+                <div class="full-lyrics__line is-past">Chest pain, girl, you know I love it</div>
+                <div class="full-lyrics__line is-active">I love when you push my buttons</div>
+                <div class="full-lyrics__line is-future">Taking off your coat in the hallway</div>
+                <div class="full-lyrics__line is-future">Never really knew what you'd say</div>
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Exact Reference Floating Mode (Pass 2.2.10.2):
+      // - One centered 148px album artwork (modestly enlarged, moved slightly down with margin-top: 36px)
+      // - 5 subtle, small ambient fragments matching exact reference locations:
+      //   1. Anchor 0: Above cover (top: 8px, left: calc(50% - 105px), maxWidth: 210px)
+      //   2. Anchor 1: Mid-left around middle (top: 72px, left: 14px, maxWidth: 145px)
+      //   3. Anchor 2: Upper-right, partly obscured by artwork (top: 42px, left: calc(50% + 48px), maxWidth: 180px)
+      //   4. Anchor 3: Lower-right, partly obscured by artwork (top: 122px, left: calc(50% + 52px), maxWidth: 175px)
+      //   5. Anchor 4: Below-left of artwork (top: 152px, left: 16px, maxWidth: 140px)
+      const isTransition = scenarioName === 'active_transition';
+      const isLongLine = scenarioName === 'long_lyric_line';
+      const isHidden = scenarioName === 'music_note_hidden';
+
+      const lyricsToggleBtn = document.querySelector('.lyrics-toggle-btn');
+      if (lyricsToggleBtn) {
+        if (isHidden) {
+          lyricsToggleBtn.classList.remove('is-active');
+          lyricsToggleBtn.title = 'Show Lyrics';
+        } else {
+          lyricsToggleBtn.classList.add('is-active');
+          lyricsToggleBtn.title = 'Hide Lyrics';
+        }
+      }
+
+      if (isHidden) {
+        stage.innerHTML = `
+          <div class="full-lyrics__body full-lyrics__body--floating">
+            <div class="floating-stage floating-stage--lyrics-hidden">
+              <!-- Layer 2: Centered Foreground Artwork without lyrics (156px) -->
+              <div class="floating-stage__artwork-layer">
+                <div class="full-lyrics__hero-art-wrap full-lyrics__hero-art-wrap--floating full-lyrics__hero-art-wrap--large">
+                  <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #6b21a8, #db2777); display: flex; align-items: center; justify-content: center; font-size: 40px; box-shadow: inset 0 0 20px rgba(0,0,0,0.5);">
+                    💿
+                  </div>
+                </div>
+              </div>
+
+              <!-- Layer 3: Track Metadata beneath cover -->
+              <div class="floating-stage__meta-layer">
+                <div class="full-lyrics__hero-meta full-lyrics__hero-meta--floating">
+                  <div class="full-lyrics__hero-title">Chest Pain (I Love)</div>
+                  <div class="full-lyrics__hero-artist">Malcolm Todd</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      const lineAbove = "I can't feel my fingers now";
+      const lineMidLeft = isTransition ? "Taking off your coat in the hall" : "I love when you push my buttons";
+      const lineUpperRight = "Chest pain, girl, you know I love it";
+      const lineLowerRight = isLongLine ? "Never really knew what you'd say" : "Taking off your coat";
+      const lineLowerLeft = isTransition ? "I love when you push my buttons" : "Chest pain running in my veins";
+
+      stage.innerHTML = `
+        <div class="full-lyrics__body full-lyrics__body--floating">
+          <div class="floating-stage">
+            <!-- Layer 1: Floating Typography (Behind Artwork, z-index: 2) -->
+            <div class="floating-stage__lyrics-layer">
+              <!-- Anchor 0: Above cover, centered-left -->
+              <div class="floating-lyric floating-lyric--past" style="top: 8px; left: calc(50% - 105px); max-width: 210px; text-align: left; animation-delay: 0.12s;">
+                ${lineAbove}
+              </div>
+
+              <!-- Anchor 1: Mid-left, around cover's middle (Active in default scenario) -->
+              <div class="floating-lyric ${isTransition ? 'floating-lyric--past' : 'floating-lyric--active'}" style="top: 72px; left: 14px; max-width: 145px; text-align: left; animation-delay: 0.04s;">
+                ${lineMidLeft}
+              </div>
+
+              <!-- Anchor 2: Near upper-right, partly obscured by artwork (starts at calc(50% + 48px), 26px behind cover right boundary) -->
+              <div class="floating-lyric ${isTransition ? 'floating-lyric--active' : 'floating-lyric--future'}" style="top: 42px; left: calc(50% + 48px); max-width: 180px; text-align: left; animation-delay: 0.18s;">
+                ${lineUpperRight}
+              </div>
+
+              <!-- Anchor 3: Near lower-right, also partly obscured by artwork (starts at calc(50% + 52px), 22px behind cover right boundary) -->
+              <div class="floating-lyric floating-lyric--future" style="top: 122px; left: calc(50% + 52px); max-width: 175px; text-align: left; animation-delay: 0.28s;">
+                ${lineLowerRight}
+              </div>
+
+              <!-- Anchor 4: Below-left of the artwork -->
+              <div class="floating-lyric floating-lyric--past" style="top: 152px; left: 16px; max-width: 140px; text-align: left; animation-delay: 0.22s;">
+                ${lineLowerLeft}
+              </div>
+            </div>
+
+            <!-- Layer 2: Centered Foreground Artwork (148px, z-index: 5, solid geometry naturally obscuring fragments) -->
+            <div class="floating-stage__artwork-layer">
+              <div class="full-lyrics__hero-art-wrap full-lyrics__hero-art-wrap--floating">
+                <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #6b21a8, #db2777); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: inset 0 0 20px rgba(0,0,0,0.5);">
+                  💿
+                </div>
+              </div>
+            </div>
+
+            <!-- Layer 3: Track Metadata beneath cover (z-index: 6, centered) -->
+            <div class="floating-stage__meta-layer">
+              <div class="full-lyrics__hero-meta full-lyrics__hero-meta--floating">
+                <div class="full-lyrics__hero-title">Chest Pain (I Love)</div>
+                <div class="full-lyrics__hero-artist">Malcolm Todd</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    // Initialize with floating_composition
+    window.setViewScenario('floating_composition');
+  </script>
+</body>
+</html>

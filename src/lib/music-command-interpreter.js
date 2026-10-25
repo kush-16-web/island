@@ -149,9 +149,18 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     const p = semanticPlan.plan;
     switch (p.type) {
       case ACTION_TYPES.CONVERSATION_DISMISS: {
-        let closingAck = "You're welcome! Enjoy your music.";
-        if (/bye|goodbye/i.test(cleaned)) closingAck = 'Goodbye! Enjoy your day.';
-        else if (/no|that(?:'s|\s+is)\s+all|nothing/i.test(cleaned)) closingAck = 'Understood. Enjoy your day!';
+        const isMusicPlaying = Boolean(
+          (env.media?.active && env.media?.status === 'playing') ||
+          (media?.active && media?.status === 'playing')
+        );
+        let closingAck;
+        if (/bye|goodbye/i.test(cleaned)) {
+          closingAck = isMusicPlaying ? 'Goodbye! Enjoy your music.' : 'Goodbye! Have a great day.';
+        } else if (/no|that(?:'s|\s+is)\s+all|nothing/i.test(cleaned)) {
+          closingAck = isMusicPlaying ? 'Understood. Enjoy your music!' : 'Understood. Enjoy your day!';
+        } else {
+          closingAck = isMusicPlaying ? "You're welcome! Enjoy your music." : "You're welcome! Have a great day.";
+        }
         return {
           handledLocally: true,
           actionResult: {
@@ -398,11 +407,21 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
 
   // 0D. Conversational Closing & Dismissal Detection (Part 4)
   const isClosingPhrase =
-    /^(thanks|thank\s+you|thank\s+you\s+so\s+much|thanks\s+a\s+lot|no\s+thanks|no\s+thank\s+you|no\s+that(?:'s|\s+is)\s+all|that(?:'s|\s+is)\s+all|that(?:'s|\s+is)\s+it|nothing\s+else|bye|goodbye|done|dismiss)$/i.test(cleaned);
+    /^(thanks|thank\s+you|thank\s+you\s+so\s+much|thanks\s+a\s+lot|no\s+thanks|no\s+thank\s+you|no\s+that(?:'s|\s+is)\s+all|that(?:'s|\s+is)\s+all|that(?:'s|\s+is)\s+it|nothing\s+else|bye|goodbye|done|dismiss)$/i.test(cleaned) ||
+    /^(?:thanks|thank\s+you)[,\s]+(?:bye|goodbye|that(?:'s|\s+is)\s+all|done)$/i.test(cleaned);
   if (isClosingPhrase) {
-    let closingAck = "You're welcome! Enjoy your music.";
-    if (/bye|goodbye/i.test(cleaned)) closingAck = 'Goodbye! Enjoy your day.';
-    else if (/no|that(?:'s|\s+is)\s+all|nothing/i.test(cleaned)) closingAck = 'Understood. Enjoy your day!';
+    const isMusicPlaying = Boolean(
+      (env.media?.active && env.media?.status === 'playing') ||
+      (media?.active && media?.status === 'playing')
+    );
+    let closingAck;
+    if (/bye|goodbye/i.test(cleaned)) {
+      closingAck = isMusicPlaying ? 'Goodbye! Enjoy your music.' : 'Goodbye! Have a great day.';
+    } else if (/no|that(?:'s|\s+is)\s+all|nothing/i.test(cleaned)) {
+      closingAck = isMusicPlaying ? 'Understood. Enjoy your music!' : 'Understood. Enjoy your day!';
+    } else {
+      closingAck = isMusicPlaying ? "You're welcome! Enjoy your music." : "You're welcome! Have a great day.";
+    }
 
     return {
       handledLocally: true,

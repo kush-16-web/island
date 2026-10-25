@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from './icons';
 import { getAssistantName } from '../lib/assistant';
-import InlineFavorites from './InlineFavorites';
-import InlineWeather from './InlineWeather';
-import InlineClarification from './InlineClarification';
+import StructuredResponseRenderer from './structured/StructuredResponseRenderer';
 
 function sanitizeError(msg) {
   if (!msg || typeof msg !== 'string') return '';
@@ -13,178 +11,57 @@ function sanitizeError(msg) {
 }
 
 /**
- * LivingWaveform: Lightweight Canvas-based continuous audio visualizer.
- * Renders layered, organic sine waves with tapered bell envelopes.
- * Reacts to actual microphone amplitude when listening, and actual assistant audio when speaking.
- * Uses a restrained harmonic wave for thinking/processing, and a calm flatline for muted/cooldown state.
- * Inherits dynamic theme colors via CSS variable --voice-accent.
+ * MinimalVoiceIndicator: Subtle 4-bar activity indicator.
+ * - Replaces the oversized canvas waveform.
+ * - Reacts to actual microphone amplitude during listening.
+ * - Reacts to actual assistant audio playback during speaking.
+ * - Gentle harmonic wave during thinking / transcribing.
+ * - Calm static dots / bars when idle or muted.
  */
-function LivingWaveform({ status, audioLevel, isMuted }) {
-  const canvasRef = useRef(null);
-  const animRef = useRef(null);
-  const stateRef = useRef({
-    smoothedAmp: 2.5,
-    phase: 0,
-    status,
-    audioLevel: 0,
-    isMuted,
-  });
+function MinimalVoiceIndicator({ status, audioLevel, isSpeaking }) {
+  const boost = Math.min(1, Math.max(0, audioLevel || 0));
+  const isListening = status === 'listening';
+  const isThinking = status === 'thinking' || status === 'transcribing' || status === 'preparing_speech';
+  const isActiveSpeaking = status === 'speaking' || isSpeaking;
 
-  // Keep state updated in ref without causing re-mounts of the canvas loop
-  useEffect(() => {
-    stateRef.current.status = status;
-    stateRef.current.audioLevel = audioLevel || 0;
-    stateRef.current.isMuted = isMuted;
-  }, [status, audioLevel, isMuted]);
+  let h1 = 3;
+  let h2 = 4;
+  let h3 = 4;
+  let h4 = 3;
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return undefined;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return undefined;
-
-    let destroyed = false;
-    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-
-    const render = () => {
-      if (destroyed) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
-
-      if (w === 0 || h === 0) {
-        animRef.current = requestAnimationFrame(render);
-        return;
-      }
-
-      const pixelW = Math.floor(w * dpr);
-      const pixelH = Math.floor(h * dpr);
-
-      if (canvas.width !== pixelW || canvas.height !== pixelH) {
-        canvas.width = pixelW;
-        canvas.height = pixelH;
-      }
-
-      ctx.save();
-      ctx.scale(dpr, dpr);
-      ctx.clearRect(0, 0, w, h);
-
-      const { status: curStatus, audioLevel: curAudio, isMuted: curMuted } = stateRef.current;
-      const midY = h / 2;
-
-      // Determine target amplitude and phase speed based on actual state and real audio
-      let targetAmp = 2.5;
-      let phaseSpeed = 0.032;
-
-      if (curMuted) {
-        targetAmp = 0.5;
-        phaseSpeed = 0.005;
-      } else if (curStatus === 'thinking' || curStatus === 'processing') {
-        // Restrained, distinctive continuous harmonic motion without pretending to be mic audio
-        targetAmp = 6.5;
-        phaseSpeed = 0.03;
-      } else if (curStatus === 'speaking') {
-        // Expressive assistant speech driven by real output audio amplitude
-        const voiceBoost = Math.min(1, Math.max(0, curAudio));
-        targetAmp = 4 + voiceBoost * 20;
-        phaseSpeed = 0.045 + voiceBoost * 0.055;
-      } else if (curStatus === 'listening') {
-        // Organic living wave responsive to real microphone input
-        const micBoost = Math.min(1, Math.max(0, curAudio));
-        targetAmp = 2.8 + micBoost * 22;
-        phaseSpeed = 0.032 + micBoost * 0.05;
-      } else if (curStatus === 'cooldown') {
-        targetAmp = 1.0;
-        phaseSpeed = 0.008;
-      } else if (curStatus === 'connecting') {
-        targetAmp = 2;
-        phaseSpeed = 0.02;
-      } else if (curStatus === 'error') {
-        targetAmp = 0.8;
-        phaseSpeed = 0.01;
-      }
-
-      if (prefersReducedMotion) {
-        phaseSpeed = 0;
-      }
-
-      // Smooth amplitude lerp for organic physics
-      stateRef.current.smoothedAmp += (targetAmp - stateRef.current.smoothedAmp) * 0.14;
-      stateRef.current.phase += phaseSpeed;
-
-      const amp = stateRef.current.smoothedAmp;
-      const ph = stateRef.current.phase;
-
-      // Resolve Island dynamic accent color
-      const computedAccent =
-        getComputedStyle(canvas).getPropertyValue('--voice-accent').trim() || '#38bdf8';
-
-      // Draw 3 layered continuous curves
-      // 1. Ambient depth wave
-      drawWaveCurve(ctx, w, midY, amp * 0.45, 1.5, ph * 0.6 + 2.1, computedAccent, 0.22, 1.2);
-      // 2. Harmonic counter-undulation
-      drawWaveCurve(ctx, w, midY, amp * 0.72, 2.7, -ph * 0.75 + 1.2, computedAccent, 0.48, 1.5);
-      // 3. Primary living curve
-      drawWaveCurve(ctx, w, midY, amp, 2.2, ph, computedAccent, 0.92, 2.0);
-
-      ctx.restore();
-
-      animRef.current = requestAnimationFrame(render);
-    };
-
-    animRef.current = requestAnimationFrame(render);
-
-    return () => {
-      destroyed = true;
-      if (animRef.current) {
-        cancelAnimationFrame(animRef.current);
-      }
-    };
-  }, []);
+  if (isListening) {
+    h1 = Math.round(3 + boost * 9);
+    h2 = Math.round(4 + boost * 13);
+    h3 = Math.round(4 + boost * 11);
+    h4 = Math.round(3 + boost * 7);
+  } else if (isActiveSpeaking) {
+    h1 = Math.round(3 + boost * 11);
+    h2 = Math.round(5 + boost * 14);
+    h3 = Math.round(4 + boost * 12);
+    h4 = Math.round(3 + boost * 9);
+  }
 
   return (
-    <div className="voice-living-visualizer" aria-label={`Living waveform (${status})`}>
-      <canvas ref={canvasRef} className="voice-living-waveform" />
+    <div
+      className={`live-voice-indicator state--${status}${isActiveSpeaking ? ' is-speaking' : ''}`}
+      aria-label={`Voice activity: ${status}`}
+    >
+      <span className="live-voice-bar bar--1" style={!isThinking ? { height: `${h1}px` } : undefined} />
+      <span className="live-voice-bar bar--2" style={!isThinking ? { height: `${h2}px` } : undefined} />
+      <span className="live-voice-bar bar--3" style={!isThinking ? { height: `${h3}px` } : undefined} />
+      <span className="live-voice-bar bar--4" style={!isThinking ? { height: `${h4}px` } : undefined} />
     </div>
   );
 }
 
-function drawWaveCurve(ctx, w, midY, amplitude, freqMultiplier, phase, color, alpha, lineWidth) {
-  ctx.beginPath();
-  ctx.strokeStyle = color;
-  ctx.globalAlpha = alpha;
-  ctx.lineWidth = lineWidth;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  const freq = (freqMultiplier * Math.PI) / w;
-  const step = 3;
-
-  for (let x = 0; x <= w; x += step) {
-    const normX = x / w;
-    // Bell envelope: smooth taper to zero deviation at both boundaries
-    const envelope = Math.pow(Math.sin(Math.PI * normX), 1.6);
-    const y = midY + envelope * amplitude * Math.sin(x * freq + phase);
-
-    if (x === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  }
-
-  ctx.stroke();
-}
-
 /**
- * VoicePanel: Refined Voice Session Interface.
- * - Inherits Island's dynamic accent colors naturally without hardcoded voice palettes.
- * - Living continuous audio waveform (Canvas).
- * - Floating conversation transcript.
- * - Synchronous state machine with in-flight turn locking and rate-limit cooldown display.
- * - Integrated Windows Voice Discovery and Preview interface.
+ * VoicePanel: Live Voice Assistant Surface (Pass 2.2.8.4).
+ * - Priority: Latest meaningful result or response (Live Hero).
+ * - Optional Conversation History view.
+ * - No Pet in voice chat.
+ * - No oversized waveform across the screen.
+ * - Clean editorial layouts for Timers, Weather, Music, and Conversations.
+ * - Dynamic music-artwork color system preserved.
  */
 export default function VoicePanel({
   voice,
@@ -209,11 +86,11 @@ export default function VoicePanel({
   } = voice;
 
   const [assistantName, setAssistantNameState] = useState(() => getAssistantName());
+  const [viewMode, setViewMode] = useState('live'); // 'live' | 'history'
   const [isErrorExpanded, setIsErrorExpanded] = useState(false);
   const [copiedError, setCopiedError] = useState(false);
-  const userName = localStorage.getItem('island_user_name') || 'Friend';
-  const scrollRef = useRef(null);
-  const userScrolledUpRef = useRef(false);
+  const userName = localStorage.getItem('island_user_name') || 'You';
+  const historyScrollRef = useRef(null);
 
   const handleCopyError = (e) => {
     e?.stopPropagation?.();
@@ -233,7 +110,7 @@ export default function VoicePanel({
 
   // Determine single clear status
   let currentStatus = 'listening';
-  let statusLabel = 'Listening';
+  let statusLabel = 'Listening…';
 
   if (status === 'error' || status === 'failed') {
     currentStatus = 'error';
@@ -246,19 +123,25 @@ export default function VoicePanel({
     statusLabel = 'Muted';
   } else if (status === 'connecting') {
     currentStatus = 'connecting';
-    statusLabel = 'Connecting';
+    statusLabel = 'Connecting…';
+  } else if (status === 'transcribing') {
+    currentStatus = 'transcribing';
+    statusLabel = 'Understanding…';
   } else if (status === 'understanding' || status === 'thinking' || status === 'processing') {
     currentStatus = 'thinking';
-    statusLabel = 'Understanding';
+    statusLabel = 'Thinking…';
+  } else if (status === 'preparing_speech') {
+    currentStatus = 'preparing_speech';
+    statusLabel = 'Preparing…';
   } else if (status === 'acknowledging') {
     currentStatus = 'thinking';
-    statusLabel = 'Opening';
+    statusLabel = 'Opening…';
   } else if (status === 'executing' || status === 'awaiting_result') {
     currentStatus = 'thinking';
-    statusLabel = 'Connecting Player';
+    statusLabel = 'Connecting…';
   } else if (status === 'completed') {
-    currentStatus = 'thinking';
-    statusLabel = 'Playing';
+    currentStatus = 'completed';
+    statusLabel = 'Ready';
   } else if (status === 'needs_user_action') {
     currentStatus = 'cooldown';
     statusLabel = 'Action Needed';
@@ -267,52 +150,47 @@ export default function VoicePanel({
     statusLabel = 'Speaking';
   }
 
-  // Handle manual scroll detection: pause auto-follow if user scrolls up, resume when returning near bottom
-  const handleScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 36;
-    userScrolledUpRef.current = !isAtBottom;
-  };
+  // Find latest interaction items
+  const latestAssistantTurn = [...transcript].reverse().find((t) => t.role === 'assistant');
+  const latestUserTurn = [...transcript].reverse().find((t) => t.role === 'user');
 
-  // Auto-scroll transcript to bottom unless user has manually scrolled up
-  useEffect(() => {
-    if (!userScrolledUpRef.current && scrollRef.current) {
-      const el = scrollRef.current;
-      el.scrollTo({
-        top: el.scrollHeight,
-        behavior: 'smooth',
-      });
-    }
-  }, [transcript]);
+  // Track if a new request is actively being processed
+  const isTurnInFlight = ['transcribing', 'thinking', 'preparing_speech'].includes(currentStatus);
 
   // Dynamic theme accent color
-  const dynamicAccent = accentColor || 'var(--music-accent, var(--accent, #38bdf8))';
+  const dynamicAccent = accentColor || 'var(--music-accent, var(--accent, #a855f7))';
+
+  const handleEndSession = () => {
+    if (typeof endSession === 'function') endSession();
+    else stopSession?.();
+    onClose?.();
+  };
 
   return (
-    <div className="voice-panel" style={{ '--voice-accent': dynamicAccent }}>
-      {/* 1. Top Header */}
-      <div className="voice-panel__header">
-        <div className="voice-panel__identity">
-          <div className="voice-panel__avatar" aria-hidden="true">
-            <Icon.Sparkles width={14} height={14} />
-          </div>
-          <div className="voice-panel__meta">
-            <div className="voice-panel__name">{assistantName}</div>
-            <div className="voice-panel__status-row">
-              <span className={`voice-panel__status-dot is-${currentStatus}`} />
-              <span className="voice-panel__status-text">{statusLabel}</span>
-            </div>
+    <div className="live-assistant-panel" style={{ '--voice-accent': dynamicAccent }}>
+      {/* 1. Assistant Activity Header */}
+      <div className="live-assistant__header">
+        <div className="live-assistant__status-group">
+          <MinimalVoiceIndicator
+            status={currentStatus}
+            audioLevel={audioLevel}
+            isSpeaking={currentStatus === 'speaking'}
+          />
+          <div className="live-assistant__status-meta">
+            <span className="live-assistant__status-label">{statusLabel}</span>
+            {isTurnInFlight && latestUserTurn?.text && (
+              <span className="live-assistant__query-preview" title={latestUserTurn.text}>
+                "{latestUserTurn.text}"
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="voice-panel__header-actions">
+        <div className="live-assistant__header-actions">
           <button
             type="button"
-            className="voice-panel__close-btn"
-            onClick={() => {
-              onClose?.();
-            }}
+            className="live-assistant__icon-btn"
+            onClick={() => onClose?.()}
             title="Minimize to Island pill"
             aria-label="Minimize assistant"
           >
@@ -323,68 +201,52 @@ export default function VoicePanel({
 
       {/* 2. Non-blocking Rate Limit Cooldown Banner */}
       {status === 'cooldown' && (
-        <div className="voice-panel__banner voice-panel__cooldown-banner">
-          <div className="voice-panel__banner-text">
+        <div className="live-assistant__banner live-assistant__banner--cooldown">
+          <div className="live-assistant__banner-text">
             <Icon.Hourglass width={13} height={13} />
             <span>{assistantName} is catching breath ({cooldownSeconds}s)</span>
           </div>
-          <div className="voice-panel__banner-actions">
-            <button
-              type="button"
-              className="voice-panel__dismiss-btn"
-              onClick={() => (dismissCooldown ? dismissCooldown() : stopSession())}
-              title="Dismiss cooldown and resume"
-            >
-              Dismiss
-            </button>
-          </div>
+          <button
+            type="button"
+            className="live-assistant__banner-btn"
+            onClick={() => (dismissCooldown ? dismissCooldown() : stopSession())}
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
       {/* 3. Non-blocking Error Banner */}
       {status === 'error' && errorMessage && (
-        <div className={`voice-panel__banner voice-panel__error-banner ${isErrorExpanded ? 'is-expanded' : ''}`}>
+        <div className={`live-assistant__banner live-assistant__banner--error ${isErrorExpanded ? 'is-expanded' : ''}`}>
           <div
-            className="voice-panel__banner-text"
+            className="live-assistant__banner-text"
             onClick={() => setIsErrorExpanded((prev) => !prev)}
             title="Click to toggle full error message"
             style={{ cursor: 'pointer' }}
           >
             <Icon.Alert width={13} height={13} style={{ flexShrink: 0 }} />
-            <span className={isErrorExpanded ? 'is-expanded-text' : ''}>
-              {sanitizeError(errorMessage)}
-            </span>
+            <span>{sanitizeError(errorMessage)}</span>
           </div>
-          <div className="voice-panel__banner-actions">
+          <div className="live-assistant__banner-actions">
             <button
               type="button"
-              className="voice-panel__action-link"
-              onClick={() => setIsErrorExpanded((prev) => !prev)}
-              title={isErrorExpanded ? 'Collapse error details' : 'Expand full error message'}
-            >
-              {isErrorExpanded ? 'Less' : 'Details'}
-            </button>
-            <button
-              type="button"
-              className="voice-panel__action-link"
+              className="live-assistant__banner-link"
               onClick={handleCopyError}
-              title="Copy sanitized error to clipboard"
             >
-              {copiedError ? 'Copied!' : 'Copy'}
+              {copiedError ? 'Copied' : 'Copy'}
             </button>
             <button
               type="button"
-              className="voice-panel__action-link"
+              className="live-assistant__banner-link"
               onClick={() => onOpenSettings?.()}
-              title="Open AI Assistant Settings"
             >
               Settings
             </button>
             <button
               type="button"
-              className="voice-panel__dismiss-btn"
+              className="live-assistant__banner-btn"
               onClick={() => (clearError ? clearError() : stopSession())}
-              title="Dismiss error"
             >
               Dismiss
             </button>
@@ -392,71 +254,97 @@ export default function VoicePanel({
         </div>
       )}
 
-      {/* Living Audio Waveform */}
-      <LivingWaveform
-        status={currentStatus}
-        audioLevel={audioLevel}
-        isMuted={isMuted}
-      />
+      {/* 4. Main Surface: Live Hero Result vs History View */}
+      {viewMode === 'live' ? (
+        <div className="live-assistant__surface">
+          {!latestAssistantTurn ? (
+            <div className="live-assistant__empty-state">
+              <span className="live-assistant__empty-text">
+                Ask anything or speak naturally with {assistantName}…
+              </span>
+            </div>
+          ) : (
+            <div className="live-assistant__hero-slot">
+              {/* If user query is present and turn is not in-flight, display subtle query subtitle */}
+              {!isTurnInFlight && latestUserTurn?.text && (
+                <div className="live-assistant__query-tag" title={latestUserTurn.text}>
+                  <span className="live-assistant__query-user">{userName}:</span>
+                  <span className="live-assistant__query-val">"{latestUserTurn.text}"</span>
+                </div>
+              )}
 
-          {/* Floating Conversation Transcript */}
-          <div
-            className="voice-transcript scroll-transcript"
-            ref={scrollRef}
-            onScroll={handleScroll}
-            tabIndex={0}
-            aria-label="Voice conversation transcript"
-          >
-            <div className="voice-transcript__spacer-top" />
+              {/* Authoritative Structured or Conversational Result */}
+              <StructuredResponseRenderer
+                item={latestAssistantTurn}
+                isAssistant
+                isSpeaking={currentStatus === 'speaking'}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Conversation History View */
+        <div className="live-assistant__history-view" ref={historyScrollRef}>
+          <div className="live-assistant__history-header">
+            <span className="live-assistant__history-title">Session History</span>
+            <button
+              type="button"
+              className="live-assistant__history-back-btn"
+              onClick={() => setViewMode('live')}
+            >
+              <span>← Back to Live</span>
+            </button>
+          </div>
+
+          <div className="live-assistant__history-list">
             {transcript.length === 0 ? (
-              <div className="voice-transcript__empty">
-                <span>Ask anything or speak naturally with {assistantName}...</span>
-              </div>
+              <div className="live-assistant__history-empty">No conversation history yet.</div>
             ) : (
-              transcript.map((item, index) => {
+              transcript.map((item, idx) => {
                 const isAssistant = item.role === 'assistant';
-                const isLatest = index === transcript.length - 1;
-
                 return (
                   <div
-                    key={item.id || `${index}-${item.role}`}
-                    className={`voice-turn voice-turn--${item.role}${item.isLive ? ' is-live' : ''}${isLatest ? ' is-latest' : ''}`}
+                    key={item.id || idx}
+                    className={`live-history-row live-history-row--${item.role}`}
                   >
-                    <div className="voice-turn__speaker">
-                      {isAssistant ? assistantName : userName}
+                    <div className="live-history-row__meta">
+                      <span className="live-history-row__speaker">
+                        {isAssistant ? assistantName : userName}
+                      </span>
                     </div>
-                    <div className="voice-turn__text">{item.displayText || item.text}</div>
-                    {isAssistant && item.spokenText && item.spokenText !== (item.displayText || item.text) && (
-                      <div className="voice-turn__caption" title="Spoken dialogue">
-                        "{item.spokenText}"
-                      </div>
-                    )}
-                    {isAssistant && item.tracks && item.tracks.length > 0 && (
-                      <InlineFavorites tracks={item.tracks} />
-                    )}
-                    {isAssistant && item.candidates && item.candidates.length > 0 && (
-                      <InlineClarification candidates={item.candidates} />
-                    )}
-                    {isAssistant && item.weather && (
-                      <InlineWeather weather={item.weather} />
-                    )}
+                    <div className="live-history-row__body">
+                      {item.text || item.displayText || item.spokenText}
+                    </div>
                   </div>
                 );
               })
             )}
           </div>
+        </div>
+      )}
 
-      {/* 3. Bottom Controls */}
-      <div className="voice-panel__controls">
+      {/* 5. Fixed Bottom Controls */}
+      <div className="live-assistant__controls">
+        <button
+          type="button"
+          className={`live-ctl-btn ${viewMode === 'history' ? 'is-active' : ''}`}
+          onClick={() => setViewMode((m) => (m === 'history' ? 'live' : 'history'))}
+          title={viewMode === 'history' ? 'Return to live response' : 'View session conversation history'}
+          aria-label={viewMode === 'history' ? 'Return to live response' : 'View session history'}
+        >
+          <Icon.History width={13} height={13} />
+          <span>{viewMode === 'history' ? 'Live' : 'History'}</span>
+        </button>
+
         {status !== 'error' && status !== 'cooldown' && (
           <button
             type="button"
-            className={`voice-btn voice-btn--mute${isMuted ? ' is-muted' : ''}`}
+            className={`live-ctl-btn live-ctl-btn--mute ${isMuted ? 'is-muted' : ''}`}
             onClick={toggleMute}
             title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
             aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
           >
-            {isMuted ? <Icon.MicOff width={15} height={15} /> : <Icon.Mic width={15} height={15} />}
+            {isMuted ? <Icon.MicOff width={13} height={13} /> : <Icon.Mic width={13} height={13} />}
             <span>{isMuted ? 'Unmute' : 'Mute'}</span>
           </button>
         )}
@@ -464,49 +352,31 @@ export default function VoicePanel({
         {status === 'speaking' && (
           <button
             type="button"
-            className="voice-btn voice-btn--interrupt"
+            className="live-ctl-btn live-ctl-btn--interrupt"
             onClick={interrupt}
             title="Interrupt assistant speaking"
             aria-label="Interrupt"
           >
-            <Icon.Pause width={14} height={14} />
+            <Icon.Pause width={12} height={12} />
             <span>Interrupt</span>
           </button>
         )}
 
         {status === 'error' || status === 'cooldown' ? (
-          <>
-            <button
-              type="button"
-              className={`voice-btn voice-btn--retry ${cooldownSeconds > 0 ? 'is-disabled' : ''}`}
-              onClick={cooldownSeconds > 0 ? undefined : startSession}
-              disabled={cooldownSeconds > 0}
-              title={cooldownSeconds > 0 ? `Wait ${cooldownSeconds}s before retrying` : 'Retry voice session'}
-              aria-label="Retry voice session"
-            >
-              <span>{cooldownSeconds > 0 ? `Wait (${cooldownSeconds}s)` : 'Retry'}</span>
-            </button>
-            <button
-              type="button"
-              className="voice-btn voice-btn--dismiss"
-              onClick={() => {
-                onClose?.();
-              }}
-              title="Minimize to Island pill"
-              aria-label="Minimize"
-            >
-              <span>Dismiss</span>
-            </button>
-          </>
+          <button
+            type="button"
+            className={`live-ctl-btn live-ctl-btn--retry ${cooldownSeconds > 0 ? 'is-disabled' : ''}`}
+            onClick={cooldownSeconds > 0 ? undefined : startSession}
+            disabled={cooldownSeconds > 0}
+            title={cooldownSeconds > 0 ? `Wait ${cooldownSeconds}s before retrying` : 'Retry voice session'}
+          >
+            <span>{cooldownSeconds > 0 ? `Wait (${cooldownSeconds}s)` : 'Retry'}</span>
+          </button>
         ) : (
           <button
             type="button"
-            className="voice-btn voice-btn--end"
-            onClick={() => {
-              if (typeof endSession === 'function') endSession();
-              else stopSession?.();
-              onClose?.();
-            }}
+            className="live-ctl-btn live-ctl-btn--end"
+            onClick={handleEndSession}
             title="End conversation session"
             aria-label="End session"
           >

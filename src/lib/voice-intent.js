@@ -138,7 +138,7 @@ export function processTurnIntent(rawLlmResponse, env = {}) {
   const actionResult = executeMusicAction(intent, env);
 
   // Requirement: Spoken confirmations must strictly reflect actual action result, not model assumptions
-  const spokenConfirmation = actionResult.spokenConfirmation || 'Action completed.';
+  const spokenConfirmation = actionResult.spokenConfirmation || deriveSpecificActionConfirmation(actionResult);
 
   return {
     executed: true,
@@ -147,4 +147,42 @@ export function processTurnIntent(rawLlmResponse, env = {}) {
     spokenText: spokenConfirmation,
     transcriptText: spokenConfirmation,
   };
+}
+
+/**
+ * Derive specific natural language confirmation from tool outcome data.
+ * Eliminates generic "Action completed" messages across all execution paths.
+ */
+export function deriveSpecificActionConfirmation(actionResult) {
+  if (!actionResult) return "I couldn't complete that request.";
+  if (actionResult.spokenConfirmation) return actionResult.spokenConfirmation;
+  if (actionResult.ok === false) {
+    return actionResult.error || "I couldn't complete that action.";
+  }
+
+  const act = actionResult.action || '';
+  if (act === 'play_track' || act === 'play_favorite' || act === 'play_random_favorite') {
+    return actionResult.track?.title ? `Playing ${actionResult.track.title}.` : 'Playing music.';
+  }
+  if (act === 'pause') return 'Paused music playback.';
+  if (act === 'resume') return 'Resumed music playback.';
+  if (act === 'next_track') return 'Skipped to the next track.';
+  if (act === 'previous_track') return 'Skipped to the previous track.';
+  if (act === 'set_volume') return actionResult.level ? `Set music volume to ${actionResult.level}%.` : 'Adjusted volume.';
+  if (act === 'set_timer') {
+    const label = actionResult.item?.label || actionResult.label;
+    return label && label !== 'Timer' ? `Your ${label} timer is running.` : 'Your timer is running.';
+  }
+  if (act === 'set_alarm') {
+    const label = actionResult.item?.label || actionResult.label;
+    return label && label !== 'Alarm' ? `Your ${label} alarm is set.` : 'Your alarm is set.';
+  }
+  if (act === 'cancel_timer' || act === 'cancel_alarm') {
+    return 'Cancelled.';
+  }
+  if (act === 'session_dismiss') {
+    return 'Have a great day.';
+  }
+
+  return 'Ready.';
 }

@@ -32,6 +32,29 @@ export const Icon = {
       <path d="M12 9.5v4l2.5 1.5M9.5 3h5" />
     </svg>
   ),
+  Clock: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--clock ${className}`} {...p}>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  ),
+  History: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--history ${className}`} {...p}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l4 2" />
+    </svg>
+  ),
+  AlarmClock: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--alarm-clock ${className}`} {...p}>
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2 2" />
+      <path d="M5 3 2 6" />
+      <path d="m22 6-3-3" />
+      <path d="M6.38 18.7 4 21" />
+      <path d="M17.64 18.67 20 21" />
+    </svg>
+  ),
   Music: ({ className = '', ...p }) => (
     <svg {...base} className={`lucide-icon lucide-icon--music ${className}`} {...p}>
       <path d="M9 18V6l10-2v12" />

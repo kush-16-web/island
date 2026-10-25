@@ -5,7 +5,16 @@ import { Icon } from './icons';
 import { Art } from './bits';
 import audioCoordinator from '../lib/audio-coordinator';
 import { upgradeProviderArtUrl } from '../lib/art-resolver';
-import { getTrackLyricsPresentation } from '../lib/lyrics-style-engine';
+import {
+  getTrackLyricsPresentation,
+  LYRICS_LAYOUTS,
+  getLyricsLayout,
+  setLyricsLayout,
+  LYRICS_STYLES,
+  getLyricsStyle,
+  setLyricsStyle,
+} from '../lib/lyrics-style-engine';
+import FloatingLyricsStage from './FloatingLyricsStage';
 
 const isReducedMotion =
   typeof window !== 'undefined' &&
@@ -18,12 +27,10 @@ export const sharedLyricsTransition = {
 };
 
 /**
- * FullLyrics: Compact 390px music & lyrics experience with stutter-free compositor transform glide.
- * - Single visual artwork layer handles travel via GPU-accelerated transform & borderRadius.
- * - Responsive full-width song title and artist with natural wrapping up to 2 lines.
- * - Restrained, clean dark-glass Concert tab isolated from Artwork presentation.
- * - Compact lyrics reel (70-85px) with 10px line separation and highlighted active line.
- * - Approved 6-button toolbar (Left: Heart, Music Note, Volume; Right: Prev, Play/Pause, Next).
+ * FullLyrics: Cinematic Floating & Normal Synchronized Lyrics Experience.
+ * - Floating Layout (Default): Centered album artwork with asymmetric floating typography around and behind cover.
+ * - Normal Layout: Existing compact scrolling lyrics reel with classic/kinetic word highlighting.
+ * - Bottom Toolbar: Prev | Back 5s | Play/Pause | Forward 5s | Next.
  */
 export default function FullLyrics({
   media,
@@ -39,11 +46,65 @@ export default function FullLyrics({
   toggleFavorite,
   travelDelta = { x: -153, y: 2, scale: 64 / 126 },
   lyricsStyle = 'classic',
+  lyricsLayout: externalLayout,
+  onLyricsLayoutChange,
+  onLyricsStyleChange,
 }) {
   const [activeTab, setActiveTab] = useState('artwork'); // 'artwork' | 'concert'
   const [showLyrics, setShowLyrics] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
+
+  // Layout & Style preference state
+  const [lyricsLayout, setLyricsLayoutState] = useState(() => externalLayout || getLyricsLayout());
+  const [currentLyricsStyle, setCurrentLyricsStyle] = useState(() => lyricsStyle || getLyricsStyle());
+  const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+  const settingsAnchorRef = useRef(null);
+
+  useEffect(() => {
+    if (externalLayout && externalLayout !== lyricsLayout) {
+      setLyricsLayoutState(externalLayout);
+    }
+  }, [externalLayout]);
+
+  useEffect(() => {
+    if (lyricsStyle && lyricsStyle !== currentLyricsStyle) {
+      setCurrentLyricsStyle(lyricsStyle);
+    }
+  }, [lyricsStyle]);
+
+  const handleSelectLayout = (layout) => {
+    setLyricsLayoutState(layout);
+    setLyricsLayout(layout);
+    onLyricsLayoutChange?.(layout);
+  };
+
+  const handleSelectStyle = (style) => {
+    setCurrentLyricsStyle(style);
+    setLyricsStyle(style);
+    onLyricsStyleChange?.(style);
+  };
+
+  // Close settings popover on click outside or Escape
+  useEffect(() => {
+    if (!showSettingsPopover) return;
+    const handleOutsideClick = (e) => {
+      if (settingsAnchorRef.current && !settingsAnchorRef.current.contains(e.target)) {
+        setShowSettingsPopover(false);
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowSettingsPopover(false);
+      }
+    };
+    window.addEventListener('pointerdown', handleOutsideClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handleOutsideClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showSettingsPopover]);
 
   // Scroller refs & manual scroll detection
   const containerRef = useRef(null);
@@ -174,8 +235,8 @@ export default function FullLyrics({
   const playing = media?.status === 'playing';
 
   const lyricsPresentation = useMemo(
-    () => getTrackLyricsPresentation(lines, seed, lyricsStyle),
-    [lines, seed, lyricsStyle]
+    () => getTrackLyricsPresentation(lines, seed, currentLyricsStyle),
+    [lines, seed, currentLyricsStyle]
   );
 
   // Fluid cubic-bezier auto-scroll
@@ -294,7 +355,7 @@ export default function FullLyrics({
         '--lyric-accent': accentColor || 'var(--accent, #ff3b69)',
       }}
     >
-      {/* 1. Top Bar: Segmented Tabs (Artwork / Concert) + Close Button */}
+      {/* 1. Top Bar: Segmented Tabs (Artwork / Concert) + Settings + Close Button */}
       <div className="full-lyrics__top-bar">
         <div className="full-lyrics__seg-control" role="tablist" aria-label="View selector">
           <button
@@ -317,15 +378,97 @@ export default function FullLyrics({
           </button>
         </div>
 
-        <button
-          type="button"
-          className="full-lyrics__close-btn"
-          onClick={handleRequestClose}
-          title="Return to Player (Esc)"
-          aria-label="Return to player"
-        >
-          <Icon.Close width={12} height={12} />
-        </button>
+        <div className="full-lyrics__top-actions">
+          {/* Lyrics Settings Anchor & Popover */}
+          <div className="full-lyrics__settings-anchor" ref={settingsAnchorRef}>
+            <button
+              type="button"
+              className={`full-lyrics__icon-btn${showSettingsPopover ? ' is-active' : ''}`}
+              onClick={() => setShowSettingsPopover((prev) => !prev)}
+              title="Lyrics Settings"
+              aria-label="Lyrics Settings"
+            >
+              <Icon.Settings width={12} height={12} />
+            </button>
+
+            {showSettingsPopover && (
+              <div
+                className="full-lyrics__settings-popover"
+                role="dialog"
+                aria-label="Lyrics Settings"
+                style={{
+                  '--popover-accent': accentColor || 'var(--lyric-accent, #ff3b69)',
+                }}
+              >
+                {/* Section 1: Lyrics Layout (Floating vs Normal) */}
+                <div className="full-lyrics__settings-section">
+                  <div className="full-lyrics__settings-heading">Lyrics Layout</div>
+                  <button
+                    type="button"
+                    className={`full-lyrics__settings-opt${lyricsLayout === LYRICS_LAYOUTS.FLOATING ? ' is-active' : ''}`}
+                    onClick={() => handleSelectLayout(LYRICS_LAYOUTS.FLOATING)}
+                  >
+                    <div className="full-lyrics__opt-info">
+                      <span className="full-lyrics__opt-title">Floating</span>
+                      <span className="full-lyrics__opt-desc">Cinematic typography around artwork</span>
+                    </div>
+                    {lyricsLayout === LYRICS_LAYOUTS.FLOATING && <Icon.Check width={12} height={12} />}
+                  </button>
+                  <button
+                    type="button"
+                    className={`full-lyrics__settings-opt${lyricsLayout === LYRICS_LAYOUTS.NORMAL ? ' is-active' : ''}`}
+                    onClick={() => handleSelectLayout(LYRICS_LAYOUTS.NORMAL)}
+                  >
+                    <div className="full-lyrics__opt-info">
+                      <span className="full-lyrics__opt-title">Normal</span>
+                      <span className="full-lyrics__opt-desc">Classic synchronized scrolling</span>
+                    </div>
+                    {lyricsLayout === LYRICS_LAYOUTS.NORMAL && <Icon.Check width={12} height={12} />}
+                  </button>
+                </div>
+
+                <div className="full-lyrics__settings-divider" />
+
+                {/* Section 2: Typography (Classic vs Kinetic) */}
+                <div className="full-lyrics__settings-section">
+                  <div className="full-lyrics__settings-heading">Typography</div>
+                  <button
+                    type="button"
+                    className={`full-lyrics__settings-opt${currentLyricsStyle === LYRICS_STYLES.CLASSIC ? ' is-active' : ''}`}
+                    onClick={() => handleSelectStyle(LYRICS_STYLES.CLASSIC)}
+                  >
+                    <div className="full-lyrics__opt-info">
+                      <span className="full-lyrics__opt-title">Classic</span>
+                      <span className="full-lyrics__opt-desc">Original clean typography</span>
+                    </div>
+                    {currentLyricsStyle === LYRICS_STYLES.CLASSIC && <Icon.Check width={12} height={12} />}
+                  </button>
+                  <button
+                    type="button"
+                    className={`full-lyrics__settings-opt${currentLyricsStyle === LYRICS_STYLES.KINETIC ? ' is-active' : ''}`}
+                    onClick={() => handleSelectStyle(LYRICS_STYLES.KINETIC)}
+                  >
+                    <div className="full-lyrics__opt-info">
+                      <span className="full-lyrics__opt-title">Kinetic</span>
+                      <span className="full-lyrics__opt-desc">Meaning-aware subtle effects</span>
+                    </div>
+                    {currentLyricsStyle === LYRICS_STYLES.KINETIC && <Icon.Check width={12} height={12} />}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="full-lyrics__close-btn"
+            onClick={handleRequestClose}
+            title="Return to Player (Esc)"
+            aria-label="Return to player"
+          >
+            <Icon.Close width={12} height={12} />
+          </button>
+        </div>
       </div>
 
       {/* Main Body */}
@@ -340,9 +483,106 @@ export default function FullLyrics({
             </div>
           </div>
         </div>
+      ) : lyricsLayout === LYRICS_LAYOUTS.FLOATING ? (
+        /* Cinematic Floating Lyrics Mode (Default) */
+        <div className={`full-lyrics__body full-lyrics__body--floating${!showLyrics ? ' is-lyrics-hidden' : ''}`}>
+          <FloatingLyricsStage
+            lines={lines}
+            activeLineIndex={activeLineIndex}
+            currentPositionMs={effectivePosition}
+            isSynced={isSynced}
+            showLyrics={showLyrics}
+            seed={seed}
+            lyricsStyle={currentLyricsStyle}
+            lyricsPresentation={lyricsPresentation}
+            onSeek={onSeek}
+            centerArtwork={
+              <motion.div
+                layoutId="island-album-art-wrap"
+                className={`full-lyrics__hero-art-wrap full-lyrics__hero-art-wrap--floating${!showLyrics ? ' full-lyrics__hero-art-wrap--large' : ''}`}
+                initial={
+                  isReducedMotion
+                    ? false
+                    : {
+                        x: travelDelta?.x ?? -153,
+                        y: travelDelta?.y ?? 2,
+                        scale: travelDelta?.scale ?? (64 / 148),
+                        borderRadius: 24,
+                      }
+                }
+                animate={
+                  isClosing
+                    ? {
+                        x: travelDelta?.x ?? -153,
+                        y: travelDelta?.y ?? 2,
+                        scale: travelDelta?.scale ?? (64 / 148),
+                        borderRadius: 24,
+                      }
+                    : {
+                        x: 0,
+                        y: 0,
+                        scale: 1,
+                        borderRadius: 18,
+                      }
+                }
+                transition={{
+                  duration: isReducedMotion ? 0.01 : 0.38,
+                  ease: [0.22, 1, 0.36, 1],
+                }}
+                onAnimationComplete={() => {
+                  if (isClosing) {
+                    onClose?.();
+                  }
+                }}
+              >
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.div
+                    key={displayedArt || seed}
+                    className="full-lyrics__art-slide"
+                    initial={
+                      isInitialMountRef.current || isReducedMotion
+                        ? false
+                        : { opacity: 0, x: 24 * glideDir }
+                    }
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={isReducedMotion ? { opacity: 0 } : { opacity: 0, x: -24 * glideDir }}
+                    transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {displayedArt ? (
+                      <motion.img
+                        layoutId="island-album-art-img"
+                        src={displayedArt}
+                        alt={media?.title || 'Album artwork'}
+                        className="full-lyrics__hero-art"
+                        transition={sharedLyricsTransition}
+                      />
+                    ) : (
+                      <Art src={null} seed={seed} size={!showLyrics ? 156 : 148} radius={18} />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </motion.div>
+            }
+            trackMeta={
+              <motion.div
+                layoutId="island-track-meta"
+                className="full-lyrics__hero-meta full-lyrics__hero-meta--floating"
+                transition={sharedLyricsTransition}
+                animate={{ opacity: isClosing ? 0 : 1 }}
+              >
+                <div className="full-lyrics__hero-title" title={media?.title}>
+                  {media?.title || 'Unknown title'}
+                </div>
+                <div className="full-lyrics__hero-artist" title={media?.artist}>
+                  {media?.artist || 'Unknown artist'}
+                </div>
+              </motion.div>
+            }
+          />
+        </div>
       ) : (
-        /* Approved Compact Artwork & Lyrics Layout */
-        <div className={`full-lyrics__body${!showLyrics ? ' is-lyrics-hidden' : ''}`}>
+        /* Normal Synchronized Lyrics Mode */
+        <div className={`full-lyrics__body full-lyrics__body--normal${!showLyrics ? ' is-lyrics-hidden' : ''}`}>
           {/* Centered Artwork + Song Metadata */}
           <div className="full-lyrics__hero">
             {/* Square Artwork Frame with Single-Layer Compositor Transform Glide */}
@@ -647,7 +887,7 @@ export default function FullLyrics({
             </div>
           </div>
 
-          {/* Right: Previous, Play/Pause, Next */}
+          {/* Right: Previous, Back 5s, Play/Pause, Forward 5s, Next */}
           <div className="full-lyrics__controls-right">
             <button
               type="button"
@@ -661,12 +901,34 @@ export default function FullLyrics({
 
             <button
               type="button"
+              className="icon-btn icon-btn--sm icon-btn--skip"
+              aria-label="Back 5 seconds"
+              onClick={() => handleSkip(-5)}
+              disabled={!hasDuration}
+              title="Back 5 seconds"
+            >
+              <Icon.Replay5 width={16} height={16} />
+            </button>
+
+            <button
+              type="button"
               className="play-btn play-btn--sm"
               aria-label={playing ? 'Pause' : 'Play'}
               onClick={() => onControl('playpause')}
               title={playing ? 'Pause' : 'Play'}
             >
               {playing ? <Icon.Pause width={16} height={16} /> : <Icon.Play width={16} height={16} />}
+            </button>
+
+            <button
+              type="button"
+              className="icon-btn icon-btn--sm icon-btn--skip"
+              aria-label="Forward 5 seconds"
+              onClick={() => handleSkip(5)}
+              disabled={!hasDuration}
+              title="Forward 5 seconds"
+            >
+              <Icon.Forward5 width={16} height={16} />
             </button>
 
             <button
