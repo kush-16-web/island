@@ -1,27 +1,23 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { hashString } from '../lib/lyrics-style-engine';
+import {
+  solveAdaptivePlacement,
+  createPlacementStyle,
+  formatLyricExcerpt,
+  getStageExclusionZones,
+  DEFAULT_STAGE_BOUNDS,
+  DEFAULT_COVER_BOUNDS,
+} from '../lib/floating-layout-engine';
 
 const isReducedMotion =
   typeof window !== 'undefined' &&
   window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
 
 /**
- * Exact Reference Anchors (Pass 2.2.10.2)
- *
- * Calibrated against the centered 148px album artwork:
- * - Cover width: 148px (from calc(50% - 74px) to calc(50% + 74px))
- * - Cover height: 148px (from Y = 36px to Y = 184px)
- * - Metadata directly beneath cover (from Y = 194px)
- *
- * Five loose ambient anchors with generous surrounding negative space:
- * 1. Anchor 0: Above the cover, slightly offset left
- * 2. Anchor 1: To the left, around the cover's middle
- * 3. Anchor 2: Near upper-right, partly obscured behind cover (starts at 50% + 48px, 26px inside cover right edge)
- * 4. Anchor 3: Near lower-right, also partly obscured (starts at 50% + 52px, 22px inside cover right edge)
- * 5. Anchor 4: Below-left of artwork, beside lower-left cover corner
+ * Backward-compatible Reference Anchors export.
+ * Preserved for tests and fallback references.
  */
 export const REFERENCE_ANCHORS = [
-  // Anchor 0: Above the cover, slightly left-offset
   {
     id: 'above',
     style: {
@@ -30,10 +26,9 @@ export const REFERENCE_ANCHORS = [
       maxWidth: '210px',
       textAlign: 'left',
     },
-    enterDelta: { x: 0, y: -5 },
+    enterDelta: { x: 0, y: -4 },
     staggerDelay: 0.10,
   },
-  // Anchor 1: To the left, around cover's middle
   {
     id: 'mid-left',
     style: {
@@ -42,10 +37,9 @@ export const REFERENCE_ANCHORS = [
       maxWidth: '145px',
       textAlign: 'left',
     },
-    enterDelta: { x: -5, y: 0 },
+    enterDelta: { x: -4, y: 0 },
     staggerDelay: 0.04,
   },
-  // Anchor 2: Near upper-right, partly obscured by artwork (starts 26px inside cover right edge)
   {
     id: 'upper-right-obscured',
     style: {
@@ -54,10 +48,9 @@ export const REFERENCE_ANCHORS = [
       maxWidth: '180px',
       textAlign: 'left',
     },
-    enterDelta: { x: 5, y: -3 },
+    enterDelta: { x: 4, y: -2 },
     staggerDelay: 0.16,
   },
-  // Anchor 3: Near lower-right, also partly obscured by artwork (starts 22px inside cover right edge)
   {
     id: 'lower-right-obscured',
     style: {
@@ -66,10 +59,9 @@ export const REFERENCE_ANCHORS = [
       maxWidth: '175px',
       textAlign: 'left',
     },
-    enterDelta: { x: 5, y: 3 },
-    staggerDelay: 0.24,
+    enterDelta: { x: 4, y: 2 },
+    staggerDelay: 0.22,
   },
-  // Anchor 4: Below-left of the artwork
   {
     id: 'lower-left',
     style: {
@@ -78,33 +70,67 @@ export const REFERENCE_ANCHORS = [
       maxWidth: '140px',
       textAlign: 'left',
     },
-    enterDelta: { x: -5, y: 5 },
-    staggerDelay: 0.20,
+    enterDelta: { x: -4, y: 4 },
+    staggerDelay: 0.18,
   },
 ];
 
+export { formatLyricExcerpt };
+
 /**
- * Natural short phrase excerpt helper.
- * Prevents paragraph blocks or huge walls of text while preserving word order and punctuation.
+ * Dev-Only Debug Visualization Overlay.
+ * Renders stage bounds, exclusion zones (cover, metadata), and candidate placement rectangles.
  */
-export function formatLyricExcerpt(rawText, maxLen = 34) {
-  if (!rawText) return '';
-  const trimmed = rawText.trim();
-  if (trimmed.length <= maxLen) return trimmed;
+function FloatingLyricsDebugOverlay({ fragments, stageBounds = DEFAULT_STAGE_BOUNDS }) {
+  const exclusions = getStageExclusionZones(stageBounds);
 
-  // Split at natural clause boundary if present in comfortable range (e.g. comma, dash, semicolon)
-  const punctMatch = trimmed.match(/^([^,;—–-]+)[,;—–-]/);
-  if (punctMatch && punctMatch[1].length >= 10 && punctMatch[1].length <= maxLen) {
-    return punctMatch[1].trim();
-  }
+  return (
+    <div className="floating-stage__debug-overlay" aria-hidden="true">
+      {/* Exclusion: Cover */}
+      <div
+        className="floating-stage__debug-rect floating-stage__debug-rect--exclusion"
+        style={{
+          top: `${exclusions.cover.y}px`,
+          left: `${exclusions.cover.x}px`,
+          width: `${exclusions.cover.width}px`,
+          height: `${exclusions.cover.height}px`,
+        }}
+      >
+        <span className="floating-stage__debug-label">Cover (148px)</span>
+      </div>
 
-  // Otherwise split at nearest word boundary before maxLen
-  const lastSpace = trimmed.lastIndexOf(' ', maxLen);
-  if (lastSpace > 14) {
-    return trimmed.slice(0, lastSpace).trim();
-  }
+      {/* Exclusion: Metadata */}
+      <div
+        className="floating-stage__debug-rect floating-stage__debug-rect--exclusion"
+        style={{
+          top: `${exclusions.metadata.y}px`,
+          left: `${exclusions.metadata.x}px`,
+          width: `${exclusions.metadata.width}px`,
+          height: `${exclusions.metadata.height}px`,
+        }}
+      >
+        <span className="floating-stage__debug-label">Metadata</span>
+      </div>
 
-  return trimmed.slice(0, maxLen).trim();
+      {/* Placed fragment bounding boxes */}
+      {fragments.map((f) => (
+        <div
+          key={`debug-${f.lineIndex}`}
+          className="floating-stage__debug-rect floating-stage__debug-rect--selected"
+          style={{
+            top: `${f.placement.y}px`,
+            left: `${f.placement.x}px`,
+            width: `${f.placement.width}px`,
+            height: `${f.placement.height}px`,
+          }}
+        >
+          <span className="floating-stage__debug-label">
+            {f.role}:{f.placement.zoneId}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function FloatingLyricsStage({
@@ -119,19 +145,21 @@ export default function FloatingLyricsStage({
   onSeek,
   centerArtwork,
   trackMeta,
+  debugOverlay = false,
 }) {
   const hasLyrics = lines.length > 0;
 
-  // Track-seed subtle micro-offset variation (±2px) to keep every track organic while preserving exact anchor geometry
-  const seedVariant = useMemo(() => {
-    return Math.abs(hashString(seed || 'default')) % 3;
-  }, [seed]);
-
-  // Stateful fragment pool to guarantee smooth lifecycle: Enter -> Settle -> Active -> Dim -> Fade Out -> Remove
+  // Stateful fragment pool to guarantee smooth lifecycle: Emerging -> Settled -> Active -> Dissolving -> Remove
   const [fragments, setFragments] = useState([]);
   const lastActiveIndexRef = useRef(activeLineIndex);
   const lastSeedRef = useRef(seed);
+  const lastPlacedZoneIdRef = useRef(null);
   const exitTimersRef = useRef(new Map());
+
+  // Show debug overlay if explicitly requested or via window flag
+  const isDebugActive =
+    debugOverlay ||
+    (typeof window !== 'undefined' && Boolean(window.__ISLAND_DEBUG_FLOATING_LYRICS__));
 
   // Clean up all exit timers on unmount
   useEffect(() => {
@@ -160,14 +188,22 @@ export default function FloatingLyricsStage({
     // Window bounds: active ± 2 lines
     const minIdx = Math.max(0, activeLineIndex - 2);
     const maxIdx = Math.min(lines.length - 1, activeLineIndex + 2);
-    const targetIndices = new Set();
+    const targetIndices = [];
 
-    for (let i = minIdx; i <= maxIdx; i++) {
-      const text = (lines[i]?.text || '').trim();
-      if (text && text !== '♪' && text !== '---') {
-        targetIndices.add(i);
+    // Prioritize active index first, then adjacent lines
+    const lineOrder = [activeLineIndex, activeLineIndex - 1, activeLineIndex + 1, activeLineIndex - 2, activeLineIndex + 2];
+    lineOrder.forEach((idx) => {
+      if (idx >= minIdx && idx <= maxIdx) {
+        const text = (lines[idx]?.text || '').trim();
+        if (text && text !== '♪' && text !== '---' && !targetIndices.includes(idx)) {
+          targetIndices.push(idx);
+        }
       }
-    }
+    });
+
+    // Limit visible target count to capacity (max 4 lines) to prevent clutter
+    const activeTargetIndices = targetIndices.slice(0, 4);
+    const targetSet = new Set(activeTargetIndices);
 
     // On major seek or track change, instantly rebuild without lingering old phrases
     if (isSeekOrTrackChange) {
@@ -175,53 +211,53 @@ export default function FloatingLyricsStage({
       exitTimersRef.current.clear();
 
       const newFrags = [];
-      targetIndices.forEach((idx) => {
+      let lastZone = null;
+
+      activeTargetIndices.forEach((idx) => {
         const offset = idx - activeLineIndex;
         let role = 'distant';
         if (offset === 0) role = 'active';
         else if (offset === -1) role = 'past';
         else if (offset === 1) role = 'upcoming';
 
-        const anchorIdx = idx % REFERENCE_ANCHORS.length;
-        const baseAnchor = REFERENCE_ANCHORS[anchorIdx];
-
-        const microX = seedVariant === 1 ? (anchorIdx % 2 === 0 ? 2 : -2) : (seedVariant === 2 ? -2 : 0);
-        const microY = seedVariant === 2 ? (anchorIdx % 2 === 1 ? 2 : -1) : 0;
+        const placement = solveAdaptivePlacement(lines[idx], role, newFrags, {
+          stageBounds: DEFAULT_STAGE_BOUNDS,
+          previousZoneId: lastZone,
+          trackSeed: seed,
+        });
+        lastZone = placement.zoneId;
 
         newFrags.push({
           lineIndex: idx,
           line: lines[idx],
-          displayText: formatLyricExcerpt(lines[idx].text, 36),
+          displayText: placement.displayText,
           role,
-          anchorId: baseAnchor.id,
-          style: {
-            ...baseAnchor.style,
-            transform: `translate(${microX}px, ${microY}px)`,
-          },
-          staggerDelay: baseAnchor.staggerDelay,
+          placement,
+          style: createPlacementStyle(placement),
           status: 'settled',
         });
       });
 
+      lastPlacedZoneIdRef.current = lastZone;
       setFragments(newFrags);
       return;
     }
 
-    // Normal progression: update roles, mark outgoing as exiting, add incoming
+    // Normal progression: update roles, mark outgoing as dissolving, add incoming
     setFragments((prev) => {
       const updated = [];
       const existingIndices = new Set();
 
-      // Process existing fragments
+      // 1. Process existing fragments
       for (const frag of prev) {
-        if (frag.status === 'exiting') {
-          // Keep existing exiting fragment until its timer completes
+        if (frag.status === 'dissolving' || frag.status === 'exiting') {
+          // Keep dissolving fragment until its timer completes
           updated.push(frag);
           continue;
         }
 
-        if (targetIndices.has(frag.lineIndex)) {
-          // Still in active window: update role smoothly without remounting or shifting coordinates
+        if (targetSet.has(frag.lineIndex)) {
+          // Still in active window: update role smoothly without shifting locked coordinates
           const offset = frag.lineIndex - activeLineIndex;
           let role = 'distant';
           if (offset === 0) role = 'active';
@@ -235,12 +271,12 @@ export default function FloatingLyricsStage({
           });
           existingIndices.add(frag.lineIndex);
         } else {
-          // Exiting the active window: start gentle fade out
-          const exitingFrag = {
+          // Exiting the active window: start gentle background dissolve
+          const dissolvingFrag = {
             ...frag,
-            status: 'exiting',
+            status: 'dissolving',
           };
-          updated.push(exitingFrag);
+          updated.push(dissolvingFrag);
 
           // Clear any existing timer for this line
           if (exitTimersRef.current.has(frag.lineIndex)) {
@@ -257,8 +293,8 @@ export default function FloatingLyricsStage({
         }
       }
 
-      // Add new incoming fragments
-      targetIndices.forEach((idx) => {
+      // 2. Add incoming fragments with adaptive content-aware placement
+      activeTargetIndices.forEach((idx) => {
         if (!existingIndices.has(idx)) {
           const offset = idx - activeLineIndex;
           let role = 'distant';
@@ -266,31 +302,28 @@ export default function FloatingLyricsStage({
           else if (offset === -1) role = 'past';
           else if (offset === 1) role = 'upcoming';
 
-          const anchorIdx = idx % REFERENCE_ANCHORS.length;
-          const baseAnchor = REFERENCE_ANCHORS[anchorIdx];
-
-          const microX = seedVariant === 1 ? (anchorIdx % 2 === 0 ? 2 : -2) : (seedVariant === 2 ? -2 : 0);
-          const microY = seedVariant === 2 ? (anchorIdx % 2 === 1 ? 2 : -1) : 0;
+          const placement = solveAdaptivePlacement(lines[idx], role, updated, {
+            stageBounds: DEFAULT_STAGE_BOUNDS,
+            previousZoneId: lastPlacedZoneIdRef.current,
+            trackSeed: seed,
+          });
+          lastPlacedZoneIdRef.current = placement.zoneId;
 
           updated.push({
             lineIndex: idx,
             line: lines[idx],
-            displayText: formatLyricExcerpt(lines[idx].text, 36),
+            displayText: placement.displayText,
             role,
-            anchorId: baseAnchor.id,
-            style: {
-              ...baseAnchor.style,
-              transform: `translate(${microX}px, ${microY}px)`,
-            },
-            staggerDelay: baseAnchor.staggerDelay,
-            status: 'entering',
+            placement,
+            style: createPlacementStyle(placement),
+            status: 'emerging',
           });
         }
       });
 
       return updated;
     });
-  }, [activeLineIndex, lines, showLyrics, isSynced, hasLyrics, seed, seedVariant]);
+  }, [activeLineIndex, lines, showLyrics, isSynced, hasLyrics, seed]);
 
   return (
     <div
@@ -298,34 +331,40 @@ export default function FloatingLyricsStage({
       role="region"
       aria-label="Floating lyrics stage"
     >
+      {/* Dev-Only Debug Overlay */}
+      {isDebugActive && (
+        <FloatingLyricsDebugOverlay fragments={fragments} stageBounds={DEFAULT_STAGE_BOUNDS} />
+      )}
+
       {/* Layer 1: Floating Typography (z-index: 2, behind artwork) */}
       <div className="floating-stage__lyrics-layer" aria-live="polite">
         {showLyrics && isSynced && fragments.length > 0 && (
           fragments.map((frag) => {
-            const { lineIndex, line, displayText, role, style, staggerDelay, status } = frag;
-            const isActive = role === 'active' && status !== 'exiting';
+            const { lineIndex, line, displayText, role, style, status } = frag;
+            const isExiting = status === 'dissolving' || status === 'exiting';
+            const isActive = role === 'active' && !isExiting;
             const pres = lyricsPresentation[lineIndex] || { style: lyricsStyle };
 
             let roleClass = 'floating-lyric';
-            if (status === 'exiting') {
-              roleClass += ' floating-lyric--exiting';
-            } else if (isActive) {
-              roleClass += ' floating-lyric--active';
-            } else if (role === 'past') {
-              roleClass += ' floating-lyric--past';
-            } else if (role === 'upcoming') {
-              roleClass += ' floating-lyric--future';
+            if (isExiting) {
+              roleClass += ' floating-lyric--dissolving';
+            } else if (status === 'emerging') {
+              roleClass += ' floating-lyric--emerging';
             } else {
-              roleClass += ' floating-lyric--distant';
+              roleClass += ' floating-lyric--settled';
             }
 
-            const animStyle = isReducedMotion || status !== 'entering'
-              ? {
-                  animation: 'none',
-                }
-              : {
-                  animationDelay: `${staggerDelay}s`,
-                };
+            if (!isExiting) {
+              if (isActive) {
+                roleClass += ' floating-lyric--active';
+              } else if (role === 'past') {
+                roleClass += ' floating-lyric--past';
+              } else if (role === 'upcoming') {
+                roleClass += ' floating-lyric--future';
+              } else {
+                roleClass += ' floating-lyric--distant';
+              }
+            }
 
             return (
               <div
@@ -333,7 +372,6 @@ export default function FloatingLyricsStage({
                 className={roleClass}
                 style={{
                   ...style,
-                  ...animStyle,
                   cursor: isSynced && line?.startTimeMs != null ? 'pointer' : 'default',
                 }}
                 onClick={() => {

@@ -213,17 +213,22 @@
         return;
       }
 
-      // Exact Reference Floating Mode (Pass 2.2.10.2):
-      // - One centered 148px album artwork (modestly enlarged, moved slightly down with margin-top: 36px)
-      // - 5 subtle, small ambient fragments matching exact reference locations:
-      //   1. Anchor 0: Above cover (top: 8px, left: calc(50% - 105px), maxWidth: 210px)
-      //   2. Anchor 1: Mid-left around middle (top: 72px, left: 14px, maxWidth: 145px)
-      //   3. Anchor 2: Upper-right, partly obscured by artwork (top: 42px, left: calc(50% + 48px), maxWidth: 180px)
-      //   4. Anchor 3: Lower-right, partly obscured by artwork (top: 122px, left: calc(50% + 52px), maxWidth: 175px)
-      //   5. Anchor 4: Below-left of artwork (top: 152px, left: 16px, maxWidth: 140px)
-      const isTransition = scenarioName === 'active_transition';
-      const isLongLine = scenarioName === 'long_lyric_line';
+      // Scenarios:
+      // 1. short_composition (Heartless / Chest Pain - Reference A ambient layout)
+      // 2. long_lyric_fitted (Spacious placement for long phrases without narrow wrapping)
+      // 3. consecutive_variation (Second long line placed in an alternate zone)
+      // 4. fragment_emerging (Emergence animation state)
+      // 5. fragment_dissolving (Dissolving animation state)
+      // 6. debug_overlay (Dev-only inspection of stage exclusions and candidates)
+      // 7. music_note_hidden (Lyrics hidden mode)
+      // 8. normal_mode (Standard scrolling list)
+
       const isHidden = scenarioName === 'music_note_hidden';
+      const isEmerging = scenarioName === 'fragment_emerging';
+      const isDissolving = scenarioName === 'fragment_dissolving';
+      const isConsecutive = scenarioName === 'consecutive_variation';
+      const isLongFitted = scenarioName === 'long_lyric_fitted';
+      const isDebug = scenarioName === 'debug_overlay';
 
       const lyricsToggleBtn = document.querySelector('.lyrics-toggle-btn');
       if (lyricsToggleBtn) {
@@ -240,7 +245,6 @@
         stage.innerHTML = `
           <div class="full-lyrics__body full-lyrics__body--floating">
             <div class="floating-stage floating-stage--lyrics-hidden">
-              <!-- Layer 2: Centered Foreground Artwork without lyrics (156px) -->
               <div class="floating-stage__artwork-layer">
                 <div class="full-lyrics__hero-art-wrap full-lyrics__hero-art-wrap--floating full-lyrics__hero-art-wrap--large">
                   <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #6b21a8, #db2777); display: flex; align-items: center; justify-content: center; font-size: 40px; box-shadow: inset 0 0 20px rgba(0,0,0,0.5);">
@@ -248,8 +252,6 @@
                   </div>
                 </div>
               </div>
-
-              <!-- Layer 3: Track Metadata beneath cover -->
               <div class="floating-stage__meta-layer">
                 <div class="full-lyrics__hero-meta full-lyrics__hero-meta--floating">
                   <div class="full-lyrics__hero-title">Chest Pain (I Love)</div>
@@ -262,44 +264,87 @@
         return;
       }
 
-      const lineAbove = "I can't feel my fingers now";
-      const lineMidLeft = isTransition ? "Taking off your coat in the hall" : "I love when you push my buttons";
-      const lineUpperRight = "Chest pain, girl, you know I love it";
-      const lineLowerRight = isLongLine ? "Never really knew what you'd say" : "Taking off your coat";
-      const lineLowerLeft = isTransition ? "I love when you push my buttons" : "Chest pain running in my veins";
+      // Adaptive text candidates based on scenario
+      let activeText = "I love when you push my buttons";
+      let activeStyle = "top: 72px; left: 14px; max-width: 145px;";
+      let activeClass = "floating-lyric floating-lyric--active";
+
+      if (isLongFitted) {
+        // Routed to spacious above zone
+        activeText = "Taking off your winter coat in the hallway waiting";
+        activeStyle = "top: 8px; left: 18px; max-width: 260px;";
+      } else if (isConsecutive) {
+        // Alternated to upper-right clear region
+        activeText = "Never really knew what you would say to me";
+        activeStyle = "top: 40px; left: calc(50% + 78px); max-width: 140px;";
+      }
+
+      if (isEmerging) {
+        activeClass += " floating-lyric--emerging";
+      }
+
+      const dissolvingFrag = isDissolving ? `
+        <div class="floating-lyric floating-lyric--dissolving" style="top: 152px; left: 16px; max-width: 140px;">
+          Chest pain running in my veins
+        </div>
+      ` : `
+        <div class="floating-lyric floating-lyric--past" style="top: 152px; left: 16px; max-width: 140px;">
+          Chest pain running in my veins
+        </div>
+      `;
 
       stage.innerHTML = `
         <div class="full-lyrics__body full-lyrics__body--floating">
           <div class="floating-stage">
+            ${isDebug ? `
+              <!-- Dev-Only Debug Visualization Overlay -->
+              <div class="floating-stage__debug-overlay" aria-hidden="true">
+                <div class="floating-stage__debug-rect floating-stage__debug-rect--exclusion" style="top: 36px; left: calc(50% - 74px); width: 148px; height: 148px;">
+                  <span class="floating-stage__debug-label">Cover (148px)</span>
+                </div>
+                <div class="floating-stage__debug-rect floating-stage__debug-rect--exclusion" style="top: 194px; left: calc(50% - 130px); width: 260px; height: 38px;">
+                  <span class="floating-stage__debug-label">Metadata</span>
+                </div>
+                <div class="floating-stage__debug-rect floating-stage__debug-rect--candidate" style="top: 8px; left: 18px; width: 260px; height: 26px;">
+                  <span class="floating-stage__debug-label">Candidate: Above</span>
+                </div>
+                <div class="floating-stage__debug-rect floating-stage__debug-rect--candidate" style="top: 68px; left: 14px; width: 140px; height: 36px;">
+                  <span class="floating-stage__debug-label">Candidate: Mid-Left</span>
+                </div>
+              </div>
+            ` : ''}
+
             <!-- Layer 1: Floating Typography (Behind Artwork, z-index: 2) -->
             <div class="floating-stage__lyrics-layer">
-              <!-- Anchor 0: Above cover, centered-left -->
-              <div class="floating-lyric floating-lyric--past" style="top: 8px; left: calc(50% - 105px); max-width: 210px; text-align: left; animation-delay: 0.12s;">
-                ${lineAbove}
+              <!-- Top Fragment -->
+              ${!isLongFitted ? `
+                <div class="floating-lyric floating-lyric--past" style="top: 8px; left: calc(50% - 105px); max-width: 210px;">
+                  I can't feel my fingers now
+                </div>
+              ` : ''}
+
+              <!-- Active Fragment (Adaptive Placement) -->
+              <div class="${activeClass}" style="${activeStyle}">
+                ${activeText}
               </div>
 
-              <!-- Anchor 1: Mid-left, around cover's middle (Active in default scenario) -->
-              <div class="floating-lyric ${isTransition ? 'floating-lyric--past' : 'floating-lyric--active'}" style="top: 72px; left: 14px; max-width: 145px; text-align: left; animation-delay: 0.04s;">
-                ${lineMidLeft}
+              <!-- Supporting Upper-Right (Intentional partial cover under-tuck for depth) -->
+              <div class="floating-lyric floating-lyric--future" style="top: 42px; left: calc(50% + 48px); max-width: 180px;">
+                Chest pain, girl, you know I love it
               </div>
 
-              <!-- Anchor 2: Near upper-right, partly obscured by artwork (starts at calc(50% + 48px), 26px behind cover right boundary) -->
-              <div class="floating-lyric ${isTransition ? 'floating-lyric--active' : 'floating-lyric--future'}" style="top: 42px; left: calc(50% + 48px); max-width: 180px; text-align: left; animation-delay: 0.18s;">
-                ${lineUpperRight}
-              </div>
+              <!-- Supporting Lower-Right (Intentional partial cover under-tuck) -->
+              ${!isConsecutive ? `
+                <div class="floating-lyric floating-lyric--future" style="top: 122px; left: calc(50% + 52px); max-width: 175px;">
+                  Taking off your coat
+                </div>
+              ` : ''}
 
-              <!-- Anchor 3: Near lower-right, also partly obscured by artwork (starts at calc(50% + 52px), 22px behind cover right boundary) -->
-              <div class="floating-lyric floating-lyric--future" style="top: 122px; left: calc(50% + 52px); max-width: 175px; text-align: left; animation-delay: 0.28s;">
-                ${lineLowerRight}
-              </div>
-
-              <!-- Anchor 4: Below-left of the artwork -->
-              <div class="floating-lyric floating-lyric--past" style="top: 152px; left: 16px; max-width: 140px; text-align: left; animation-delay: 0.22s;">
-                ${lineLowerLeft}
-              </div>
+              <!-- Lower-Left Fragment (Settled or Dissolving) -->
+              ${dissolvingFrag}
             </div>
 
-            <!-- Layer 2: Centered Foreground Artwork (148px, z-index: 5, solid geometry naturally obscuring fragments) -->
+            <!-- Layer 2: Centered Foreground Artwork (148px, z-index: 5, stable geometry) -->
             <div class="floating-stage__artwork-layer">
               <div class="full-lyrics__hero-art-wrap full-lyrics__hero-art-wrap--floating">
                 <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #6b21a8, #db2777); display: flex; align-items: center; justify-content: center; font-size: 38px; box-shadow: inset 0 0 20px rgba(0,0,0,0.5);">
@@ -320,8 +365,8 @@
       `;
     };
 
-    // Initialize with floating_composition
-    window.setViewScenario('floating_composition');
+    // Initialize with short_composition
+    window.setViewScenario('short_composition');
   </script>
 </body>
 </html>

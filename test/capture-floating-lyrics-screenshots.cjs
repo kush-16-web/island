@@ -17,8 +17,8 @@ app.whenReady().then(async () => {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      backgroundThrottling: false
-    }
+      backgroundThrottling: false,
+    },
   });
 
   const harnessPath = path.resolve(__dirname, 'floating-lyrics-verification.html');
@@ -27,11 +27,11 @@ app.whenReady().then(async () => {
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 
   // Initial delay for Electron to render CSS layout and fonts
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1200));
 
-  async function captureScenario(scenarioName, filename, waitMs = 1100) {
+  async function captureScenario(scenarioName, filename, waitMs = 1200) {
     await win.webContents.executeJavaScript(`window.setViewScenario('${scenarioName}')`);
-    await new Promise(r => setTimeout(r, waitMs));
+    await new Promise((r) => setTimeout(r, waitMs));
     const image = await win.webContents.capturePage();
     const buffer = image.toPNG();
     const dest = path.join(ARTIFACT_DIR, filename);
@@ -39,24 +39,30 @@ app.whenReady().then(async () => {
     console.log(`Saved screenshot: ${filename} (${buffer.length} bytes) to ${dest}`);
   }
 
-  // 1. Initial floating composition (Exact Reference Anchors, centered 132px cover)
-  await captureScenario('floating_composition', 'screenshot_floating_composition.png', 1100);
+  // 1. A short lyric composition (Heartless / Chest Pain)
+  await captureScenario('short_composition', 'screenshot_short_composition.png', 1300);
 
-  // 2. Active lyric transition with staggered entrance
-  await captureScenario('active_transition', 'screenshot_active_transition.png', 1100);
+  // 2. A long lyric fitted into available space (Content-Aware Placement)
+  await captureScenario('long_lyric_fitted', 'screenshot_long_lyric_fitted.png', 1300);
 
-  // 3. Normal mode (synchronized scrolling reel)
-  await captureScenario('normal_mode', 'screenshot_normal_mode.png', 600);
+  // 3. Two consecutive long lyrics using different suitable positions (Zone Alternation)
+  await captureScenario('consecutive_variation', 'screenshot_consecutive_variation.png', 1300);
 
-  // 4. Long lyric line (cleanly excerpted without paragraph cards)
-  await captureScenario('long_lyric_line', 'screenshot_long_lyric_line.png', 1100);
+  // 4. A fragment emerging from the background
+  await captureScenario('fragment_emerging', 'screenshot_fragment_emerging.png', 1300);
 
-  // 5. Music-note button: Lyrics hidden mode (clean centered artwork, showLyrics=false)
+  // 5. A fragment dissolving into the background
+  await captureScenario('fragment_dissolving', 'screenshot_fragment_dissolving.png', 1300);
+
+  // 6. Normal mode after switching back
+  await captureScenario('normal_mode', 'screenshot_normal_mode.png', 700);
+
+  // 7. Music-note button: lyrics hidden state
   await captureScenario('music_note_hidden', 'screenshot_music_note_hidden.png', 800);
 
-  // 6. Layout settings popover (Lyrics Layout & Typography)
-  await captureScenario('layout_settings', 'screenshot_layout_settings.png', 700);
+  // 8. Dev-only debug visualization overlay
+  await captureScenario('debug_overlay', 'screenshot_debug_overlay.png', 900);
 
-  console.log('All Pass 2.2.10.2 screenshots captured successfully.');
+  console.log('All Pass 2.2.10.3 screenshots captured successfully.');
   app.quit();
 });

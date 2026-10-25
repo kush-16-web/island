@@ -1768,3 +1768,56 @@ Pass 2.2.10.2 polishes the Floating Lyrics implementation based on real Electron
   - `screenshot_normal_mode.png`: Preserved standard synchronized scrolling mode.
   - `screenshot_layout_settings.png`: Popover menu with independent Lyrics Layout and Typography settings.
 
+---
+
+# 10. Island — Pass 2.2.10.3: Adaptive Floating Lyrics — Content-Aware Placement & Background Emergence
+
+## 1. Executive Summary
+Pass 2.2.10.3 upgrades Floating Lyrics from a fixed-anchor slot system to an intelligent, adaptive typography system:
+1. **Adaptive Placement Engine (`src/lib/floating-layout-engine.js`)**:
+   - Replaced fixed 5-slot modulo assignment (`REFERENCE_ANCHORS[lineIndex % 5]`) with dynamic content-aware placement.
+   - Text is measured via dual-path renderer (Canvas 2D context in browser/Electron; calibrated proportional font metrics in headless test environments).
+   - Candidate regions surround the centered 148px artwork:
+     - `above`: Wide horizontal region (up to 215–260px) above the cover, prioritized for long phrases and wide single/double-line wrapping.
+     - `mid-left`: Clear of cover left edge (width 135–145px).
+     - `upper-right`: Clear of cover for active lyrics; intentional under-cover tuck (26px) for supporting atmospheric fragments.
+     - `lower-right`: Clear of cover for active lyrics; intentional under-cover tuck (22px) for supporting fragments.
+     - `lower-left`: Framed beneath and left of cover.
+     - `top-left-diagonal` & `top-right-diagonal`: Diagonal free-space regions for natural variety.
+2. **Readability & Collision-Aware Scoring**:
+   - Active lyrics receive placement priority and **must not collide with the cover** ($0\text{px}$ under-cover allowance) to ensure full readability.
+   - 2D AABB bounding box collision checks enforce safe separation ($8\text{px}$ padding) between readable text fragments.
+   - Zone alternation penalizes repeating the immediately previous lyric's zone when valid alternatives exist, creating a dynamic, non-repetitive composition.
+3. **Locked Coordinates**:
+   - Once a lyric fragment receives its $(x, y, \text{maxWidth})$ placement, coordinates are locked for its entire lifecycle. Coordinates never reroll or jump across playback ticks.
+4. **Calm Background Emergence & Dissolving**:
+   - **Emerging**: Transitions from `opacity: 0, transform: translateY(4px), filter: blur(1.5px)` to settled state over 650ms. No traveling or flying across the screen.
+   - **Settled**: Stationary, assigned position.
+   - **Active Emphasis**: Subtle contrast boost (`opacity: 0.98`, `#ffffff`, `text-shadow: 0 1px 8px rgba(0,0,0,0.75)`). Zero font size or weight jump.
+   - **Dissolving**: Fades out gently over 520ms (`opacity: 0, transform: translateY(-2px), filter: blur(1px)`) before unmounting.
+5. **Seeking, Track Changes & Pausing**:
+   - Scrubbing $\pm 5\text{s}$ or track change clears exit timers and instantly settles the new active composition without delay.
+   - Pausing preserves the existing visual composition.
+6. **Dev-Only Debug Overlay**:
+   - Optional inspection overlay toggleable via prop `debugOverlay` or `window.__ISLAND_DEBUG_FLOATING_LYRICS__` displaying stage exclusion rectangles (cover, metadata) and candidate placement rectangles. Disabled in production.
+
+## 2. Verification Evidence
+- **Automated Tests**:
+  - `test/pass2-2-10-adaptive-lyrics.test.cjs`: **10/10 PASS** (text measurement, wrapping, exclusions, collisions, long line routing, zone alternation, determinism).
+  - `test/pass2-2-10-floating-lyrics.test.cjs`: **14/14 PASS**
+  - `test/pass2-2-7-revised-full-lyrics.test.cjs`: **11/11 PASS**
+  - `test/pass2-2-6-5-lyrics-appearance-controls.test.cjs`: **10/10 PASS**
+  - `test/precision-lyrics.test.cjs`: **11/11 PASS**
+  - **Total Tests Passing**: **56/56 PASS** (0 failures).
+- **Vite Production Build**: Compiled in **2.09s with 0 errors**.
+- **Real Electron Screenshots**:
+  - `screenshot_short_composition.png`: Ambient layout for short lyrics (*Heartless* / *Chest Pain*).
+  - `screenshot_long_lyric_fitted.png`: Long phrase fitted into spacious region with natural 2-line wrap, completely readable.
+  - `screenshot_consecutive_variation.png`: Consecutive long lines utilizing alternating zones.
+  - `screenshot_fragment_emerging.png`: Fragment in emergence animation state.
+  - `screenshot_fragment_dissolving.png`: Fragment in dissolve animation state.
+  - `screenshot_normal_mode.png`: Preserved standard scrolling reel.
+  - `screenshot_music_note_hidden.png`: Clean centered artwork with lyrics hidden via toggle.
+  - `screenshot_debug_overlay.png`: Dev-only visualization of stage exclusion zones and candidate rectangles.
+
+

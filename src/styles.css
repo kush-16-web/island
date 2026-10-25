@@ -2010,15 +2010,31 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   margin-right: auto;
 }
 
-/* Staggered entrance animation for newly mounted fragments */
-@keyframes floatFragmentEnter {
+/* Background Emergence animation for newly placed fragments */
+@keyframes floatFragmentEmerge {
   0% {
     opacity: 0;
-    transform: translateY(5px);
+    transform: translateY(4px);
+    filter: blur(1.5px);
   }
   100% {
     opacity: var(--lyric-opacity, 0.6);
     transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Dissolving keyframe for exiting fragments */
+@keyframes floatFragmentDissolve {
+  0% {
+    opacity: var(--lyric-opacity, 0.6);
+    transform: translateY(0);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2px);
+    filter: blur(1px);
   }
 }
 
@@ -2034,11 +2050,15 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   color: rgba(255, 255, 255, 0.78);
   opacity: var(--lyric-opacity, 0.6);
   word-break: break-word;
-  animation: floatFragmentEnter 0.55s cubic-bezier(0.16, 1, 0.3, 1) backwards;
   transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
               color 0.4s ease,
               text-shadow 0.4s ease;
-  will-change: transform, opacity;
+  will-change: transform, opacity, filter;
+}
+
+/* Emerging: Natural emergence from background with subtle softness and micro-offset */
+.floating-lyric--emerging {
+  animation: floatFragmentEmerge 0.65s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 /* Active Phrase: Clear contrast, gently brightened, same font size to prevent jump */
@@ -2074,17 +2094,53 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   z-index: 2;
 }
 
-/* Smooth exit transition when fragment is retiring */
-.floating-lyric--exiting {
-  --lyric-opacity: 0 !important;
-  opacity: 0 !important;
+/* Smooth exit transition when fragment is retiring / dissolving */
+.floating-lyric--exiting,
+.floating-lyric--dissolving {
+  animation: floatFragmentDissolve 0.52s ease forwards !important;
   pointer-events: none;
-  transition: opacity 0.5s ease !important;
 }
 
 .floating-lyric:hover {
   opacity: 1 !important;
   color: #ffffff !important;
+}
+
+/* Dev-Only Debug Visualization Overlay for Floating Lyrics Inspection */
+.floating-stage__debug-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  font-family: monospace;
+  font-size: 9.5px;
+  overflow: hidden;
+}
+.floating-stage__debug-rect {
+  position: absolute;
+  box-sizing: border-box;
+}
+.floating-stage__debug-rect--exclusion {
+  border: 1px dashed rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.08);
+}
+.floating-stage__debug-rect--candidate {
+  border: 1px dashed rgba(168, 85, 247, 0.5);
+  background: rgba(168, 85, 247, 0.05);
+}
+.floating-stage__debug-rect--selected {
+  border: 1.5px solid rgba(34, 197, 94, 0.9);
+  background: rgba(34, 197, 94, 0.12);
+}
+.floating-stage__debug-label {
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 1px 3px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
 }
 
 /* Unsynced & Empty States in Floating Stage */
