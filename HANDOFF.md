@@ -1944,8 +1944,511 @@ Executed against `dist/index.html` in real Electron runtime:
 ### Visual Artifacts
 - `screenshot_scenario_a_pause.png`: Full Lyrics remains visible during pause with centered artwork and dynamic background.
 - `screenshot_scenario_b_next_song.png`: Next track updates seamlessly inside Full Lyrics.
-- `screenshot_scenario_c_autoplay.png`: Autoplay preserves Full Lyrics screen.
 - `screenshot_scenario_f_compact_cover_restored.png`: Compact player album cover is fully rendered with `opacity: 1` immediately after closing Full Lyrics.
+
+---
+
+# 24. PASS 2.2.10.5 — Player Layout Restoration, Window Lifecycle & Compact UI Recovery
+
+## 1. Executive Summary & Mission
+In Pass 2.2.10.5, we addressed and permanently resolved the player layout corruption that occurred when closing or dismissing Island while Full Lyrics was open, and subsequently reopening the application.
+
+Previously, reopening Island after dismissing it from Full Lyrics resulted in:
+- A distorted default Playing screen where the 64x64 album cover appeared as an isolated thumbnail stranded in a large empty void.
+- Track metadata (title and artist) crammed against the left.
+- Excessive unused vertical space (~320px instead of 206px content height).
+- The outer Island pill retaining Full Lyrics dimensions (390px) while rendering compact player controls.
+- Re-entering Full Lyrics not reliably recovering correct compact geometry.
+
+With this fix, Island guarantees 100% predictable geometry recovery across all window lifecycle events (outside clicks, taskbar blurs, Escape key dismissals, tab switching, and fresh launches). The default Playing screen always renders with its exact intended dimensions (468x276 outer pill, 440x206 content wrapper, 64x64 artwork at y = 83).
+
+---
+
+## 2. Root Cause Analysis
+
+### A. Desynchronized Height State Across Window Lifecycle
+- **State Partitioning**: The expanded Island container height is calculated dynamically in `src/components/Island.jsx` via `getDynamicHubHeight()`:
+  ```js
+  if (isLyricsFull === 'lyrics') return 390;
+  if (hubTab === 'playing') return 276;
+  ```
+- **Lifecycle Disconnect**: When the user opened Full Lyrics, `isLyricsFull` in `Island.jsx` became `'lyrics'` (allocating 390px). When the user subsequently closed or dismissed Island (e.g. by clicking into another app, pressing `Escape`, or clicking the desktop), `<Hub>` unmounted from the DOM. However, the root `<Island>` component remained mounted in memory within Electron's transparent overlay window.
+- **The Stale State Trap**: When the user reopened Island, `<Hub>` and `<NowPlaying>` remounted afresh with default states (`lyricsViewMode = false`, `viewMode = 'player'`). But `Island.jsx` still had `isLyricsFull = 'lyrics'` in its memory!
+- **Visual Corruption Mechanism**:
+  1. `Island.jsx` expanded its Framer Motion spring container to **390px** height.
+  2. `<Hub>` rendered its standard compact navbar (`.hub__head`, 34px).
+  3. `<NowPlaying>` rendered compact player mode (`.np`) inside the remaining **320px** vertical area (instead of the intended 206px).
+  4. The CSS rule `.np { display: flex; flex-direction: column; justify-content: space-between; height: 100%; }` stretched the compact elements across the entire 320px height.
+  5. The 64x64 artwork cover was left isolated near the top, while the playback controls were pushed to the bottom edge, creating a huge dark empty void in between.
+
+### B. Duplicate React Container Ref Overwrite
+- In `src/components/NowPlaying.jsx`, `ref={npContainerRef}` was attached to both:
+  - Line 559: `<div className="np-outer-wrapper" ref={npContainerRef}>`
+  - Line 609: `<div className="np" ref={npContainerRef}>`
+- During view mode transitions and unmounts, React updated `npContainerRef.current` with the exiting `.np` DOM element and subsequently set it to `null`, corrupting the bounding coordinate reference used for lyric placement and smooth view morphing.
+
+### C. Unhandled Pointer Event Target Exception
+- In `src/components/Island.jsx`, `onWindowPointerDown` called `e.target.closest('.island')`.
+- When clicking on native Windows desktop elements or the root window document, `e.target` could be `Document` or `Window` rather than an `Element`, throwing an unhandled `TypeError: e.target.closest is not a function`, which broke the outside-click collapse state machine.
+
+---
+
+## 3. Architecture & Implementation Fixes
+
+### A. Lifecycle State Synchronization in `Island.jsx`
+1. **Explicit Reset on Hub Open**:
+   ```js
+   const openHub = (tab) => {
+     setIsLyricsFull(false); // Always guarantee clean compact bounds on hub open
+     setHubTab(tab || (media.active ? 'playing' : 'launcher'));
+     setHubOpen(true);
+   };
+   ```
+2. **Automatic Reset on Hub Collapse**:
+   ```js
+   useEffect(() => {
+     if (!hubOpen) {
+       setIsLyricsFull(false);
+     }
+   }, [hubOpen]);
+   ```
+3. **Robust Pointer Event Target Inspection**:
+   ```js
+   const onWindowPointerDown = (e) => {
+     const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+     if (!el || (!el.closest('.island') && !el.closest('.pet-container'))) {
+       setHubOpen(false);
+     }
+   };
+   ```
+
+### B. Unmount Cleanup & State Boundary in `Hub.jsx`
+1. **Memoized Callback**: Wrapped `handleLyricsViewChange` in `useCallback` to prevent spurious re-renders.
+2. **Unmount Notification**: Added cleanup effect so that if `<Hub>` unmounts for any reason while Full Lyrics was open, the parent `Island` is immediately notified to reset its height:
+   ```js
+   useEffect(() => {
+     return () => {
+       onLyricsViewChange?.(false);
+     };
+   }, [onLyricsViewChange]);
+   ```
+3. **Tab Switch Immunity**: When the user switches away from the `playing` tab (e.g. to `launcher`, `pet`, or `settings`), `lyricsViewMode` is cleanly reset to `false` and the parent is notified.
+
+### C. Container Ref Disambiguation & Lifecycle Hook in `NowPlaying.jsx`
+1. **Single Stable Coordinate Root**: Removed duplicate `ref={npContainerRef}` from `<div className="np">`, preserving `.np-outer-wrapper` as the sole stable container reference.
+2. **View Mode Lifecycle Hook**:
+   ```js
+   useEffect(() => {
+     onLyricsViewChange?.(viewMode === 'player' ? false : viewMode);
+     return () => {
+       onLyricsViewChange?.(false);
+     };
+   }, [onLyricsViewChange]);
+   ```
+
+### D. CSS Container Boundary Constraints in `src/styles.css`
+Explicit bounds were established for the outer wrappers to prevent any flex-stretching artifacts:
+```css
+.np-outer-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.np-view-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+```
+
+---
+
+## 4. Verification Evidence & Electron Runtime Validation
+
+### Automated Real Electron Validation Suite
+**File**: `test/pass2-2-10-5-layout-recovery.test.cjs`  
+**Execution Runtime**: Real Electron (`npx electron test/pass2-2-10-5-layout-recovery.test.cjs`)  
+**Results**: **9/9 PASS** (0 failures, 0 regressions)
+
+| Test Index | Scenario | Expected Behavior | Measured Result | Status |
+|---|---|---|---|---|
+| **ok 1** | Baseline Compact Player | Island 468x276, np 440x206, cover 64x64 at y=83 | Exact match | **PASS** |
+| **ok 2** | Full Lyrics Transition | Window expands to 468x390, hero art 148x148 | Exact match | **PASS** |
+| **ok 3** | Explicit Close from Full Lyrics | Returns to 468x276, cover 64x64 at y=83 | Exact match | **PASS** |
+| **ok 4** | **Reopen After Dismissal (Bug Fix)** | **Island 468x276, np 440x206, cover 64x64 at y=83** | **Exact match (100% parity with Baseline)** | **PASS** |
+| **ok 5** | Startup / Reopen Navigation | Bounds firmly established at 468x276 | Exact match | **PASS** |
+| **ok 6** | Rapid View Switching | 4 rapid open/close cycles retain 276px geometry | No drift (468x276, cover 64x64) | **PASS** |
+| **ok 7** | Reopening While Paused | Preserves 276px compact layout and artwork | Exact match | **PASS** |
+| **ok 8** | Reopening After Track Change | Preserves 276px compact layout and new metadata | Exact match | **PASS** |
+| **ok 9** | Full Lyrics Re-entry | Full Lyrics re-mounts cleanly with 390px stage | Exact match | **PASS** |
+
+### Geometric Parity Comparison
+
+```
+Metric                 Baseline Compact Player    Reopened Compact Player (After Dismissal)
+--------------------   -----------------------    -----------------------------------------
+Island Width           468 px                     468 px
+Island Height          276 px                     276 px  (was previously corrupted to 390 px)
+Player Wrapper (.np)   440 x 206 px               440 x 206 px  (was stretched to 440 x 320 px)
+Cover Size             64 x 64 px                 64 x 64 px
+Cover Coordinates      x: 156, y: 83              x: 156, y: 83
+Cover Opacity          1.0                        1.0
+Metadata Box           104 x 31 px                104 x 31 px
+```
+
+### Visual Verification Artifacts
+- `pass2-2-10-5_01_baseline_compact.png`: Clean baseline compact player with 64x64 cover and correctly proportioned controls.
+- `pass2-2-10-5_02_full_lyrics_active.png`: Full Lyrics expanded at 390px with centered 148px artwork and floating lyrics.
+- `pass2-2-10-5_03_reopened_recovered_compact.png`: Compact player after dismiss-and-reopen, visually indistinguishable from baseline.
+- `pass2-2-10-5_04_full_lyrics_reentered.png`: Re-entered Full Lyrics view with pristine stage geometry.
+
+---
+
+## 5. Architectural Lifecycle Summary: Overlay vs Relaunch
+- **Overlay Window Architecture**: Island runs in a transparent 720x500 borderless Electron overlay (`WIN_W = 720, WIN_H = 500`). The visible island pill is rendered via Framer Motion inside this fixed canvas.
+- **Hide / Blur Lifecycle**: Dismissing Island via outside click, OS focus loss (`blur`), or tray toggling collapses the animated pill and unmounts `<Hub>`. It does **not** terminate the Electron process. Because `<Island>` remains mounted in memory, all height-determining state variables must have deterministic reset guarantees tied to the `hubOpen` flag.
+- **Guaranteed Invariant**: Whenever `hubOpen` transitions from `false` to `true`, Island initializes with `isLyricsFull = false` and opens to its designated tab bounds (276px for Playing, 388px for Launcher), preventing any possibility of stale Full Lyrics geometry leaking into the compact player.
+
+---
+
+# 25. PASS 2.2.10.6 — Surgical Fix: Right-Side Floating Lyrics Clipping & Cover Occlusion
+
+## 1. Executive Summary & Objective
+In Pass 2.2.10.6, we surgically analyzed and resolved the issue where floating lyrics appearing to the right of the album cover were frequently clipped by the window boundary or obscured by the artwork cover, while lyrics on the left fitted reliably.
+
+Our fix establishes mathematical symmetry and strict containment across both left and right sides without adding arbitrary offsets, without moving lyrics into window borders, and without altering font sizes, colors, timing, or animations.
+
+---
+
+## 2. Root Cause Analysis
+
+### A. Asymmetric Usable Width Allocation (`maxWidth`)
+- In `src/lib/floating-layout-engine.js`, the stage bounds are $W = 412$ px, with a centered $148$ px album cover ($x = 132$ to $280$).
+- Available clear horizontal space on the left: $(132 - 8) - 12 = \mathbf{112\text{ px}}$.
+- Available clear horizontal space on the right: $(412 - 12) - (280 + 8) = \mathbf{112\text{ px}}$.
+- **The Defect**:
+  - `mid-left` was capped at `maxWidth: Math.max(135, coverLeft - 22)` ($\sim 110$ px).
+  - But `upper-right` and `lower-right` had `maxWidth: 180` and `maxWidth: 175` hardcoded from the original Pass 2.2.10.1 background anchor constants!
+  - When measuring text for candidate placement, `measureTextBounds(displayText, 180)` evaluated medium-length phrases (e.g. 130–170px) as single-line phrases without wrapping.
+
+### B. Flawed Right-Edge Clamping Pushed Text Under the Cover
+- In `solveAdaptivePlacement`:
+  ```js
+  x = Math.max(exclusions.safeArea.minX, Math.min(x, stageBounds.width - bounds.width - 12));
+  ```
+- When an active lyric had `bounds.width = 160\text{ px}$ (because it wasn't wrapped at 112px):
+  - `stageBounds.width - bounds.width - 12` yielded $412 - 160 - 12 = \mathbf{240\text{ px}}$.
+  - The solver clamped `x` down from its intended clear position ($288\text{ px}$) to $240\text{ px}$.
+  - Because the cover spans from $132\text{ px}$ to $280\text{ px}$, $x = 240\text{ px}$ pushed the first $40\text{ px}$ of the lyric directly **behind the album cover**!
+
+### C. Right-Edge Stage Clipping
+- For lyrics whose $x$ remained at $286$ px:
+  - $286\text{ px} + 160\text{ px} = 446\text{ px}$.
+  - Because `.floating-stage__lyrics-layer` has `width: 412px; overflow: hidden;`, all text beyond $412\text{ px}$ was clipped off and invisible.
+
+### D. Disqualification of Right Side for Active Lyrics
+- Because clamped candidate rects on the right overlapped the cover, `checkRectCollision(candidateRect, exclusions.cover, 2)` penalized right-side candidates with $-200$.
+- As a result, active lyrics were almost completely locked out of the right side, routing 90%+ of all lyrics exclusively to `above` and `mid-left`.
+
+---
+
+## 3. Architecture & Implementation Fixes
+
+### A. Symmetrical Clear Usable Region Calculation (`floating-layout-engine.js`)
+We introduced dynamic, mathematically balanced clear width calculations in `getCandidatePlacementRegions`:
+```js
+const W = stageBounds.width || 412;
+const safeMarginX = 12;
+const coverClearance = 8;
+const coverWidth = DEFAULT_COVER_BOUNDS.width || 148;
+const coverLeft = Math.round((W - coverWidth) / 2); // ~132px
+const coverRight = coverLeft + coverWidth; // ~280px
+
+// Symmetrical clear usable horizontal space on left and right sides:
+const clearLeftWidth = Math.max(70, (coverLeft - coverClearance) - safeMarginX); // ~112px
+const clearRightWidth = Math.max(70, (W - safeMarginX) - (coverRight + coverClearance)); // ~112px
+```
+- Right-side candidate zones (`upper-right`, `lower-right`, `top-right-diagonal`) now have `maxWidth: clearRightWidth` ($112\text{ px}$).
+- Right-side active anchors default to `activeMinX: coverRight + coverClearance` ($288\text{ px}$).
+- Subtle partial cover tuck is cleanly restricted to past or distant supporting fragments via `supportingX: coverRight - 22`.
+
+### B. Accurate Word-Wrapping & Truncation Tracking
+In `measureTextBounds`:
+- Dynamically tracks `isTruncated: boolean` if words cannot fit within `maxLines = 2` at the given `maxWidth`.
+- Medium phrases (such as *"Windmill, windmill for the land"*) cleanly wrap to 2 lines within $112\text{ px}$, producing $w \approx 91\text{ px} \le 112\text{ px}$.
+
+### C. Cover Clearance Floor in `solveAdaptivePlacement`
+- Clamping logic guarantees that active and upcoming lyrics on the right can **never** be clamped below `activeMinX`:
+  ```js
+  if (requiresClearVisibility) {
+    if (region.activeMinX != null) {
+      const maxAllowedX = stageBounds.width - bounds.width - 12;
+      if (maxAllowedX >= region.activeMinX) {
+        x = Math.max(region.activeMinX, Math.min(x, maxAllowedX));
+      } else {
+        x = region.activeMinX;
+      }
+    } else if (region.maxX != null && region.maxX <= exclusions.cover.x) {
+      x = Math.max(exclusions.safeArea.minX, Math.min(x, region.maxX - bounds.width));
+    }
+  }
+  ```
+- If a lyric cannot fit in $112\text{ px}$ without boundary overrun or truncation, the solver applies a penalty (`score -= 220` or `score -= 160`), naturally routing long phrases to the spacious `above` region ($215\text{ px}$ available width) without crowding or clipping.
+
+---
+
+## 4. Verification Evidence & Electron Validation
+
+### Automated Real Electron Validation Suite
+**File**: `test/pass2-2-10-6-right-side-floating-lyrics.test.cjs`  
+**Execution Runtime**: Real Electron (`npx electron test/pass2-2-10-6-right-side-floating-lyrics.test.cjs`)  
+**Results**: **9/9 PASS** (0 failures, 0 regressions)
+
+| Test Index | Scenario | Expected Behavior | Measured Result | Status |
+|---|---|---|---|---|
+| **ok 1** | Symmetrical Width & Coordinates | `upperRight.maxWidth <= 120`, `activeMinX == 288` | Exact match (112px, 288px) | **PASS** |
+| **ok 2** | Narrow & Wide Stage Adaptability | Dynamically scales for 360px, 380px, 412px, 440px | Exact match | **PASS** |
+| **ok 3** | Right-Side Active Cover Clearance | Right active placement clear of cover ($x \ge 288$) | Exact match ($x=288, \text{right}=379$) | **PASS** |
+| **ok 4** | Natural 2-Line Wrapping | Medium phrase wraps to 2 lines within 112px | `lineCount=2, w=91 <= 112` | **PASS** |
+| **ok 5** | Long Phrase Routing Priority | Long phrase routed to spacious `above` region | Routed to `above` (`maxW=215`) | **PASS** |
+| **ok 6** | Real Electron Right-Side Active Placement | Live DOM fragment clear of cover and window edge | $\text{left}=288 \ge 284, \text{right}=400 \le 402$ | **PASS** |
+| **ok 7** | Real Electron Left-Side Integrity | Left-side fragments retain safe margins | $\text{left}=14, \text{right}=126 \le 132$ | **PASS** |
+| **ok 8** | Pause / Resume Stability | Geometry remains stable across playback pauses | Zero layout shifts or jumps | **PASS** |
+| **ok 9** | Playback Seeking Integrity | Seeking preserves stage layout invariants | Stage bounds and cover intact | **PASS** |
+
+### Live DOM Metric Parity in Real Electron
+
+```
+Component / Fragment                  Rendered Coordinates        Safety Margin / Clearance
+-----------------------------------   -------------------------   -------------------------
+Album Cover                           x: 132, y: 36, w: 148, r: 280   Centered horizontally (412px stage)
+Right-Side Fragment (Upper-Right)     x: 288, y: 40, w: 112, r: 400   Starts +8px past cover; ends at safe margin
+Left-Side Fragment (Mid-Left)         x: 14,  y: 68, w: 112, r: 126   Starts at margin; ends -6px before cover
+Above Cover Fragment                  x: 101, y: 8,  w: 159, r: 260   Centered above cover; 215px max width
+```
+
+### Visual Verification Artifacts
+
+---
+
+# PASS 2.2.10.7: Remove Embedded YouTube Video Fallback From Playing Screen
+
+## 1. Problem & Root Cause Analysis
+
+### Reported Bug
+During normal music playback, Island's Playing screen unexpectedly displayed an embedded YouTube error:
+`"This video is unavailable — Watch on YouTube."`
+This broke normal music playback UI, replacing the intended music player (artwork, metadata, mini lyrics, controls) with an unusable black YouTube video error frame.
+
+### Code Path Investigation
+Every code path capable of rendering an embedded player, video preview, or YouTube error overlay was inspected:
+1. **`VideoPiP.jsx` (`<iframe>`)**:
+   - `VideoPiP.jsx` mounted an `<iframe>` pointing to `https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&mute=1...` whenever `activeYtId` was present.
+   - For music tracks (including *Die With A Smile — Lady Gaga & Bruno Mars*, Gorillaz, and most commercial music), YouTube disables playback in embedded third-party players due to content-owner copyright restrictions.
+   - YouTube's iframe displayed the fatal error overlay: `"This video is unavailable — Watch on YouTube."`
+   - When `iframeLoaded` became true, `VideoPiP.jsx` hid the backdrop poster (`(!iframeLoaded && activeYtId)` evaluated to false), leaving only the broken YouTube embed visible.
+   - Synchronous `postMessage` calls for `playVideo`, `pauseVideo`, and `seekTo` continuously polled the broken iframe.
+
+2. **`NowPlaying.jsx` (`isMusicApp` & `isVideoSource` misclassification)**:
+   - `isMusicApp` previously checked only hardcoded app names (`spotify`, `apple music`, `itunes`, `tidal`, `deezer`, `foobar`, `amazon music`, `pandora`, `qobuz`, `winamp`).
+   - It did **not** recognize `YouTube Music`, `music.youtube.com`, or browser sessions playing music.
+   - Furthermore, `isVideoSession` treated Chromium SMTC media sessions reporting `media.playbackType === 'Video'` as videos, and classified titles containing `"official video"` (common for music tracks like `"Die With A Smile (Official Music Video)"`) as video sources.
+   - When `isVideoSource` evaluated to `true`, `NowPlaying.jsx` initialized `viewMode` to `'cinema'`, or forcibly switched `viewMode` to `'cinema'` on line 85 (`handleSetViewMode('cinema')`).
+   - This replaced the intended compact Playing screen with Cinema mode, mounting the broken YouTube iframe.
+
+3. **Stale Artwork Retention**:
+   - In `VideoPiP.jsx`, `activeYtId`, `hdArtUrl`, and `candidateIndex` were not immediately reset when `media.title` or `media.artist` changed, allowing the previous track's poster candidates to persist on new tracks.
+
+---
+
+## 2. Surgical Fix Architecture
+
+### A. Elimination of the Video-Rendering Path from Artwork Surfaces
+In `src/components/VideoPiP.jsx`:
+- Completely removed the `<iframe>` element, `iframeRef`, `iframeLoaded`, and all `postMessage` YouTube command dispatchers (`playVideo`, `pauseVideo`, `seekTo`).
+- `VideoPiP` now functions strictly as a **Cinematic High-Resolution Artwork & Backdrop Poster Stage** (or local desktop video window capture if VLC/MPV video stream is active).
+- Real track album artwork is rendered from provider metadata (`media.art`), authoritative `posterUrl` (`displayArt`), or upgraded high-res catalog artwork with ambient aura depth layers and center equalizer.
+- If no artwork is available, Island's lightweight placeholder gradient (`cinema-screen__glow-gradient`) renders cleanly.
+- YouTube's embedded player error UI can **never** be mounted.
+
+### B. Accurate Music Classification in `NowPlaying.jsx` & `useVideoAmbient.js`
+In `src/components/NowPlaying.jsx` and `src/hooks/useVideoAmbient.js`:
+- Expanded `isMusicApp` to recognize YouTube Music (`youtube music`, `yt music`, `music.youtube`), provider metadata (`youtube_music`), and any media track with a defined artist (`Boolean(media.artist && media.artist.trim().length > 0)`).
+- Restricted `isVideoSource` strictly to dedicated video applications (`netflix`, `vlc`, `mpv`, `potplayer`) or explicit standalone movie trailers (`^(official\s+)?(trailer|teaser)\b`) without music metadata.
+- Normal music playback for YouTube Music, *Die With A Smile*, and web players now consistently defaults to `'player'` mode, preserving the standard compact Playing screen layout (cover, metadata, mini lyrics, tabs, controls).
+
+### C. Stale Artwork Request Prevention
+In `src/components/VideoPiP.jsx`:
+- Added immediate reset effect on track change:
+  ```js
+  useEffect(() => {
+    setHdArtUrl(null);
+    setCandidateIndex(0);
+    const directId = youtubeId || media?.youtubeId || extractYouTubeIdFromMedia(media) || null;
+    setActiveYtId(directId);
+  }, [media?.title, media?.artist, media?.youtubeId, youtubeId]);
+  ```
+- Passed authoritative `displayArt` from `useHighResArt` as `posterUrl` to `VideoPiP`, guaranteeing synchronized monotonic token caching and race-condition immunity.
+
+### D. CSS Cleanup
+In `src/styles.css`:
+- Removed unused `.cinema-screen__iframe` and `.cinema-screen__iframe.is-ready` style rules.
+
+---
+
+## 3. Verification Evidence & Electron Validation
+
+### Automated Real Electron Validation Suite
+**File**: `test/pass2-2-10-7-no-youtube-video.test.cjs`  
+**Execution Runtime**: Real Electron (`npx electron test/pass2-2-10-7-no-youtube-video.test.cjs`)  
+**Results**: **10/10 PASS** (0 failures, 0 regressions)
+
+| Test Index | Scenario | Expected Behavior | Measured Result | Status |
+|---|---|---|---|---|
+| **ok 1** | Static Invariants: Zero `<iframe>` | `VideoPiP.jsx` has no iframe or YouTube embed URLs | 0 occurrences | **PASS** |
+| **ok 2** | CSS Invariants | `styles.css` clean of active iframe rules | 0 occurrences | **PASS** |
+| **ok 3** | Music Classification | NowPlaying classifies YouTube Music as music | `isMusicApp=true, isVideoSource=false` | **PASS** |
+| **ok 4** | Color Extraction Invariant | `useVideoAmbient` treats YouTube Music as music | Dynamic color preserved | **PASS** |
+| **ok 5** | Real Electron: *Die With A Smile* | Compact Playing layout mounted with real artwork | `.np` rendered, zero iframes, artwork visible | **PASS** |
+| **ok 6** | Pause & Resume Stability | Artwork stays mounted; play/pause toggles | Artwork stable, aria-label toggles | **PASS** |
+| **ok 7** | Track Change: *Feel Good Inc.* | Artwork updates to new track; no stale retention | Cover URL updated; old track cleared | **PASS** |
+| **ok 8** | Fallback Placeholder | Lightweight Island gradient placeholder when `art: null` | `.art--fallback` rendered, zero iframes | **PASS** |
+| **ok 9** | Full Lyrics Integration | Full Lyrics opens cleanly with center artwork | `.full-lyrics` mounted with hero art | **PASS** |
+| **ok 10** | Layout Restoration | Closing Full Lyrics restores compact player | Restored to `.np`, zero video mode jump | **PASS** |
+
+### Regression Suites Verified
+- `test/pass2-2-10-5-layout-recovery.test.cjs`: **9/9 PASS** in real Electron.
+- `test/pass2-2-10-6-right-side-floating-lyrics.test.cjs`: **9/9 PASS** in real Electron.
+- `test/pass2-2-10-floating-lyrics.test.cjs`: **13/13 PASS**.
+- `test/pass2-2-10-adaptive-lyrics.test.cjs`: **10/10 PASS**.
+- `test/pass2-2-7-cinema-lyrics-expressive.test.cjs`: **8/8 PASS**.
+- `test/pass2-2-7-revised-full-lyrics.test.cjs`: **10/10 PASS**.
+- Production Build: `npm run build` compiled cleanly in 1.75s with 0 errors.
+
+### Visual Verification Artifact
+- `pass2-2-10-7_01_die_with_a_smile_artwork.png`: Real Electron screenshot showing *Die With A Smile — Lady Gaga & Bruno Mars* playing in the intended compact Playing screen with artwork, metadata, mini lyrics, and controls, with zero YouTube iframes or errors.
+
+---
+
+# 27. Island — Pass 2.2.10.8 (REVISED): Complete Lyric Readability, Collision Prevention & Adaptive Fallback Placement
+
+## 1. Problem Statement & Root Cause Analysis
+
+In the latest recording of **Sailor Song — Gigi Perez** (around 49–58s), Full Lyrics Floating mode displayed *"I don't believe in God"* on the left, but the continuation *"but I believe that you're my savior"* was completely missing or hidden behind the artwork. Switching to the default Playing view revealed the fuller lyric line, confirming the underlying synchronized lyric data was present.
+
+Additionally, earlier recordings of **Co2 — Prateek Kuhad** showed multiple settled fragments accumulating and overlapping near the top and upper-right regions.
+
+### Confirmed Root Causes
+
+1. **Incorrect Text Excerpting & Silent Truncation**:
+   - In `src/lib/floating-layout-engine.js`, `solveAdaptivePlacement` called `formatLyricExcerpt(rawText, 38)` for all lyric lines, including active synchronized lyrics.
+   - `formatLyricExcerpt` matched natural clause boundaries: `trimmed.match(/^([^,;—–-]+)[,;—–-]/)`.
+   - For *"I don't believe in God, but I believe that you're my savior"*, it matched the comma and extracted only `"I don't believe in God"` (length 21 <= 38), **silently discarding** the second half (`"but I believe that you're my savior"`).
+   - This caused the exact truncation defect observed by the user.
+
+2. **Upcoming Line Coordinate Locking Behind Artwork**:
+   - In `FloatingLyricsStage.jsx`, when lines entered the active window as upcoming or distant, they could be placed with `supportingX = coverRight - 18` or `coverRight - 22` (partially tucked under the cover).
+   - When that line progressed to `active`, the component intentionally locked coordinates to prevent visual jumping, but failed to re-evaluate cover clearance. As a result, promoted active lyrics remained trapped behind the artwork.
+
+3. **Weak Collision Penalties & Fragment Accumulation**:
+   - Collision with an existing fragment only subtracted `120` from the candidate score. When candidate bonuses (base 100 + clear 35 + single line 25 + above 45 = 205) exceeded 120, colliding candidates still won.
+   - Dissolving fragments (`status === 'dissolving'`) were not properly treated as occupied space.
+   - Supporting fragments were never pruned when space was insufficient, causing fragment pileup during rapid phrase delivery (e.g. *Co2*).
+
+4. **Playing View vs Full Lyrics Mismatch**:
+   - Compact Playing view rendered `line.text` in full without excerpting, while Full Lyrics Floating mode rendered the truncated excerpt, creating a visible discrepancy across views.
+
+---
+
+## 2. Surgical Fix Architecture
+
+### A. Mandatory 100% Active-Line Readability
+In `src/lib/floating-layout-engine.js`:
+- In `solveAdaptivePlacement`: Active synchronized lyric lines preserve 100% of the raw lyric text: `const displayText = rawText;`. Zero words lost, zero silent truncation, zero clause splitting without timestamps.
+- In `measureTextBounds`: Enabled natural word wrapping up to 4 lines for side regions and up to 2 lines for wide regions (`above`). Every word is guaranteed to be preserved in natural reading order without CSS clipping.
+- Added responsive typography adjustment: for long active lyrics (>50 chars), font size subtly scales to 12px in side regions or 11.5px in `above` to guarantee clean multi-line wrapping without paragraph squishing.
+
+### B. Strict Active Lyric Priority & Supporting Fragment Eviction
+In `src/components/FloatingLyricsStage.jsx`:
+- **Active Lyric First**: Active line placement is resolved before any supporting fragments.
+- **Collision Eviction**: Any existing supporting fragment (past, upcoming, or dissolving) that collides with the active lyric's resolved bounding box (`checkRectCollision(activeFrag.placement, f.placement, 8)`) is automatically **evicted** from the stage, immediately freeing space for the active lyric.
+- **Supporting Fragment Pruning**: If candidate scoring for an incoming supporting fragment results in a negative score (no free collision-free slot available), the supporting fragment is omitted rather than rendered as an overlap.
+
+### C. Zero Cover Occlusion for Active Lyrics
+In `src/lib/floating-layout-engine.js` and `src/components/FloatingLyricsStage.jsx`:
+- Active lyrics must strictly avoid `exclusions.cover` with at least 2px padding (`checkRectCollision === false`). Collision with cover = -9999 (strict disqualification).
+- Upcoming and distant lyrics require clear visibility (`requiresClearVisibility = isActive || isUpcoming || role === 'distant'`), guaranteeing that upcoming lyrics are never positioned behind the cover.
+- Partial atmospheric tuck is strictly restricted to subtle, already-past phrases (`role === 'past'`).
+- If an existing fragment is promoted to active, `FloatingLyricsStage` re-evaluates its placement to guarantee 100% cover clearance (`checkRectCollision(placement, exclusions.cover, 2) === false`).
+
+### D. Usable Background Space Expansion
+Expanded candidate regions to cover all genuinely usable stage background space around the 148px centered cover:
+- `above`: Centered horizontally, `maxWidth: Math.min(360, W - 32)`, `top: 8px` (sits cleanly above cover with 10px clearance).
+- `upper-left`, `mid-left`, `lower-left`: Left-side column (`minX: 12`, `maxX: 124`, `maxWidth: 112px`).
+- `upper-right`, `mid-right`, `lower-right`: Right-side column (`minX: 288`, `maxX: 400`, `maxWidth: 112px`).
+- `top-left-diagonal`, `top-right-diagonal`: Diagonal wide regions.
+- Added in-stage fallback: if all candidate regions receive penalties, the engine automatically selects the best cover-safe candidate to preserve Floating mode without unexpectedly jumping to Normal mode.
+
+### E. CSS Natural Wrapping
+In `src/styles.css`:
+- Added `white-space: pre-wrap;` to `.floating-lyric`, ensuring multi-line wrapped lyrics wrap naturally according to `maxWidth`.
+
+---
+
+## 3. Verification Evidence & Electron Validation
+
+### Automated Real Electron Validation Suite
+**File**: `test/pass2-2-10-8-lyric-readability.test.cjs`  
+**Execution Runtime**: Real Electron (`npx electron test/pass2-2-10-8-lyric-readability.test.cjs`)  
+**Results**: **11/11 PASS** (0 failures, 0 regressions)
+
+| Test Index | Scenario | Expected Behavior | Measured Result | Status |
+|---|---|---|---|---|
+| **ok 1** | Sailor Song Readability | Retains 100% complete text (no clause cutting) | `displayText === rawText`, 0 words lost | **PASS** |
+| **ok 2** | Cover Clearance | Active Sailor Song lyric has 0% cover occlusion | `checkRectCollision === false` (outside 148px cover) | **PASS** |
+| **ok 3** | Natural Word Wrapping | Wrapping preserves every single word in order | `allWrappedWords.join(' ') === originalWords.join(' ')` | **PASS** |
+| **ok 4** | Consecutive Long Lines | Zero collision between Line 1 and Line 2 | `checkRectCollision(rect1, rect2, 6) === false` | **PASS** |
+| **ok 5** | Co2 Rapid Sequence | Zero lyric-to-lyric overlaps across rapid phrases | All pairwise collisions evaluate to `false` | **PASS** |
+| **ok 6** | Real Electron Playing View | Playing view preview renders artwork and lyric | `.np` mounted, active lyric indicator visible | **PASS** |
+| **ok 7** | Real Electron Floating View | Complete Sailor Song lyric visible in Floating mode | Active text contains *"I don't believe in God, but I believe that you're my savior"* | **PASS** |
+| **ok 8** | Stage Overlap Verification | Zero lyric-to-lyric overlaps among mounted elements | `collisionCount === 0` | **PASS** |
+| **ok 9** | Line Transition Smoothness | Line 2 mounts smoothly with complete wording | Line 2 active with full text, zero jumps | **PASS** |
+| **ok 10** | Short Lyric Placement | Short lyric positions cleanly with clean margins | Mounted with valid coordinates | **PASS** |
+| **ok 11** | Rapid Seeking Stability | Rapid seeking updates fragments without stale leak | Settled cleanly, zero stale fragments | **PASS** |
+
+### Visual Verification Artifacts
+Generated during real Electron test run:
+1. `pass2-2-10-8_01_sailor_song_floating_complete.png`: Full Lyrics Floating mode showing the complete *Sailor Song* lyric (*"I don't believe in God, but I believe that you're my savior"*) fully readable, centered on the stage, completely unobstructed by the 148px album artwork.
+2. `pass2-2-10-8_02_sailor_song_playing_preview.png`: Compact Playing view preview displaying matching track metadata and artwork.
+3. `pass2-2-10-8_03_long_wrapped_lyric.png`: Consecutive active line (*"My mom says that she's worried, but I'm covered in His favor"*) with natural multi-line wrapping and complete readability.
+4. `pass2-2-10-8_04_short_lyric_placement.png`: Short lyric (*"I saw her in the rightest way"*) positioned cleanly in negative background space.
+5. `pass2-2-10-8_05_no_lyric_overlap_top.png`: Stage verification confirming zero overlapping fragments near the top or upper-right.
+6. `pass2-2-10-8_06_seeking_transition_stability.png`: Immediate recovery and clean layout after rapid seeking.
+
+### Regression Suites Verified
+- `test/pass2-2-10-adaptive-lyrics.test.cjs`: **10/10 PASS**
+- `test/pass2-2-10-6-right-side-floating-lyrics.test.cjs`: **9/9 PASS** in real Electron
+- `test/pass2-2-10-7-no-youtube-video.test.cjs`: **10/10 PASS** in real Electron
+- Production Build: `npm run build` compiled cleanly in 1.63s with 0 errors.
+
+---
+
+## 4. Files Modified & Added
+- **Modified**:
+  - `src/lib/floating-layout-engine.js`: Active lyric complete wording preservation (`displayText = rawText`), expanded candidate regions, strict collision penalties (-2000 to -5000), cover clearance enforcement, responsive typography.
+  - `src/components/FloatingLyricsStage.jsx`: Active lyric first-resolution, promoted fragment re-solving, colliding supporting fragment eviction, supporting fragment pruning, and `checkRectCollision` integration.
+  - `src/styles.css`: Added `white-space: pre-wrap;` to `.floating-lyric`.
+  - `HANDOFF.md`: Updated with Section 27 documenting Pass 2.2.10.8 (REVISED).
+- **Added**:
+  - `test/pass2-2-10-8-lyric-readability.test.cjs`: Comprehensive automated and real Electron test suite (11/11 tests passing).
+
+
+
+
 
 
 

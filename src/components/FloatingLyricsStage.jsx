@@ -5,6 +5,7 @@ import {
   createPlacementStyle,
   formatLyricExcerpt,
   getStageExclusionZones,
+  checkRectCollision,
   DEFAULT_STAGE_BOUNDS,
   DEFAULT_COVER_BOUNDS,
 } from '../lib/floating-layout-engine';
@@ -213,6 +214,7 @@ export default function FloatingLyricsStage({
       const newFrags = [];
       let lastZone = null;
 
+      // Always solve active line first, then supporting lines
       activeTargetIndices.forEach((idx) => {
         const offset = idx - activeLineIndex;
         let role = 'distant';
@@ -225,6 +227,12 @@ export default function FloatingLyricsStage({
           previousZoneId: lastZone,
           trackSeed: seed,
         });
+
+        // Skip adding supporting fragment if no clear collision-free zone exists
+        if (role !== 'active' && placement.score != null && placement.score < 0) {
+          return;
+        }
+
         lastZone = placement.zoneId;
 
         newFrags.push({
@@ -257,16 +265,38 @@ export default function FloatingLyricsStage({
         }
 
         if (targetSet.has(frag.lineIndex)) {
-          // Still in active window: update role smoothly without shifting locked coordinates
+          // Still in active window
           const offset = frag.lineIndex - activeLineIndex;
           let role = 'distant';
           if (offset === 0) role = 'active';
           else if (offset === -1) role = 'past';
           else if (offset === 1) role = 'upcoming';
 
+          let placement = frag.placement;
+          let style = frag.style;
+
+          // If promoted to active, verify complete-line readability & cover clearance
+          if (role === 'active') {
+            const exclusions = getStageExclusionZones(DEFAULT_STAGE_BOUNDS);
+            const collidesCover = checkRectCollision(placement, exclusions.cover, 2);
+            const collidesMeta = checkRectCollision(placement, exclusions.metadata, 4);
+            const collidesAbove = placement.zoneId === 'above' && (placement.y + placement.height > exclusions.cover.y - 2);
+
+            if (collidesCover || collidesMeta || collidesAbove || frag.role !== 'active') {
+              // Re-evaluate placement with strict active priority & zero cover occlusion
+              placement = solveAdaptivePlacement(frag.line, 'active', updated, {
+                stageBounds: DEFAULT_STAGE_BOUNDS,
+                trackSeed: seed,
+              });
+              style = createPlacementStyle(placement);
+            }
+          }
+
           updated.push({
             ...frag,
             role,
+            placement,
+            style,
             status: 'settled',
           });
           existingIndices.add(frag.lineIndex);
@@ -293,7 +323,25 @@ export default function FloatingLyricsStage({
         }
       }
 
-      // 2. Add incoming fragments with adaptive content-aware placement
+      // 2. Active Lyric Collision Eviction: Active line has 100% priority over supporting fragments
+      const activeFrag = updated.find((f) => f.role === 'active' && f.status !== 'dissolving' && f.status !== 'exiting');
+      const survivorFrags = [];
+
+      for (const f of updated) {
+        if (!activeFrag || f.lineIndex === activeFrag.lineIndex || f.role === 'active') {
+          survivorFrags.push(f);
+        } else if (!checkRectCollision(activeFrag.placement, f.placement, 8)) {
+          survivorFrags.push(f);
+        } else {
+          // Evict colliding supporting fragment to guarantee 100% active line readability
+          if (exitTimersRef.current.has(f.lineIndex)) {
+            clearTimeout(exitTimersRef.current.get(f.lineIndex));
+            exitTimersRef.current.delete(f.lineIndex);
+          }
+        }
+      }
+
+      // 3. Add incoming fragments with adaptive content-aware placement
       activeTargetIndices.forEach((idx) => {
         if (!existingIndices.has(idx)) {
           const offset = idx - activeLineIndex;
@@ -302,14 +350,20 @@ export default function FloatingLyricsStage({
           else if (offset === -1) role = 'past';
           else if (offset === 1) role = 'upcoming';
 
-          const placement = solveAdaptivePlacement(lines[idx], role, updated, {
+          const placement = solveAdaptivePlacement(lines[idx], role, survivorFrags, {
             stageBounds: DEFAULT_STAGE_BOUNDS,
             previousZoneId: lastPlacedZoneIdRef.current,
             trackSeed: seed,
           });
+
+          // Skip adding supporting fragment if no clear collision-free zone exists (score < 0)
+          if (role !== 'active' && placement.score != null && placement.score < 0) {
+            return;
+          }
+
           lastPlacedZoneIdRef.current = placement.zoneId;
 
-          updated.push({
+          survivorFrags.push({
             lineIndex: idx,
             line: lines[idx],
             displayText: placement.displayText,
@@ -321,7 +375,7 @@ export default function FloatingLyricsStage({
         }
       });
 
-      return updated;
+      return survivorFrags;
     });
   }, [activeLineIndex, lines, showLyrics, isSynced, hasLyrics, seed]);
 

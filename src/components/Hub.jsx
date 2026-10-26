@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { EASE_OUT, SPRING } from '../lib/motion';
 import { getAssistantName } from '../lib/assistant';
 import LauncherPanel from './LauncherPanel';
@@ -79,11 +79,26 @@ export default function Hub({
   }
 
   const [lyricsViewMode, setLyricsViewMode] = useState(false);
-  const handleLyricsViewChange = (mode) => {
+  const handleLyricsViewChange = useCallback((mode) => {
     setLyricsViewMode(mode);
     onLyricsViewChange?.(mode);
-  };
+  }, [onLyricsViewChange]);
   const isLyricsActive = tab === 'playing' && (lyricsViewMode === 'lyrics' || lyricsViewMode === true);
+
+  // When switching away from Playing tab, reset lyrics view mode
+  useEffect(() => {
+    if (tab !== 'playing' && lyricsViewMode) {
+      setLyricsViewMode(false);
+      onLyricsViewChange?.(false);
+    }
+  }, [tab, lyricsViewMode, onLyricsViewChange]);
+
+  // Clean up when Hub unmounts to ensure parent container restores compact geometry
+  useEffect(() => {
+    return () => {
+      onLyricsViewChange?.(false);
+    };
+  }, [onLyricsViewChange]);
 
   return (
     <div className={`hub${isLyricsActive ? ' hub--lyrics-active' : ''}`} style={{ '--accent': accentColor || 'var(--c-info)' }}>

@@ -11,20 +11,25 @@ export function isVideoMedia(media) {
   if (!media || !media.active) return false;
   const app = (media.app || '').toLowerCase();
   const title = (media.title || '').toLowerCase();
+  const provider = (media.provider || '').toLowerCase();
 
-  // Explicit music applications are always treated as music
-  if (/spotify|apple music|itunes|tidal|deezer|foobar|amazon music|pandora|qobuz|winamp/i.test(app)) {
+  // Explicit music applications or tracks with artists are always treated as music
+  if (
+    /spotify|apple music|itunes|tidal|deezer|foobar|amazon music|pandora|qobuz|winamp|youtube music|yt music|music\.youtube/i.test(app) ||
+    /spotify|apple|youtube_music|ytmusic/i.test(provider) ||
+    Boolean(media.artist && media.artist.trim().length > 0)
+  ) {
     return false;
   }
 
-  // Dedicated video apps or explicit video playback session type
-  if (media.playbackType === 'Video' || /netflix|vlc|mpv|potplayer/i.test(app)) {
+  // Dedicated video apps
+  if (/netflix|vlc|mpv|potplayer/i.test(app)) {
     return true;
   }
 
-  // Browser sessions playing trailers, gameplay, clips, or YouTube videos
+  // Browser sessions playing trailers, gameplay, or teasers without artist metadata
   if (/chrome|edge|brave|firefox/i.test(app)) {
-    if (!media.artist && /trailer|clip|gameplay|val|official video|watch\?v=|teaser|doomsday|marvel/i.test(title)) {
+    if (!media.artist && /^(official\s+)?(trailer|teaser)\b|clip|gameplay|teaser|doomsday/i.test(title)) {
       return true;
     }
   }

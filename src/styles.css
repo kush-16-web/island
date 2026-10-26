@@ -546,6 +546,18 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 
 /* ------------------------------------------------------------------ now playing (Apple Music / YouTube Music Ambient) */
 
+.np-outer-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.np-view-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
 .np {
   position: relative;
   height: 100%;
@@ -1147,20 +1159,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   overflow: hidden;
 }
 
-.cinema-screen__iframe {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: #000000;
-  opacity: 0;
-  transition: opacity 0.35s ease;
-  pointer-events: none;
-}
-.cinema-screen__iframe.is-ready {
-  opacity: 1;
-}
+
 
 .cinema-screen__video {
   width: 100%;
@@ -2050,6 +2049,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   color: rgba(255, 255, 255, 0.78);
   opacity: var(--lyric-opacity, 0.6);
   word-break: break-word;
+  white-space: pre-wrap;
   transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
               color 0.4s ease,
               text-shadow 0.4s ease;

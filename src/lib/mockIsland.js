@@ -296,6 +296,10 @@ export function createMockIsland() {
     // Only exists in the browser preview; drives the little dev bar.
     dev: {
       notify,
+      setMedia(customMedia) {
+        media = { active: true, ...customMedia };
+        emit('media', media);
+      },
       toggleMusic() {
         if (media.active) {
           media = { active: false };

@@ -36,22 +36,18 @@ export default function NowPlaying({
   youtubeId,
 }) {
   const { displayArt } = useHighResArt(media);
-  // Music sources: dedicated music apps, YouTube Music, or any song with lyrics
+  // Music sources: dedicated music apps, YouTube Music, or any track with artist/provider metadata
   const isMusicApp = Boolean(
-    media.app && /spotify|apple music|itunes|tidal|deezer|foobar|amazon music|pandora|qobuz|winamp/i.test(media.app)
+    (media.app && /spotify|apple music|itunes|tidal|deezer|foobar|amazon music|pandora|qobuz|winamp|youtube music|yt music|music\.youtube/i.test(media.app)) ||
+    (media.provider && /spotify|apple|youtube_music|ytmusic/i.test(media.provider)) ||
+    Boolean(media.artist && media.artist.trim().length > 0)
   );
 
-  // Video sessions: dedicated video players, Netflix, or explicit video playback type
-  const isVideoSession = Boolean(
-    media.playbackType === 'Video' ||
-    (media.app && /netflix|vlc|mpv|potplayer/i.test(media.app)) ||
-    (media.title && /trailer|official trailer|teaser|netflix/i.test(media.title))
-  );
+  // Video sessions: dedicated local video players (Netflix, VLC, MPV) or explicit trailers without music metadata
+  const isDedicatedVideoApp = Boolean(media.app && /netflix|vlc|mpv|potplayer/i.test(media.app));
+  const isTrailer = Boolean(media.title && /^(official\s+)?(trailer|teaser)\b/i.test((media.title || '').trim()));
 
-  const isVideoSource = !isMusicApp && (
-    isVideoSession ||
-    Boolean(media.app && /chrome|edge|brave|firefox/i.test(media.app) && !media.artist && /trailer|clip|gameplay|val|official video|watch\?v=/i.test(media.title || ''))
-  );
+  const isVideoSource = !isMusicApp && (isDedicatedVideoApp || isTrailer);
 
   const [viewMode, setViewMode] = useState(() => (isVideoSource ? 'cinema' : 'player'));
   const [showSongArt, setShowSongArt] = useState(false);
@@ -154,6 +150,14 @@ export default function NowPlaying({
       setIsSourceCoverHidden(false);
     }
   }, [viewMode, isSourceCoverHidden]);
+
+  // Synchronize viewMode on mount and clean up on unmount so parent layout bounds always match
+  useEffect(() => {
+    onLyricsViewChange?.(viewMode === 'player' ? false : viewMode);
+    return () => {
+      onLyricsViewChange?.(false);
+    };
+  }, [onLyricsViewChange]);
 
   // Notify parent of view mode change for dynamic height adjustment
   const handleSetViewMode = (mode) => {
@@ -449,6 +453,7 @@ export default function NowPlaying({
             stream={videoStream}
             streamActive={videoStreamActive}
             showSongArt={showSongArt}
+            posterUrl={displayArt}
           />
 
           {/* YouTube Fullscreen Style Top Overlay */}
@@ -606,7 +611,7 @@ export default function NowPlaying({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.28 }}
             >
-              <div className="np" ref={npContainerRef}>
+              <div className="np">
                 <div className="np__main">
                   {/* Left Column: Cover + Title + Artist */}
                   <div className="np__left">

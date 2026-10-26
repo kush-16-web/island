@@ -112,6 +112,7 @@ export function measureTextBounds(text, maxWidth = 180, fontSize = 13, maxLines 
   const lines = [];
   let currentLine = '';
   let maxMeasuredWidth = 0;
+  let isTruncated = false;
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
@@ -134,6 +135,7 @@ export function measureTextBounds(text, maxWidth = 180, fontSize = 13, maxLines 
 
       // Check maxLines constraint
       if (lines.length >= maxLines && i < words.length - 1) {
+        isTruncated = true;
         break;
       }
     }
@@ -142,6 +144,8 @@ export function measureTextBounds(text, maxWidth = 180, fontSize = 13, maxLines 
   if (currentLine && lines.length < maxLines) {
     lines.push(currentLine);
     maxMeasuredWidth = Math.max(maxMeasuredWidth, measureTextWidth(currentLine, fontSize));
+  } else if (currentLine && lines.length >= maxLines) {
+    isTruncated = true;
   }
 
   const lineHeight = Math.ceil(fontSize * 1.35);
@@ -152,7 +156,7 @@ export function measureTextBounds(text, maxWidth = 180, fontSize = 13, maxLines 
     height: totalHeight,
     lineCount: lines.length,
     lines,
-    isTruncated: false,
+    isTruncated,
   };
 }
 
@@ -262,11 +266,18 @@ export function checkRectCollision(rectA, rectB, padding = 6) {
  */
 export function getCandidatePlacementRegions(stageBounds = DEFAULT_STAGE_BOUNDS) {
   const W = stageBounds.width || 412;
-  const coverLeft = Math.round((W - DEFAULT_COVER_BOUNDS.width) / 2); // ~132px
-  const coverRight = coverLeft + DEFAULT_COVER_BOUNDS.width; // ~280px
+  const safeMarginX = 12;
+  const coverClearance = 8;
+  const coverWidth = DEFAULT_COVER_BOUNDS.width || 148;
+  const coverLeft = Math.round((W - coverWidth) / 2); // ~132px for W=412
+  const coverRight = coverLeft + coverWidth; // ~280px for W=412
+
+  // Symmetrical clear usable horizontal space on left and right sides of artwork
+  const clearLeftWidth = Math.max(70, (coverLeft - coverClearance) - safeMarginX); // ~112px
+  const clearRightWidth = Math.max(70, (W - safeMarginX) - (coverRight + coverClearance)); // ~112px
 
   return [
-    // Zone 0: Above cover (Wide horizontal area)
+    // Zone 0: Above cover (Wide horizontal area for full single or double line)
     {
       id: 'above',
       name: 'Above Cover',
@@ -274,87 +285,118 @@ export function getCandidatePlacementRegions(stageBounds = DEFAULT_STAGE_BOUNDS)
       maxX: W - 16,
       defaultX: Math.round(W / 2 - 105),
       top: 8,
-      maxWidth: 215,
+      maxWidth: Math.min(360, W - 32),
       preferredRole: ['active', 'past', 'upcoming'],
       allowUnderCover: false,
-      weight: 1.15,
+      weight: 1.25,
     },
-    // Zone 1: Mid-left (Around middle of cover)
+    // Zone 1: Mid-left (Beside middle of cover)
     {
       id: 'mid-left',
       name: 'Mid Left',
-      minX: 12,
-      maxX: coverLeft - 8,
-      defaultX: 14,
+      minX: safeMarginX,
+      maxX: coverLeft - coverClearance,
+      defaultX: safeMarginX,
       top: 68,
-      maxWidth: Math.max(135, coverLeft - 22),
+      maxWidth: clearLeftWidth,
       preferredRole: ['active', 'past', 'upcoming'],
       allowUnderCover: false,
       weight: 1.10,
     },
-    // Zone 2: Upper-right (Partly behind cover for supporting, clear for active)
+    // Zone 2: Upper-right (Partly behind cover for subtle past supporting, clear for active/upcoming)
     {
       id: 'upper-right',
       name: 'Upper Right',
-      minX: coverRight - 26, // Starts 26px under cover for supporting fragments
-      activeMinX: coverRight + 6, // Clear of cover for active fragments
-      maxX: W - 12,
-      defaultX: coverRight - 26,
-      top: 40,
-      maxWidth: 180,
+      minX: coverRight + coverClearance,
+      activeMinX: coverRight + coverClearance, // ~288px
+      maxX: W - safeMarginX, // ~400px
+      defaultX: coverRight + coverClearance,
+      supportingX: coverRight - 18,
+      top: 24,
+      maxWidth: clearRightWidth, // ~112px
       preferredRole: ['upcoming', 'active'],
       allowUnderCover: true,
-      weight: 1.05,
+      weight: 1.10,
     },
-    // Zone 3: Lower-right (Partly behind cover for supporting, clear for active)
+    // Zone 3: Lower-right (Partly behind cover for subtle past supporting, clear for active/upcoming)
     {
       id: 'lower-right',
       name: 'Lower Right',
-      minX: coverRight - 22, // Starts 22px under cover for supporting fragments
-      activeMinX: coverRight + 6,
-      maxX: W - 12,
-      defaultX: coverRight - 22,
-      top: 118,
-      maxWidth: 175,
-      preferredRole: ['upcoming', 'past'],
+      minX: coverRight + coverClearance,
+      activeMinX: coverRight + coverClearance, // ~288px
+      maxX: W - safeMarginX, // ~400px
+      defaultX: coverRight + coverClearance,
+      supportingX: coverRight - 16,
+      top: 136,
+      maxWidth: clearRightWidth, // ~112px
+      preferredRole: ['upcoming', 'active', 'past'],
       allowUnderCover: true,
-      weight: 1.0,
+      weight: 1.05,
     },
     // Zone 4: Lower-left (Beside lower-left corner of cover)
     {
       id: 'lower-left',
       name: 'Lower Left',
-      minX: 14,
-      maxX: coverLeft - 8,
-      defaultX: 16,
-      top: 148,
-      maxWidth: Math.max(130, coverLeft - 24),
-      preferredRole: ['past', 'upcoming'],
+      minX: safeMarginX,
+      maxX: coverLeft - coverClearance,
+      defaultX: safeMarginX,
+      top: 136,
+      maxWidth: clearLeftWidth,
+      preferredRole: ['past', 'upcoming', 'active'],
       allowUnderCover: false,
       weight: 1.0,
     },
-    // Zone 5: Diagonal Upper-Left (Alternative wide zone above-left)
+    // Zone 5: Upper-left (Beside upper-left of cover)
+    {
+      id: 'upper-left',
+      name: 'Upper Left',
+      minX: safeMarginX,
+      maxX: coverLeft - coverClearance,
+      defaultX: safeMarginX,
+      top: 24,
+      maxWidth: clearLeftWidth,
+      preferredRole: ['active', 'past', 'upcoming'],
+      allowUnderCover: false,
+      weight: 1.05,
+    },
+    // Zone 6: Mid-right (Beside middle right of cover)
+    {
+      id: 'mid-right',
+      name: 'Mid Right',
+      minX: coverRight + coverClearance,
+      activeMinX: coverRight + coverClearance,
+      maxX: W - safeMarginX,
+      defaultX: coverRight + coverClearance,
+      supportingX: coverRight - 18,
+      top: 68,
+      maxWidth: clearRightWidth,
+      preferredRole: ['upcoming', 'active'],
+      allowUnderCover: true,
+      weight: 1.05,
+    },
+    // Zone 7: Diagonal Upper-Left (Alternative wide zone above-left)
     {
       id: 'top-left-diagonal',
       name: 'Top Left Diagonal',
-      minX: 14,
-      maxX: Math.round(W / 2 - 20),
-      defaultX: 20,
-      top: 16,
-      maxWidth: 165,
+      minX: safeMarginX,
+      maxX: coverLeft - 4,
+      defaultX: safeMarginX,
+      top: 14,
+      maxWidth: clearLeftWidth,
       preferredRole: ['past', 'active'],
       allowUnderCover: false,
       weight: 0.95,
     },
-    // Zone 6: Diagonal Upper-Right (Alternative wide zone above-right)
+    // Zone 8: Diagonal Upper-Right (Alternative wide zone above-right)
     {
       id: 'top-right-diagonal',
       name: 'Top Right Diagonal',
-      minX: Math.round(W / 2 + 10),
-      maxX: W - 16,
-      defaultX: Math.round(W / 2 + 25),
-      top: 16,
-      maxWidth: 165,
+      minX: coverRight + coverClearance,
+      activeMinX: coverRight + coverClearance,
+      maxX: W - safeMarginX,
+      defaultX: coverRight + coverClearance,
+      top: 14,
+      maxWidth: clearRightWidth,
       preferredRole: ['upcoming', 'active'],
       allowUnderCover: false,
       weight: 0.95,
@@ -379,13 +421,17 @@ export function solveAdaptivePlacement(
   options = {}
 ) {
   const rawText = (line?.text || '').trim();
-  const displayText = formatLyricExcerpt(rawText, 38);
+  // Mandatory: complete active lyric line readability (never discard text)
+  const displayText = rawText;
   const stageBounds = options.stageBounds || DEFAULT_STAGE_BOUNDS;
   const exclusions = getStageExclusionZones(stageBounds);
   const regions = getCandidatePlacementRegions(stageBounds);
   const previousZoneId = options.previousZoneId || null;
   const trackSeed = options.trackSeed || 'island';
   const isActive = role === 'active';
+  const isUpcoming = role === 'upcoming';
+  // Upcoming and distant phrases must remain clear of artwork cover to prevent being occluded
+  const requiresClearVisibility = isActive || isUpcoming || role === 'distant';
 
   // Gather occupied bounding boxes of existing visible and dissolving fragments
   const occupiedRects = currentFragments.map((f) => ({
@@ -394,28 +440,65 @@ export function solveAdaptivePlacement(
     y: f.placement.y,
     width: f.placement.width,
     height: f.placement.height,
+    role: f.role,
     status: f.status,
   }));
 
   const candidateScores = [];
 
   for (const region of regions) {
-    const isUnderCoverAllowed = region.allowUnderCover && !isActive;
+    // Partial atmospheric tuck is only permitted for subtle, already-past phrases
+    const isUnderCoverAllowed = region.allowUnderCover && role === 'past';
     const regionMaxWidth = region.maxWidth;
+    // Responsive typography adjustment for long active lyrics (>50 chars)
+    let fontSize = 13;
+    if (region.id === 'above' && rawText.length > 58) {
+      fontSize = 11.5;
+    } else if (region.id !== 'above' && rawText.length > 50) {
+      fontSize = 12;
+    }
+    const maxLines = region.id === 'above' ? 2 : 4;
 
-    // Measure text bounds at this candidate's max width
-    const bounds = measureTextBounds(displayText, regionMaxWidth, 13, 2);
+    // Measure text bounds at this candidate's max width with natural wrapping
+    const bounds = measureTextBounds(displayText, regionMaxWidth, fontSize, maxLines);
 
     // Compute coordinate X:
-    // If active line in upper-right or lower-right, stay strictly clear of cover
-    let x = region.defaultX;
-    if (isActive && region.activeMinX != null) {
+    let x = region.defaultX != null ? region.defaultX : region.minX;
+    if (region.id === 'above') {
+      // Center horizontally in available stage width
+      x = Math.max(exclusions.safeArea.minX, Math.round((stageBounds.width - bounds.width) / 2));
+    } else if (requiresClearVisibility && region.activeMinX != null) {
       x = region.activeMinX;
+    } else if (isUnderCoverAllowed && region.supportingX != null) {
+      x = region.supportingX;
     }
 
-    // Ensure within stage safe area bounds
-    x = Math.max(exclusions.safeArea.minX, Math.min(x, stageBounds.width - bounds.width - 12));
-    const y = Math.max(exclusions.safeArea.minY, Math.min(region.top, stageBounds.height - bounds.height - 8));
+    // Ensure within stage safe area bounds without pushing right-side active text under cover
+    if (region.id !== 'above') {
+      if (requiresClearVisibility) {
+        if (region.activeMinX != null) {
+          // Right-side: anchor at activeMinX. Never clamp leftward into cover!
+          const maxAllowedX = stageBounds.width - bounds.width - 12;
+          if (maxAllowedX >= region.activeMinX) {
+            x = Math.max(region.activeMinX, Math.min(x, maxAllowedX));
+          } else {
+            x = region.activeMinX;
+          }
+        } else if (region.maxX != null && region.maxX <= exclusions.cover.x) {
+          // Left-side: stay strictly <= maxX - bounds.width so it never touches cover
+          x = Math.max(exclusions.safeArea.minX, Math.min(x, region.maxX - bounds.width));
+        } else {
+          x = Math.max(exclusions.safeArea.minX, Math.min(x, stageBounds.width - bounds.width - 12));
+        }
+      } else {
+        x = Math.max(exclusions.safeArea.minX, Math.min(x, stageBounds.width - bounds.width - 12));
+      }
+    }
+
+    let y = Math.max(exclusions.safeArea.minY, Math.min(region.top, stageBounds.height - bounds.height - 8));
+    if (region.id === 'above' && bounds.lineCount === 2) {
+      y = 2; // Keep 2-line above cover clear of artwork top at 36px
+    }
 
     const candidateRect = {
       x,
@@ -428,21 +511,24 @@ export function solveAdaptivePlacement(
     // Calculate Candidate Score:
     let score = 100 * (region.weight || 1.0);
 
-    // 1. Collision Detection with existing fragments
+    // 1. Collision Detection with visible & dissolving fragments
     let hasCollision = false;
     for (const occupied of occupiedRects) {
-      if (checkRectCollision(candidateRect, occupied, 8)) {
+      if (checkRectCollision(candidateRect, occupied, 6)) {
         hasCollision = true;
-        // Collision with an exiting fragment is penalized less than with an active fragment
-        score -= occupied.status === 'exiting' ? 65 : 120;
+        if (occupied.role === 'active') {
+          score -= 5000;
+        } else {
+          score -= 2000;
+        }
       }
     }
 
-    // 2. Active Line Readability & Cover Clearance
-    if (isActive) {
-      // Must not collide with artwork cover
-      if (checkRectCollision(candidateRect, exclusions.cover, 2)) {
-        score -= 200; // Strictly disqualify active lyric from hiding behind cover
+    // 2. Active & Upcoming Line Readability & Cover Clearance
+    const collidesWithCover = checkRectCollision(candidateRect, exclusions.cover, 2);
+    if (requiresClearVisibility) {
+      if (collidesWithCover) {
+        score -= 9999; // Strictly disqualify active lyric from touching or hiding behind cover
       } else {
         score += 35; // Bonus for completely clear readability
       }
@@ -452,24 +538,35 @@ export function solveAdaptivePlacement(
         score += 25;
       }
 
-      // For long lines, boost spacious 'above' region
-      if (displayText.length > 26 && region.id === 'above') {
-        score += 45;
+      // Penalty if words were truncated
+      if (bounds.isTruncated) {
+        score -= 500;
+      }
+
+      // Boundary overrun check
+      if (candidateRect.x + candidateRect.width > stageBounds.width - 10 || candidateRect.x < exclusions.safeArea.minX) {
+        score -= 500;
+      }
+
+      // For long lines, boost spacious 'above' region if it fits cleanly above cover
+      if (displayText.length > 25 && region.id === 'above' && !collidesWithCover) {
+        score += 50;
       }
     } else {
-      // Supporting fragment (past / upcoming):
-      // Reward atmospheric partial cover overlap on the right for Reference A fidelity!
-      if (region.allowUnderCover && isUnderCoverAllowed) {
-        score += 20;
+      // Supporting fragment (past / distant):
+      if (region.allowUnderCover && isUnderCoverAllowed && collidesWithCover) {
+        score += 20; // Subtle depth
+      } else if (!region.allowUnderCover && collidesWithCover) {
+        score -= 9999;
       }
     }
 
     // 3. Metadata Exclusion Check
     if (checkRectCollision(candidateRect, exclusions.metadata, 4)) {
-      score -= 150;
+      score -= 9999;
     }
 
-    // 4. Natural Variety: Avoid repeating the immediately previous lyric's zone
+    // 4. Natural Variety: Avoid repeating immediately previous lyric's zone
     if (previousZoneId && region.id === previousZoneId) {
       score -= 30;
     }
@@ -487,15 +584,27 @@ export function solveAdaptivePlacement(
       height: bounds.height,
       maxWidth: regionMaxWidth,
       lineCount: bounds.lineCount,
+      fontSize,
       score,
       hasCollision,
+      collidesWithCover,
       rect: candidateRect,
     });
   }
 
   // Sort descending by score
   candidateScores.sort((a, b) => b.score - a.score);
-  const best = candidateScores[0];
+  let best = candidateScores[0];
+
+  // In-stage fallback for active lyric if every candidate received penalties:
+  if (isActive && best.score < 0) {
+    const coverSafeCandidates = candidateScores.filter(
+      (c) => !c.collidesWithCover && !checkRectCollision(c.rect, exclusions.metadata, 2)
+    );
+    if (coverSafeCandidates.length > 0) {
+      best = coverSafeCandidates[0];
+    }
+  }
 
   return {
     x: best.x,
@@ -505,7 +614,9 @@ export function solveAdaptivePlacement(
     maxWidth: best.maxWidth,
     lineCount: best.lineCount,
     zoneId: best.zoneId,
+    fontSize: best.fontSize || 13,
     displayText,
+    score: best.score,
     debugCandidates: candidateScores,
   };
 }
@@ -514,11 +625,15 @@ export function solveAdaptivePlacement(
  * Creates CSS placement style for a resolved fragment position.
  */
 export function createPlacementStyle(placement) {
-  return {
+  const style = {
     position: 'absolute',
     top: `${placement.y}px`,
     left: `${placement.x}px`,
     maxWidth: `${placement.maxWidth}px`,
     textAlign: 'left',
   };
+  if (placement.fontSize && placement.fontSize !== 13) {
+    style.fontSize = `${placement.fontSize}px`;
+  }
+  return style;
 }

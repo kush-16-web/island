@@ -16,10 +16,9 @@ export default function VideoPiP({
   stream,
   streamActive = false,
   showSongArt = false,
+  posterUrl,
 }) {
-  const iframeRef = useRef(null);
   const videoRef = useRef(null);
-  const [iframeLoaded, setIframeLoaded] = useState(false);
   const [activeYtId, setActiveYtId] = useState(() => (
     youtubeId || media?.youtubeId || extractYouTubeIdFromMedia(media) || null
   ));
@@ -33,18 +32,24 @@ export default function VideoPiP({
   const playing = media?.status === 'playing';
   const hasArt = Boolean(media?.art);
 
+  // Immediate reset on track change to prevent stale artwork retention
+  useEffect(() => {
+    setHdArtUrl(null);
+    setCandidateIndex(0);
+    const directId = youtubeId || media?.youtubeId || extractYouTubeIdFromMedia(media) || null;
+    setActiveYtId(directId);
+  }, [media?.title, media?.artist, media?.youtubeId, youtubeId]);
+
   // Background enrich HD artwork whenever song changes
   useEffect(() => {
     let cancelled = false;
     if (!media?.title) {
-      setHdArtUrl(null);
       return;
     }
 
     enrichTrackMetadata(media.title, media.artist || '').then((res) => {
       if (!cancelled && res?.artwork) {
         setHdArtUrl(res.artwork);
-        setCandidateIndex(0);
       }
       if (!cancelled && res?.youtubeId && !activeYtId) {
         setActiveYtId(res.youtubeId);
@@ -56,32 +61,10 @@ export default function VideoPiP({
     };
   }, [media?.title, media?.artist]);
 
-  // Sync / resolve YouTube ID dynamically if not supplied
-  useEffect(() => {
-    const directId = youtubeId || media?.youtubeId || extractYouTubeIdFromMedia(media);
-    if (directId) {
-      setActiveYtId(directId);
-      setCandidateIndex(0);
-      return;
-    }
-
-    if (window.island?.media?.resolveYouTubeId && media?.title) {
-      window.island.media.resolveYouTubeId(media.title).then((resolved) => {
-        if (resolved) {
-          setActiveYtId(resolved);
-          setCandidateIndex(0);
-        }
-      });
-    }
-  }, [youtubeId, media?.youtubeId, media?.title, media?.art]);
-
   // Construct candidates list in order of priority (Highest resolution first)
   const posterCandidates = [];
-  if (hdArtUrl) {
-    posterCandidates.push(hdArtUrl);
-  }
-  if (activeYtId) {
-    posterCandidates.push(...getYouTubePosterCandidates(activeYtId));
+  if (posterUrl) {
+    posterCandidates.push(posterUrl);
   }
   if (media?.art) {
     const upgraded = upgradeProviderArtUrl(media.art);
@@ -92,8 +75,19 @@ export default function VideoPiP({
       posterCandidates.push(media.art);
     }
   }
+  if (hdArtUrl && !posterCandidates.includes(hdArtUrl)) {
+    posterCandidates.push(hdArtUrl);
+  }
+  if (activeYtId) {
+    const ytPosters = getYouTubePosterCandidates(activeYtId);
+    for (const p of ytPosters) {
+      if (!posterCandidates.includes(p)) {
+        posterCandidates.push(p);
+      }
+    }
+  }
 
-  const currentPosterUrl = posterCandidates[candidateIndex] || media?.art || '';
+  const currentPosterUrl = posterCandidates[candidateIndex] || posterUrl || media?.art || '';
 
   const handlePosterError = () => {
     if (candidateIndex < posterCandidates.length - 1) {
@@ -117,38 +111,10 @@ export default function VideoPiP({
     }
   }, [stream]);
 
-  // Synchronize YouTube embed play / pause state with SMTC
-  useEffect(() => {
-    if (!iframeRef.current?.contentWindow || !activeYtId) return;
-    const cmd = playing ? 'playVideo' : 'pauseVideo';
-    try {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: cmd, args: '' }),
-        '*'
-      );
-    } catch {}
-  }, [playing, activeYtId]);
+  // Living Canvas fine-art mode is dormant during Pass 2.2.6 while building toward Cinema Mode
+  const ENABLE_CANVAS_ART = false;
 
-  // Synchronize YouTube embed seek position when seeking in SMTC
-  const lastSyncSec = useRef(Math.floor((displayPosition || 0) / 1000));
-  useEffect(() => {
-    if (!iframeRef.current?.contentWindow || !activeYtId) return;
-    const currentSec = Math.floor((displayPosition || 0) / 1000);
-    if (Math.abs(currentSec - lastSyncSec.current) >= 4) {
-      lastSyncSec.current = currentSec;
-      try {
-        iframeRef.current.contentWindow.postMessage(
-          JSON.stringify({ event: 'command', func: 'seekTo', args: [currentSec, true] }),
-          '*'
-        );
-      } catch {}
-    }
-  }, [displayPosition, activeYtId]);
-
-  const startSec = Math.max(0, Math.floor((displayPosition || 0) / 1000));
-
-// Living Canvas fine-art mode is dormant during Pass 2.2.6 while building toward Cinema Mode
-const ENABLE_CANVAS_ART = false;
+  const showLocalVideo = !isDrmPlatform && streamActive && Boolean(stream);
 
   return (
     <div className="cinema-screen">
@@ -158,20 +124,8 @@ const ENABLE_CANVAS_ART = false;
           <SongArtPoster media={media} accentColor={accentColor} />
         ) : (
           <>
-            {/* 1. Pure YouTube Embedded Video Player (No desktop bleed, no browser UI) */}
-            {!isDrmPlatform && activeYtId && (
-              <iframe
-                ref={iframeRef}
-                src={`https://www.youtube-nocookie.com/embed/${activeYtId}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&enablejsapi=1&start=${startSec}`}
-                className={`cinema-screen__iframe${iframeLoaded ? ' is-ready' : ''}`}
-                title="Cinema Video Stream"
-                allow="autoplay; encrypted-media; picture-in-picture"
-                onLoad={() => setIframeLoaded(true)}
-              />
-            )}
-
-            {/* 2. Local Video Window Capture (for VLC / MPV dedicated players) */}
-            {!isDrmPlatform && !activeYtId && streamActive && stream && (
+            {/* 1. Local Video Window Capture (for VLC / MPV dedicated players only) */}
+            {showLocalVideo && (
               <video
                 ref={videoRef}
                 className="cinema-screen__video is-active"
@@ -181,8 +135,8 @@ const ENABLE_CANVAS_ART = false;
               />
             )}
 
-            {/* 3. Cinematic High-Resolution Backdrop Poster */}
-            {(isDrmPlatform || (!activeYtId && !streamActive) || (!iframeLoaded && activeYtId)) && (
+            {/* 2. Cinematic High-Resolution Artwork / Backdrop Poster (No iframe, no YouTube errors) */}
+            {!showLocalVideo && (
               <div className="cinema-screen__backdrop">
                 {/* Ambient Blurred Aura Layer for seamless, vibrant edge blending */}
                 <div

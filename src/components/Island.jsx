@@ -276,6 +276,7 @@ export default function Island() {
   const openHub = useCallback((nextTab) => {
     if (nextTab) setTab(nextTab);
     else if (!s.media?.active && tab === 'playing') setTab('launcher');
+    setIsLyricsFull(false);
     setHubOpen(true);
   }, [s.media?.active, tab]);
 
@@ -290,9 +291,13 @@ export default function Island() {
     window.island?.setIslandExpanded?.(hubOpen);
   }, [hubOpen]);
 
-  // When the expanded hub collapses, the active voice session (Speaking / Thinking / Listening)
-  // persists seamlessly in the background! Compact Island shows the active voice indicator.
+  // When the expanded hub collapses, reset Full Lyrics full-height state to ensure
+  // next expansion/reopening recovers clean compact player bounds.
+  // The active voice session (Speaking / Thinking / Listening) persists seamlessly in the background!
   useEffect(() => {
+    if (!hubOpen) {
+      setIsLyricsFull(false);
+    }
     if (prevHubOpenRef.current && !hubOpen) {
       window.island?.logLifecycle?.('hub:dismissed_session_preserved', {
         voiceStatus: voice.status,
@@ -321,7 +326,8 @@ export default function Island() {
   useEffect(() => {
     if (!hubOpen) return undefined;
     const onWindowPointerDown = (e) => {
-      if (!e.target.closest('.island') && !e.target.closest('.pet-container')) {
+      const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+      if (!el || (!el.closest('.island') && !el.closest('.pet-container'))) {
         window.island?.logLifecycle?.('hub:dismiss_pointerdown_outside');
         setHubOpen(false);
       }
