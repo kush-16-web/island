@@ -34,7 +34,7 @@ test('Window Lifecycle & Restoration Verification Suite', async (t) => {
   });
 
   await t.test('3. Mock bridge implements logLifecycle', () => {
-    const mockCode = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'mockIsland.js'), 'utf-8');
+    const mockCode = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'shared', 'mockIsland.js'), 'utf-8');
     assert.ok(mockCode.includes('logLifecycle() {}'), 'mockIsland must provide logLifecycle fallback');
   });
 

@@ -10,7 +10,7 @@
     "dev:web": "vite --host",
     "build": "vite build",
     "start": "vite build && electron .",
-    "test": "node --test",
+    "test": "node --test \"test/**/*.test.*\"",
     "notify": "node scripts/island-notify.js",
     "icons": "node scripts/make-icons.js",
     "dist": "vite build && electron-builder"

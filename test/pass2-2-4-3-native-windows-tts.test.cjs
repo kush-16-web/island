@@ -9,14 +9,28 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { WindowsTtsService } = require('../electron/windows-tts');
+const { WindowsTtsService, windowsTtsService } = require('../electron/windows-tts');
 
 test('PASS 2.2.4.3 — Native Windows TTS & Audible Speech Pipeline', async (t) => {
   const { VoiceTurnController } = await import('../src/lib/voice-turn-controller.js');
   const { audioCoordinator } = await import('../src/lib/audio-coordinator.js');
 
+  const services = [];
+  const createService = () => {
+    const s = new WindowsTtsService();
+    services.push(s);
+    return s;
+  };
+
+  t.after(() => {
+    services.forEach((s) => { try { s.dispose(); } catch {} });
+    if (windowsTtsService) {
+      try { windowsTtsService.dispose(); } catch {}
+    }
+  });
+
   await t.test('1. WindowsTtsService enumerates installed SAPI desktop voices', async () => {
-    const service = new WindowsTtsService();
+    const service = createService();
     const res = await service.getVoices();
     assert.equal(res.ok, true, 'getVoices should return ok: true');
     assert.ok(Array.isArray(res.voices), 'voices should be an array');
@@ -28,7 +42,7 @@ test('PASS 2.2.4.3 — Native Windows TTS & Audible Speech Pipeline', async (t) 
   });
 
   await t.test('2. WindowsTtsService synthesizes text into standard PCM WAV Base64', async () => {
-    const service = new WindowsTtsService();
+    const service = createService();
     const text = 'Island voice output test.';
     const res = await service.synthesizeSpeech({ text });
 
@@ -105,7 +119,7 @@ test('PASS 2.2.4.3 — Native Windows TTS & Audible Speech Pipeline', async (t) 
 
     if (!geminiTtsResponse.ok) {
       // Automatic fallback to native Windows SAPI TTS
-      const service = new WindowsTtsService();
+      const service = createService();
       const fallbackRes = await service.synthesizeSpeech({ text: 'Fallback speech delivered.' });
       if (fallbackRes.ok && fallbackRes.audioBase64) {
         audioDelivered = fallbackRes.audioBase64;

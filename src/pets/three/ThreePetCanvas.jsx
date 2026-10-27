@@ -213,7 +213,6 @@ export default function ThreePetCanvas({
     const modelPaths = [
       'models/toon_cat_free.glb',
       'models/tabby_kitten.glb',
-      'models/tabby_kitten/source/pool2319.glb',
       'models/chibi_kitten.glb',
     ];
 

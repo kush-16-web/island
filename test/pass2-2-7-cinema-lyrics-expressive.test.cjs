@@ -17,7 +17,7 @@ const npPath = path.join(__dirname, '..', 'src', 'components', 'NowPlaying.jsx')
 const flPath = path.join(__dirname, '..', 'src', 'components', 'FullLyrics.jsx');
 const mlPath = path.join(__dirname, '..', 'src', 'components', 'MiniLyrics.jsx');
 const plPath = path.join(__dirname, '..', 'src', 'components', 'PrecisionLyricLine.jsx');
-const enginePath = path.join(__dirname, '..', 'src', 'lib', 'lyrics-style-engine.js');
+const enginePath = path.join(__dirname, '..', 'src', 'lib', 'lyrics', 'lyrics-style-engine.js');
 const cssPath = path.join(__dirname, '..', 'src', 'styles.css');
 
 const npCode = fs.readFileSync(npPath, 'utf8');

@@ -50,7 +50,7 @@ test('Pass 2.2.6: Premium Full Lyrics Experience Suite', async (t) => {
   });
 
   await t.test('6. Plain Lyrics Integrity: Never fabricates timestamps for unsynchronized lyrics', async () => {
-    const nowPlayingFile = fs.readFileSync(path.join(__dirname, '../src/lib/lyrics.js'), 'utf8');
+    const nowPlayingFile = fs.readFileSync(path.join(__dirname, '../src/lib/lyrics/lyrics.js'), 'utf8');
 
     // Confirm plain lyrics are mapped with null timestamps
     assert.ok(
