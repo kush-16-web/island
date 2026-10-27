@@ -44,7 +44,7 @@ const ISLAND_MUSIC_TOOLS = [
     type: 'function',
     function: {
       name: 'play_favorite',
-      description: 'Play a specific song from user favorites library',
+      description: 'Play a specific song from user favorites library. Only call this when the user explicitly asks to play a favorite song, not for conversational questions.',
       parameters: {
         type: 'object',
         properties: {
@@ -58,7 +58,7 @@ const ISLAND_MUSIC_TOOLS = [
     type: 'function',
     function: {
       name: 'play_random_favorite',
-      description: 'Shuffle and play a random track from user favorites',
+      description: 'Shuffle and play a random track from user favorites. Only call this when the user explicitly asks to play or shuffle favorites, not for conversational questions or opinion queries.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -166,6 +166,10 @@ const ISLAND_MUSIC_TOOLS = [
       },
     },
   },
+];
+
+// Standard Island Scheduler Tool Definitions (5 tools)
+const ISLAND_SCHEDULER_TOOLS = [
   {
     type: 'function',
     function: {
@@ -238,11 +242,95 @@ const ISLAND_MUSIC_TOOLS = [
   },
 ];
 
+const ALL_ISLAND_TOOLS = [...ISLAND_MUSIC_TOOLS, ...ISLAND_SCHEDULER_TOOLS];
+
 class GroqService {
   constructor(options = {}) {
     this.store = options.store || null;
     this.apiKey = this._loadApiKey();
     this.accessibleModels = this._loadAccessibleModels();
+  }
+
+  /**
+   * Determine if the user text is an ordinary conversational question or topic query
+   * that must not trigger execution of tools (Fix 1 & Fix 2).
+   */
+  _isConversationalQuestion(text) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.trim().toLowerCase();
+
+    // Interrogatives and conversational inquiry patterns
+    const isQuestion =
+      /^(?:what(?:'s|\s+is|\s+are)?|who(?:'s|\s+is|\s+are)?|why\s+|how\s+|when\s+|where\s+|tell\s+me(?:\s+about)?|do\s+you\s+(?:like|think|have|know)|can\s+you\s+explain|what\s+do\s+you\s+think|describe)\b/i.test(clean);
+
+    // Explicit music status query
+    const isPlaybackQuery = /^(?:what(?:'s|\s+is)\s+(?:playing|this\s+song|this\s+track)|current\s+song|song\s+name|what\s+song\s+is\s+this)\b/i.test(clean);
+
+    // Explicit command verbs
+    const hasExplicitMusicCommand = /^(?:play|pause|resume|skip|stop|shuffle)\b/i.test(clean);
+
+    return isQuestion && !isPlaybackQuery && !hasExplicitMusicCommand;
+  }
+
+  /**
+   * Check if utterance or recent context contains music intent.
+   */
+  _hasMusicIntent(text, history = []) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.trim().toLowerCase();
+
+    const hasMusicWords = /\b(?:songs?|tracks?|music|audio|tune|playlist|album|artist|singer|band|spotify|youtube|apple\s+music)\b/i.test(clean);
+    const hasPlaybackVerbs = /\b(?:play|pause|resume|skip|stop|shuffle|volume)\b/i.test(clean);
+    const hasFavoritesActions = /\b(?:saved\s+songs?|favou?rites?(\s+songs?)?|favs)\b/i.test(clean);
+
+    // Conversational follow-up: "play another one" / "another one"
+    const isFollowUp = /^(?:play\s+)?another\s+(?:one|song|track)$/i.test(clean) || /^another\s+one$/i.test(clean);
+    if (isFollowUp) {
+      const recentTurns = (history || []).slice(-4);
+      const recentMusic = recentTurns.some(t => t.content && /\b(?:song|track|music|play|playing|spotify|youtube)\b/i.test(t.content));
+      if (recentMusic) return true;
+    }
+
+    return (hasPlaybackVerbs && hasMusicWords) || hasFavoritesActions || hasPlaybackVerbs;
+  }
+
+  /**
+   * Check if utterance relates to Island scheduler (timers, alarms).
+   */
+  _hasSchedulerIntent(text) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.trim().toLowerCase();
+    return /\b(?:timer|alarm|countdown|stopwatch|remind\s+me\s+in)\b/i.test(clean);
+  }
+
+  /**
+   * Resolve which tools are eligible for a given turn (Fix 1: Tool gating).
+   * Conversational questions without media intent are provided ZERO tools.
+   */
+  resolveEligibleTools(text, options = {}) {
+    if (!text || typeof text !== 'string') return [];
+    const clean = text.trim();
+    const history = options.history || [];
+
+    // If conversational question without playback intent, provide NO tools!
+    if (this._isConversationalQuestion(clean)) {
+      return [];
+    }
+
+    const hasMusic = this._hasMusicIntent(clean, history);
+    const hasScheduler = this._hasSchedulerIntent(clean);
+
+    if (hasMusic && hasScheduler) {
+      return ALL_ISLAND_TOOLS;
+    }
+    if (hasMusic) {
+      return ISLAND_MUSIC_TOOLS;
+    }
+    if (hasScheduler) {
+      return ISLAND_SCHEDULER_TOOLS;
+    }
+
+    return [];
   }
 
   setStore(store) {
@@ -598,6 +686,7 @@ class GroqService {
     model = GROQ_DEFAULT_CHAT_MODEL,
     temperature = 0.6,
     language = 'en',
+    tools = undefined,
     _failedModels = [],
     _originalModel = null,
   }) {
@@ -624,7 +713,9 @@ class GroqService {
 Keep your answers very concise (1 to 2 sentences maximum, never lengthy paragraphs or lists) so it sounds like real spoken dialogue.
 ${langInstruction}
 Never output markdown symbols like asterisks, bullet points, or emojis, since your text will be read aloud as speech.
-When the user asks to play music, check the current song, or control playback, use the appropriate tool function.`;
+When the user asks to play music, check the current song, or control playback, use the appropriate tool function.
+CRITICAL TOOL USAGE RULE:
+Never execute music or scheduler tools for conversational questions, philosophical queries, opinion questions (such as "What is your favourite Marvel character?"), or inquiries about fictional or real-world people/topics. Only execute a tool if the user explicitly commands a media action or scheduler action.`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -646,14 +737,22 @@ When the user asks to play music, check the current song, or control playback, u
       messages.push({ role: 'user', content: text.trim() });
     }
 
+    // Fix 1: Tool eligibility layer
+    const eligibleTools = tools !== undefined
+      ? tools
+      : this.resolveEligibleTools(text, { history: messages });
+
     const payload = {
       model: requestedModel,
       messages,
-      tools: ISLAND_MUSIC_TOOLS,
-      tool_choice: 'auto',
       temperature,
       max_tokens: 250,
     };
+
+    if (Array.isArray(eligibleTools) && eligibleTools.length > 0) {
+      payload.tools = eligibleTools;
+      payload.tool_choice = 'auto';
+    }
 
     const postData = JSON.stringify(payload);
     const startTime = Date.now();
@@ -1031,6 +1130,9 @@ When the user asks to play music, check the current song, or control playback, u
 
 module.exports = {
   GroqService,
+  ISLAND_MUSIC_TOOLS,
+  ISLAND_SCHEDULER_TOOLS,
+  ALL_ISLAND_TOOLS,
   GROQ_DEFAULT_CHAT_MODEL,
   GROQ_FAST_CHAT_MODEL,
   GROQ_REASONING_CHAT_MODEL,

@@ -108,14 +108,103 @@ export function parseActionIntent(rawText) {
 }
 
 /**
- * Process a voice turn: checks for intent, executes real music action if present,
+ * Authorize an action intent against user input and conversational safety policies.
+ * Guarantees that conversational questions, opinion queries, or isolated 'favourite' mentions
+ * never trigger rogue playback or tool actions.
+ *
+ * @param {object} intent - Validated intent object
+ * @param {string} userText - Original user utterance
+ * @param {object} env - Execution environment
+ * @returns {{ authorized: boolean, reason?: string, error?: string }}
+ */
+export function isActionAuthorized(intent, userText = '', env = {}) {
+  if (!intent || !intent.action) {
+    return { authorized: false, reason: 'missing_intent' };
+  }
+
+  // 1. Allowlist check
+  if (!ALLOWED_ACTIONS.includes(intent.action)) {
+    return { authorized: false, reason: 'unauthorized_action' };
+  }
+
+  // 2. Conversational Intent vs Action Separation (Fix 1, Fix 2, Fix 3)
+  if (userText && typeof userText === 'string') {
+    const cleanUser = userText.trim().toLowerCase();
+
+    // Check if the utterance is a conversational question
+    const isConversationalQuestion =
+      /^(?:what(?:'s|\s+is|\s+are)?|who(?:'s|\s+is|\s+are)?|why\s+|how\s+|when\s+|where\s+|tell\s+me(?:\s+about)?|do\s+you\s+(?:like|think|have|know)|can\s+you\s+explain|what\s+do\s+you\s+think|describe)\b/i.test(cleanUser);
+
+    const hasExplicitMusicWord =
+      /\b(?:songs?|tracks?|music|audio|tune|playlist|album|artist|singer|band|spotify|youtube|apple\s+music)\b/i.test(cleanUser);
+
+    const hasExplicitPlaybackVerb =
+      /\b(?:play|pause|resume|skip|stop|shuffle|next|previous)\b/i.test(cleanUser);
+
+    const hasExplicitSchedulerWord =
+      /\b(?:timer|alarm|stopwatch|remind|countdown)\b/i.test(cleanUser);
+
+    const isSchedulerAction =
+      intent.action === 'set_timer' ||
+      intent.action === 'set_alarm' ||
+      intent.action === 'cancel_timer' ||
+      intent.action === 'cancel_alarm' ||
+      intent.action === 'get_schedule_status';
+
+    // If it's a scheduler action, ensure scheduler intent is present
+    if (isSchedulerAction && !hasExplicitSchedulerWord) {
+      return {
+        authorized: false,
+        reason: 'scheduler_intent_missing',
+        error: `Scheduler action "${intent.action}" rejected because userText has no scheduler intent.`,
+      };
+    }
+
+    // If it's a conversational question with no explicit playback verb or music topic:
+    // (e.g. "What's your favourite Marvel character?", "Who is Iron Man?", "Tell me about your favourite superhero")
+    if (isConversationalQuestion && !hasExplicitPlaybackVerb && !hasExplicitMusicWord && !isSchedulerAction) {
+      return {
+        authorized: false,
+        reason: 'conversational_question_mismatch',
+        error: `Action "${intent.action}" is not authorized for conversational question: "${userText}"`,
+      };
+    }
+
+    // "favourite" / "fav" alone without music keywords must NOT authorize random music playback
+    if (
+      (intent.action === 'play_random_favorite' || intent.action === 'play_favorite') &&
+      /\b(?:favou?rites?|favs?)\b/i.test(cleanUser) &&
+      !hasExplicitMusicWord &&
+      !hasExplicitPlaybackVerb
+    ) {
+      return {
+        authorized: false,
+        reason: 'favourite_keyword_alone_insufficient',
+        error: 'The word "favourite" alone without music context cannot trigger playback.',
+      };
+    }
+  }
+
+  // 3. Required arguments validation
+  if (intent.action === 'play_track' && (!intent.query || !intent.query.trim())) {
+    if (!env.media?.active) {
+      return { authorized: false, reason: 'missing_required_query' };
+    }
+  }
+
+  return { authorized: true };
+}
+
+/**
+ * Process a voice turn: checks for intent, executes real music action if authorized,
  * and returns truth-grounded spoken and transcript text.
  *
  * @param {string} rawLlmResponse - Raw text response from LLM
  * @param {object} env - Execution environment { media, onControl, customStorage }
+ * @param {string} originalUserText - Original spoken user text for action authorization
  * @returns {object} { executed: boolean, actionResult: object|null, spokenText: string, transcriptText: string }
  */
-export function processTurnIntent(rawLlmResponse, env = {}) {
+export function processTurnIntent(rawLlmResponse, env = {}, originalUserText = '') {
   const { hasIntent, intent, cleanedText, error } = parseActionIntent(rawLlmResponse);
 
   if (error) {
@@ -128,6 +217,22 @@ export function processTurnIntent(rawLlmResponse, env = {}) {
     return {
       executed: false,
       intent: null,
+      actionResult: null,
+      spokenText: text,
+      transcriptText: text,
+    };
+  }
+
+  // Fix 3: Action Authorization Guard
+  const auth = isActionAuthorized(intent, originalUserText, env);
+  if (!auth.authorized) {
+    console.warn('[Jadu Voice Intent] Action denied by authorization policy:', auth.reason, auth.error);
+    const text = cleanedText || rawLlmResponse || '';
+    return {
+      executed: false,
+      intent: null,
+      unauthorizedAction: intent,
+      rejectionReason: auth.reason,
       actionResult: null,
       spokenText: text,
       transcriptText: text,

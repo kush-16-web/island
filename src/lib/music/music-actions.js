@@ -883,13 +883,21 @@ export function executeMusicAction(intent, env = {}) {
         }
       }
 
-      // Never fabricate tracks or playback URLs
-      return {
-        ok: false,
-        action,
-        reason: 'not_found',
-        spokenConfirmation: `I couldn't find "${query}" in your available tracks or favorites.`,
+      // Non-favorite explicit playback query -> dispatch via on-demand search on YouTube Music
+      const searchTrack = {
+        title: query,
+        provider: explicitProvider || SUPPORTED_PROVIDERS.YOUTUBE,
       };
+
+      return handlePlaybackExecution(searchTrack, {
+        action: 'play_track',
+        media,
+        companion,
+        onControl,
+        onOpenUrl,
+        onDispatchCompanion,
+        turnId,
+      });
     }
 
     case 'set_timer':

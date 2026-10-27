@@ -888,7 +888,7 @@ export function useRealtimeVoice(options = {}) {
         turnResult = processTurnIntent(llmReplyText, {
           media: mediaRef.current || { active: false },
           onControl: onControlRef.current || ((act) => window.island?.media?.control?.(act)),
-        });
+        }, userText);
         latencyTracker.recordStage(turnId, 'tool_end');
 
         let agentResponse;

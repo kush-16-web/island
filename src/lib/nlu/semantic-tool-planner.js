@@ -285,23 +285,24 @@ export function planUserIntent(rawText, contextSnapshot = null) {
     };
   }
 
-  // 3. Informational Questions about Artist, Song, Album (Must NOT trigger playback!)
+  // 3. Informational Questions about Artist, Song, Album or General Knowledge (Must NOT trigger playback!)
   if (
     /\b(?:tell\s+me\s+about|who\s+is|who\s+wrote|who\s+sings|what\s+genre\s+is|information\s+about|lyrics\s+of)\b/i.test(normalized)
   ) {
+    const isExplicitMusicTopic = /\b(?:artist|singer|band|song|album|track|lyrics|genre|musician|spotify|youtube)\b/i.test(normalized);
     return {
       plan: {
         type: ACTION_TYPES.CONVERSATION_INFO,
-        topic: 'music_trivia',
+        topic: isExplicitMusicTopic ? 'music_trivia' : 'general_knowledge',
         query: trimmed,
       },
       confidence: 'high',
-      fallbackToLlm: true, // Allow conversational LLM to answer artist facts
+      fallbackToLlm: true, // Allow conversational LLM to answer facts
     };
   }
 
   // 4. Basic Transport Controls
-  if (/^(?:pause|stop\s+music|stop\s+the\s+music|pause\s+playback|halt)$/i.test(normalized)) {
+  if (/^(?:pause|pause\s+(?:the\s+)?music|stop\s+music|stop\s+the\s+music|pause\s+playback|halt)$/i.test(normalized)) {
     return { plan: { type: ACTION_TYPES.MUSIC_CONTROL, operation: 'pause' }, confidence: 'high', fallbackToLlm: false };
   }
   if (/^(?:resume|unpause|continue\s+playing)$/i.test(normalized)) {

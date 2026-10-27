@@ -77,12 +77,16 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
   const cleaned = sanitizeSpokenInput(rawText);
   if (!cleaned) return { handledLocally: false };
 
+  // Fix 4: Suspend stale music context on conversational topic switch
+  musicContext.suspendOnTopicSwitch(rawText);
+
   // Guard against non-music utterances containing "play"
   for (const nonMusicPattern of NON_MUSIC_PLAY_PATTERNS) {
     if (nonMusicPattern.test(rawText)) {
       return { handledLocally: false, fallbackToLlm: true, reason: 'conversational_phrase' };
     }
   }
+
 
   const media = env.media || { active: false };
   const storage = env.storage || env.customStorage || null;
@@ -335,6 +339,17 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     }
   }
 
+  // Fix 1 & Fix 2: Conversational question guard (do not hijack general knowledge, opinions, or preferences)
+  const isConversationalQuestion =
+    /^(?:what(?:'s|\s+is|\s+are)?|who(?:'s|\s+is|\s+are)?|why\s+|how\s+|when\s+|where\s+|tell\s+me(?:\s+about)?|do\s+you\s+(?:like|think|have|know)|can\s+you\s+explain|what\s+do\s+you\s+think|describe)\b/i.test(cleaned);
+  const isPlayingQuery = /^(?:what(?:'s|\s+is)\s+(?:playing|this\s+song|this\s+track)|current\s+song|song\s+name|what\s+song\s+is\s+this)\b/i.test(cleaned);
+  const hasExplicitMusicWord = /\b(?:songs?|tracks?|music|audio|tune|playlist|album|artist|singer|band|spotify|youtube|apple\s+music)\b/i.test(cleaned);
+  const hasExplicitPlaybackVerb = /^(?:play|pause|resume|skip|stop|shuffle|next|previous)\b/i.test(cleaned);
+
+  if (isConversationalQuestion && !isPlayingQuery && !hasExplicitPlaybackVerb && !hasExplicitMusicWord) {
+    return { handledLocally: false, fallbackToLlm: true, reason: 'conversational_question' };
+  }
+
   // 0B. Multi-Action Commands (Priority 3)
   const plan = parseMultiActionPlan(rawText, env);
   if (plan && plan.steps.length > 1) {
@@ -517,22 +532,54 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
     });
   }
 
-  // 2. Favorites Commands: Shuffle / Something / Saved songs / Spotify favorite
-  if (/^play\s+(?:something\s+from\s+)?(?:my\s+)?spotify\s+favorites?$/i.test(cleaned) ||
-      /^play\s+(?:a\s+)?spotify\s+favorite$/i.test(cleaned)) {
+  // 2. Favorites Commands: Shuffle / Something / Saved songs / Spotify favorite / My favourite songs
+  if (/^play\s+(?:something\s+from\s+)?(?:my\s+)?spotify\s+favou?rites?$/i.test(cleaned) ||
+      /^play\s+(?:a\s+)?spotify\s+favou?rite$/i.test(cleaned)) {
     return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'play_random_favorite', provider: 'spotify' }, env),
     });
   }
 
-  if (/^play\s+(something|anything|a\s+song|random)\s+from\s+(my\s+)?favorites$/i.test(cleaned) ||
-      /^play\s+my\s+(saved\s+songs|favorites)$/i.test(cleaned) ||
-      /^shuffle\s+(my\s+)?favorites$/i.test(cleaned)) {
+  if (/^play\s+(something|anything|a\s+song|random)\s+from\s+(my\s+)?favou?rites?$/i.test(cleaned) ||
+      /^play\s+my\s+(saved\s+songs?|favou?rites?(\s+songs?)?|favs)$/i.test(cleaned) ||
+      /^shuffle\s+(my\s+)?(saved\s+songs?|favou?rites?(\s+songs?)?|favs)$/i.test(cleaned)) {
     return wrapResult({
       handledLocally: true,
       actionResult: executeMusicAction({ action: 'play_random_favorite' }, env),
     });
+  }
+
+  // 2B. Conversational Follow-up: "Play another one" / "Another one" / "Play another song"
+  if (/^(?:play\s+)?another\s+(?:one|song|track)$/i.test(cleaned) || /^another\s+one$/i.test(cleaned)) {
+    const hasActiveContext = Boolean(
+      musicContext.lastSuccessfulAction ||
+      (media && media.active) ||
+      (musicContext.recentRequests && musicContext.recentRequests.length > 0)
+    );
+    if (hasActiveContext) {
+      if (media && media.active && media.status === 'playing') {
+        return wrapResult({
+          handledLocally: true,
+          actionResult: executeMusicAction({ action: 'next_track' }, env),
+        });
+      }
+      return wrapResult({
+        handledLocally: true,
+        actionResult: executeMusicAction({ action: 'play_random_favorite' }, env),
+      });
+    } else {
+      return wrapResult({
+        handledLocally: true,
+        actionResult: {
+          ok: false,
+          action: 'clarification_needed',
+          clarificationNeeded: true,
+          reason: 'missing_context',
+          spokenConfirmation: 'What would you like me to play?',
+        },
+      });
+    }
   }
 
   // 3. Favorites Command: Most recently liked song ("Play the song I just liked / saved")

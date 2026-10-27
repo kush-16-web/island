@@ -200,6 +200,39 @@ class MusicConversationContext {
   }
 
   /**
+   * Suspends and clears pending music correction / follow-up context when the user switches
+   * to an unrelated conversational topic (e.g. Marvel characters, general knowledge, movies, food).
+   * Preserves user favorites and playback history.
+   *
+   * @param {string} userText - User utterance
+   * @returns {boolean} Whether a topic switch was detected and context suspended
+   */
+  suspendOnTopicSwitch(userText) {
+    if (!userText || typeof userText !== 'string') return false;
+    const lower = userText.trim().toLowerCase();
+
+    // Check for conversational questions or non-music entities
+    const isQuestionOrChat =
+      /^(?:what(?:'s|\s+is|\s+are)?|who(?:'s|\s+is|\s+are)?|why\s+|how\s+|when\s+|where\s+|tell\s+me\s+about|do\s+you\s+(?:like|think|have|know)|can\s+you\s+explain|what\s+do\s+you\s+think|describe)\b/i.test(lower);
+
+    const nonMusicEntity =
+      /\b(?:marvel|dc|avengers|iron\s*man|batman|superman|spider-?man|thor|captain\s*america|hulk|thanos|superhero|hero|villain|character|movie|actor|actress|film|book|author|food|dish|color|colour|animal|pet|hobby|game|philosophy|weather|science|history|joke|quote)\b/i.test(lower);
+
+    // Explicit music keywords that indicate user is still talking about music
+    const hasExplicitMusicWord =
+      /\b(?:songs?|tracks?|music|audio|tune|playlist|album|artist|singer|band|spotify|youtube)\b/i.test(lower);
+
+    if ((isQuestionOrChat || nonMusicEntity) && !hasExplicitMusicWord) {
+      this.pendingIntent = null;
+      this.previousCandidates = [];
+      this.lastFailedAction = null;
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Detect if the incoming user utterance is a correction of the previous music turn.
    *
    * @param {string} userText - Raw transcribed user speech
@@ -207,6 +240,11 @@ class MusicConversationContext {
    */
   detectCorrection(userText) {
     if (!userText || typeof userText !== 'string') return null;
+
+    // Fix 4: If user switched topic to a conversational question, this is never a music correction!
+    if (this.suspendOnTopicSwitch(userText)) {
+      return null;
+    }
 
     const trimmed = userText.trim();
     const lower = trimmed.toLowerCase();
