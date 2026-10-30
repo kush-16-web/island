@@ -206,6 +206,56 @@ class LatencyTracker {
     return Math.round(sum / this.history.length);
   }
 
+  /**
+   * Sample event loop lag asynchronously.
+   * Returns lag in milliseconds above the nominal 10ms timer delay.
+   */
+  async measureEventLoopLag() {
+    const start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const delta = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - start;
+        const lagMs = Math.max(0, Math.round(delta - 10));
+        resolve(lagMs);
+      }, 10);
+    });
+  }
+
+  /**
+   * Capture bounded runtime diagnostics snapshot (Ryzen 3 7320U, 8 GB RAM friendly).
+   */
+  async captureSystemSnapshot() {
+    let mainSystem = null;
+    if (typeof window !== 'undefined' && window.island?.getSystemDiagnostics) {
+      try {
+        mainSystem = await window.island.getSystemDiagnostics();
+      } catch {}
+    } else if (typeof process !== 'undefined' && process.memoryUsage) {
+      const mem = process.memoryUsage();
+      mainSystem = {
+        ok: true,
+        memory: {
+          rssMb: Math.round((mem.rss || 0) / (1024 * 1024)),
+          heapUsedMb: Math.round((mem.heapUsed || 0) / (1024 * 1024)),
+        },
+      };
+    }
+
+    let rendererHeapMb = null;
+    if (typeof performance !== 'undefined' && performance.memory) {
+      rendererHeapMb = Math.round(performance.memory.usedJSHeapSize / (1024 * 1024));
+    }
+
+    const eventLoopLagMs = await this.measureEventLoopLag();
+
+    return {
+      timestamp: Date.now(),
+      mainProcess: mainSystem,
+      rendererHeapMb,
+      eventLoopLagMs,
+    };
+  }
+
   reset() {
     this.turns.clear();
     this.history = [];

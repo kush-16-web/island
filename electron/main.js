@@ -913,6 +913,29 @@ function wireIpc() {
     }
   });
 
+  handle('diagnostics:get-system-status', () => {
+    try {
+      const mem = process.memoryUsage ? process.memoryUsage() : {};
+      const cpu = process.cpuUsage ? process.cpuUsage() : {};
+      return {
+        ok: true,
+        timestamp: Date.now(),
+        uptimeSeconds: Math.round(process.uptime ? process.uptime() : 0),
+        memory: {
+          rssMb: Math.round((mem.rss || 0) / (1024 * 1024)),
+          heapUsedMb: Math.round((mem.heapUsed || 0) / (1024 * 1024)),
+          heapTotalMb: Math.round((mem.heapTotal || 0) / (1024 * 1024)),
+          externalMb: Math.round((mem.external || 0) / (1024 * 1024)),
+        },
+        cpu,
+        arch: process.arch,
+        platform: process.platform,
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
   // The window is focusable while active
   listen('win:focusable', (focusable) => {
     if (!win || win.isDestroyed()) return;

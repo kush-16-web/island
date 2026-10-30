@@ -180,6 +180,9 @@ export function useRealtimeVoice(options = {}) {
           setErrorMessage(null);
           setCooldownSeconds(0);
           window.island?.setVoiceMood?.('listening');
+          if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+            audioContextRef.current.resume().catch(() => {});
+          }
         } else if (newState === 'error') {
           setStatus('error');
           setErrorMessage(meta.error || 'Voice error occurred.');
@@ -204,6 +207,24 @@ export function useRealtimeVoice(options = {}) {
     } catch {}
     controller.setSilenceDurationMs(ms);
   }, [controller]);
+
+  // Chromium AudioContext resilience helper: resumes context if suspended by idle/blur
+  const resumeAudioContextIfSuspended = useCallback(() => {
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume().catch((err) => {
+        console.warn('[Microphone] Failed to resume suspended AudioContext:', err);
+      });
+    }
+  }, []);
+
+  // Resume microphone pipeline whenever window gains focus
+  useEffect(() => {
+    const handleFocus = () => {
+      resumeAudioContextIfSuspended();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [resumeAudioContextIfSuspended]);
 
   // Clean up all audio contexts, tracks, and timers
   const cleanup = useCallback(() => {
@@ -639,7 +660,31 @@ export function useRealtimeVoice(options = {}) {
       }
 
       let audioData = null;
+      let bufferRms = 0;
+      let bufferDurationMs = 0;
+
       if (!isDirectText && samplesOrText) {
+        // Calculate sample statistics: duration and RMS energy
+        const len = samplesOrText.length || 0;
+        bufferDurationMs = (len / sampleRate) * 1000;
+        let sumSq = 0;
+        for (let i = 0; i < len; i++) {
+          sumSq += samplesOrText[i] * samplesOrText[i];
+        }
+        bufferRms = len > 0 ? Math.sqrt(sumSq / len) : 0;
+
+        // Reject obvious empty/near-silence audio before calling Whisper API
+        if (bufferRms < 0.0035 && bufferDurationMs < 1200) {
+          logDevStage(4, 'Discarded near-silence audio buffer before STT', {
+            bufferRms,
+            bufferDurationMs,
+            turnId,
+          });
+          controller.resetToListening(turnId);
+          resumeAudioContextIfSuspended();
+          return;
+        }
+
         // Encode samples into standard 16-bit mono WAV
         const wavBuffer = encodeWav(samplesOrText, sampleRate);
         audioData = arrayBufferToBase64(wavBuffer);
@@ -689,12 +734,13 @@ export function useRealtimeVoice(options = {}) {
 
           if (sttRes.empty || !sttRes.text?.trim()) {
             controller.resetToListening(turnId);
+            resumeAudioContextIfSuspended();
             return;
           }
 
           // Filter out obvious hallucination artifacts on silence or noise
           const rawLower = sttRes.text.trim().toLowerCase();
-          const isHallucination = [
+          const isClassicHallucination = [
             'thank you for watching',
             'thanks for watching',
             'subtitles by',
@@ -702,8 +748,18 @@ export function useRealtimeVoice(options = {}) {
             'subscribe to my channel',
           ].some((phrase) => rawLower.includes(phrase));
 
-          if (isHallucination || /^[.\s?!,;:\-_–—…]+$/.test(sttRes.text.trim())) {
+          // Whisper phantom closings on quiet/short noise ("thank you", "thanks", "you", "bye")
+          const isPhantomClosing = /^(?:thank\s+you|thanks|you|bye)[.!]?$/i.test(rawLower);
+          const isLowEnergyOrShort = bufferRms < 0.018 || bufferDurationMs < 900;
+
+          if (isClassicHallucination || (isPhantomClosing && isLowEnergyOrShort) || /^[.\s?!,;:\-_–—…]+$/.test(sttRes.text.trim())) {
+            logDevStage(4, 'Whisper hallucination / ghost speech rejected', {
+              text: sttRes.text,
+              bufferRms,
+              bufferDurationMs,
+            });
             controller.resetToListening(turnId);
+            resumeAudioContextIfSuspended();
             return;
           }
 
@@ -861,6 +917,8 @@ export function useRealtimeVoice(options = {}) {
         // 3. Stage 2: Conversational LLM (if not handled by direct local action)
         latencyTracker.recordStage(turnId, 'llm_start');
         let llmReplyText = null;
+        const priorHistory = historyRef.current.slice(0, -1);
+
         if (chatProvider === 'groq') {
           if (!window.island?.groq?.chat) {
             throw new Error('Groq conversational service is not available in Electron.');
@@ -903,7 +961,7 @@ export function useRealtimeVoice(options = {}) {
               chatRes = await window.island.groq.chatStream({
                 streamId,
                 text: userText,
-                history: historyRef.current,
+                history: priorHistory,
                 assistantName,
                 userName,
                 model: groqChatModel,
@@ -924,7 +982,7 @@ export function useRealtimeVoice(options = {}) {
             if (!chatRes?.ok && chatRes?.streamFallback) {
               chatRes = await window.island.groq.chat({
                 text: userText,
-                history: historyRef.current,
+                history: priorHistory,
                 assistantName,
                 userName,
                 model: groqChatModel,
@@ -934,7 +992,7 @@ export function useRealtimeVoice(options = {}) {
           } else {
             chatRes = await window.island.groq.chat({
               text: userText,
-              history: historyRef.current,
+              history: priorHistory,
               assistantName,
               userName,
               model: groqChatModel,
@@ -970,7 +1028,7 @@ export function useRealtimeVoice(options = {}) {
           const chatRes = await window.island.gemini.processSpeech({
             audioData: sttProvider === 'gemini' ? audioData : null,
             text: userText || null,
-            history: historyRef.current,
+            history: priorHistory,
             assistantName,
             userName,
             skipTts: ttsEngine === 'kokoro',
@@ -1496,7 +1554,7 @@ export function useRealtimeVoice(options = {}) {
         window.island?.setVoiceMood?.('listening');
       }
     }
-  }, [controller, speakAssistantResponse]);
+  }, [controller, speakAssistantResponse, resumeAudioContextIfSuspended]);
 
   // Wire turn submission handler to controller
   useEffect(() => {
@@ -1512,20 +1570,23 @@ export function useRealtimeVoice(options = {}) {
     };
   }, [controller, submitUserSpeech]);
 
-  // Phase 3.5 Preparing-Speech Watchdog:
+  // Phase 3.5 & 3.6 Preparing-Speech Watchdog:
   // Guarantees that neither network latency, TTS silence, nor chunk stalls can leave Island stuck in 'preparing_speech'.
   useEffect(() => {
     if (status === 'preparing_speech') {
+      const targetTurnId = controller.turnId;
       const watchdog = setTimeout(() => {
         console.warn('[useRealtimeVoice] preparing_speech watchdog triggered after 15s; recovering to listening.');
+        sentenceChunkPlayer.cancel();
         audioCoordinator.restoreVolume({ durationMs: 800 });
-        controller.finishSpeaking(controller.activeTurnId, 'listening');
+        controller.finishSpeaking(targetTurnId, 'listening');
         setStatus('listening');
         window.island?.setVoiceMood?.('listening');
+        resumeAudioContextIfSuspended();
       }, 15000);
       return () => clearTimeout(watchdog);
     }
-  }, [status, controller]);
+  }, [status, controller, resumeAudioContextIfSuspended]);
 
   // Start real-time voice session
   const startSession = useCallback(async () => {

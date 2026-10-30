@@ -30,7 +30,7 @@ export function extractCleanTitleFromQuery(q) {
     .trim();
 }
 
-class MusicConversationContext {
+export class MusicConversationContext {
   constructor() {
     this.reset();
   }
@@ -211,8 +211,12 @@ class MusicConversationContext {
     if (!userText || typeof userText !== 'string') return false;
     const lower = userText.trim().toLowerCase();
 
-    // Check for conversational questions or non-music entities
+    // Check for conversational greetings, questions, or non-music entities
+    const isGreeting =
+      /^(?:hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening|what's\s+up|howdy|greetings|how\s+are\s+you)\b/i.test(lower);
+
     const isQuestionOrChat =
+      isGreeting ||
       /^(?:what(?:'s|\s+is|\s+are)?|who(?:'s|\s+is|\s+are)?|why\s+|how\s+|when\s+|where\s+|tell\s+me\s+about|do\s+you\s+(?:like|think|have|know)|can\s+you\s+explain|what\s+do\s+you\s+think|describe)\b/i.test(lower);
 
     const nonMusicEntity =

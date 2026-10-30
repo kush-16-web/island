@@ -433,26 +433,33 @@ For normal conversation, NEVER include an [[ACTION:...]] tag.`;
         }
       }
 
-      // Current user turn
-      const userParts = [];
-      if (audioData) {
-        userParts.push({
-          inlineData: {
-            mimeType: 'audio/wav',
-            data: audioData,
-          },
-        });
-      }
-      if (text) {
-        userParts.push({ text });
-      } else if (audioData) {
-        userParts.push({ text: `Listen carefully to my voice and respond to me, ${userName}, in under 2 sentences.` });
-      }
+      // Current user turn (deduplicate if history already included this exact turn)
+      const lastContent = contents[contents.length - 1];
+      const isDuplicateText = text && lastContent?.role === 'user' && lastContent?.parts?.[0]?.text === text;
 
-      contents.push({
-        role: 'user',
-        parts: userParts,
-      });
+      if (!isDuplicateText) {
+        const userParts = [];
+        if (audioData) {
+          userParts.push({
+            inlineData: {
+              mimeType: 'audio/wav',
+              data: audioData,
+            },
+          });
+        }
+        if (text) {
+          userParts.push({ text });
+        } else if (audioData) {
+          userParts.push({ text: `Listen carefully to my voice and respond to me, ${userName}, in under 2 sentences.` });
+        }
+
+        if (userParts.length > 0) {
+          contents.push({
+            role: 'user',
+            parts: userParts,
+          });
+        }
+      }
 
       // 2. Query gemini-3.5-flash
       const chatRes = await this._postJson(

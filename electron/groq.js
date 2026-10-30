@@ -277,7 +277,7 @@ const ALL_ISLAND_TOOLS = [...ISLAND_MUSIC_TOOLS, ...ISLAND_SCHEDULER_TOOLS, ...I
 class GroqService {
   constructor(options = {}) {
     this.store = options.store || null;
-    this.apiKey = this._loadApiKey();
+    this.apiKey = options.apiKey || this._loadApiKey();
     this.accessibleModels = this._loadAccessibleModels();
     this.activeStreams = new Map();
   }
@@ -796,7 +796,11 @@ Never execute music or scheduler tools for conversational questions, philosophic
     }
 
     if (text && text.trim()) {
-      messages.push({ role: 'user', content: text.trim() });
+      const cleanUserText = text.trim();
+      const lastMessage = messages[messages.length - 1];
+      if (!lastMessage || lastMessage.role !== 'user' || lastMessage.content !== cleanUserText) {
+        messages.push({ role: 'user', content: cleanUserText });
+      }
     }
 
     // Fix 1: Tool eligibility layer
@@ -1089,7 +1093,11 @@ Never execute music or scheduler tools for conversational questions, philosophic
     }
 
     if (text && text.trim()) {
-      messages.push({ role: 'user', content: text.trim() });
+      const cleanUserText = text.trim();
+      const lastMessage = messages[messages.length - 1];
+      if (!lastMessage || lastMessage.role !== 'user' || lastMessage.content !== cleanUserText) {
+        messages.push({ role: 'user', content: cleanUserText });
+      }
     }
 
     const eligibleTools = tools !== undefined

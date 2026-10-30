@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('island', {
   // Sanitized window & UI lifecycle diagnostics
   logLifecycle: (event, extra) => ipcRenderer.send('window:log-lifecycle', { event, ...extra }),
   getCrashDiagnostics: () => ipcRenderer.invoke('diagnostics:get-crash-logs'),
+  getSystemDiagnostics: () => ipcRenderer.invoke('diagnostics:get-system-status'),
 
   // Window behaviour: the window is click-through except over the island and pet.
   setIgnoreMouse: (ignore) => ipcRenderer.send('win:ignore-mouse', Boolean(ignore)),

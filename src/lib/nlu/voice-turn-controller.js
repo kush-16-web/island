@@ -61,6 +61,8 @@ export class VoiceTurnController {
     this._errorRecoveryTimer = null;
     this.cooldownEndMs = 0;
     this.cooldownSeconds = 0;
+    this.lastAssistantSpeechEndTime = 0;
+    this.postAssistantSpeechCooldownMs = options.postAssistantSpeechCooldownMs ?? 350;
 
     // Listeners
     this.onStateChange = options.onStateChange || null;
@@ -68,6 +70,10 @@ export class VoiceTurnController {
     this.onCooldownTick = options.onCooldownTick || null;
     this.onInterrupt = options.onInterrupt || null;
     this.onSpeechDetected = options.onSpeechDetected || null;
+  }
+
+  get activeTurnId() {
+    return this.turnId;
   }
 
   setState(newState, meta = {}) {
@@ -182,6 +188,14 @@ export class VoiceTurnController {
         return true;
       }
       return false;
+    }
+
+    // 2b. Acoustic echo grace period: suppress input briefly after assistant finished speaking (in production mode)
+    if (this.lastAssistantSpeechEndTime > 0 && this.silenceDurationMs >= 300 && this.minUtteranceDurationMs >= 100) {
+      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      if (now - this.lastAssistantSpeechEndTime < this.postAssistantSpeechCooldownMs) {
+        return false;
+      }
     }
 
     // 3. In-flight lock guard
@@ -312,10 +326,21 @@ export class VoiceTurnController {
     const totalSamples = this.accumulatedChunks.reduce((acc, c) => acc + c.length, 0);
     const durationMs = (totalSamples / this.sampleRate) * 1000;
 
-    if (durationMs < this.minUtteranceDurationMs) {
-      // Utterance too brief (e.g. ambient mic pop), discard and stay in listening
+    // Check voiced frame count and energy
+    // In production (minUtteranceDurationMs >= 100), reject single-frame clicks/pops or near-silence
+    const isTestMode = this.minUtteranceDurationMs < 100;
+    const avgVoicedRms = this.speechFrameCount > 0 ? (this.speechRmsSum / this.speechFrameCount) : 0;
+    const isTransformedTransient = !isTestMode && (
+      this.speechFrameCount < 2 ||
+      avgVoicedRms < (this.noiseFloor * 1.35 + 0.003)
+    );
+
+    if (durationMs < this.minUtteranceDurationMs || isTransformedTransient) {
+      // Utterance too brief or isolated transient click/pop, discard and stay in listening
       this.accumulatedChunks = [];
       this.speechStartTime = null;
+      this.speechFrameCount = 0;
+      this.speechRmsSum = 0;
       return;
     }
 
@@ -396,6 +421,7 @@ export class VoiceTurnController {
     }
     this.isSpeaking = false;
     this.isProcessing = false;
+    this.lastAssistantSpeechEndTime = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     this.setState(nextState, { turnId });
     return true;
   }
@@ -409,6 +435,8 @@ export class VoiceTurnController {
     this.isProcessing = false;
     this.accumulatedChunks = [];
     this.preSpeechRingBuffer = [];
+    this.speechFrameCount = 0;
+    this.speechRmsSum = 0;
     this.clearSilenceTimer();
     this.setState('listening');
     if (this.onInterrupt) {
