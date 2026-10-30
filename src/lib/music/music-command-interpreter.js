@@ -25,6 +25,7 @@ import { parseMultiActionPlan, executeActionPlan } from '../action-plan.js';
 import { musicContext } from './music-conversation-context.js';
 import { planUserIntent, ACTION_TYPES } from '../semantic-tool-planner.js';
 import { isExplicitReadAloudRequest } from '../agent-response-contract.js';
+import { interpretDateTimeQuery } from '../datetime/datetime-service.js';
 
 // Conversational phrases containing "play" that are NOT music commands
 const NON_MUSIC_PLAY_PATTERNS = [
@@ -177,6 +178,25 @@ export function interpretLocalMusicCommand(rawText, env = {}) {
       }
 
       case ACTION_TYPES.CONVERSATION_INFO: {
+        if (p.topic === 'datetime') {
+          const dtResult = interpretDateTimeQuery(rawText, {
+            referenceDate: env.referenceDate || env.clock || env.now || null,
+            timezone: env.timezone || null,
+          });
+          if (dtResult.handled) {
+            return {
+              handledLocally: true,
+              actionResult: {
+                ok: true,
+                action: 'info_datetime',
+                isDateTime: true,
+                dateTime: dtResult,
+                spokenConfirmation: dtResult.speech,
+                displayText: dtResult.display,
+              },
+            };
+          }
+        }
         if (p.topic === 'weather') {
           return {
             handledLocally: true,

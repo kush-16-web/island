@@ -89,6 +89,9 @@ export default function InlineWeather({ weather }) {
           {locationType === 'approximate_ip' && (
             <span className="minimal-weather__approx" title="Approximate IP location">approx</span>
           )}
+          {weather.isStale && (
+            <span className="minimal-weather__approx" title="Cached observation">cached</span>
+          )}
         </div>
       </div>
 

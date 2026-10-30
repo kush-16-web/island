@@ -228,12 +228,18 @@ export function formatWeatherResponse(weatherData) {
     });
   }
 
-  const city = weatherData.location?.resolvedCity || weatherData.location?.queryCity || 'your area';
-  const temp = Math.round(weatherData.current?.temperature);
-  const condition = weatherData.current?.conditionText || 'Clear';
-  const feelsLike = weatherData.current?.apparentTemperature ? Math.round(weatherData.current.apparentTemperature) : null;
-  const high = weatherData.daily?.maxTemp ? Math.round(weatherData.daily.maxTemp) : null;
-  const low = weatherData.daily?.minTemp ? Math.round(weatherData.daily.minTemp) : null;
+  const city = weatherData.city || weatherData.location?.resolvedCity || weatherData.location?.queryCity || 'your area';
+  const temp = Math.round(weatherData.temperature ?? weatherData.current?.temperature ?? 0);
+  const condition = weatherData.condition || weatherData.current?.conditionText || 'Clear';
+  const feelsLike = weatherData.feelsLike !== undefined && weatherData.feelsLike !== null
+    ? Math.round(weatherData.feelsLike)
+    : (weatherData.current?.apparentTemperature ? Math.round(weatherData.current.apparentTemperature) : null);
+  const high = weatherData.high !== undefined && weatherData.high !== null
+    ? Math.round(weatherData.high)
+    : (weatherData.daily?.maxTemp ? Math.round(weatherData.daily.maxTemp) : null);
+  const low = weatherData.low !== undefined && weatherData.low !== null
+    ? Math.round(weatherData.low)
+    : (weatherData.daily?.minTemp ? Math.round(weatherData.daily.minTemp) : null);
 
   let displayText = `Weather in ${city}: ${temp}°C, ${condition}.`;
   if (feelsLike !== null && Math.abs(feelsLike - temp) >= 2) {

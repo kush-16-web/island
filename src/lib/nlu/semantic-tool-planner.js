@@ -285,6 +285,27 @@ export function planUserIntent(rawText, contextSnapshot = null) {
     };
   }
 
+  // 2B. Trusted Operating System Date, Time, and Weekday Queries
+  // "What day is today?", "What's today's date?", "What time is it?", "What day was yesterday?", "What weekday is November 5, 2026?"
+  const isDateTimeQuery =
+    /^(?:what(?:'s|\s+is)?|which)\s+(?:day(?:\s+is\s+it)?|weekday)\s+(?:today|is\s+today|yesterday|was\s+yesterday|tomorrow|is\s+tomorrow|on|is|was|will\s+be)\b/i.test(normalized) ||
+    /\b(?:what(?:'s|\s+is)\s+(?:today(?:'s)?\s+)?date|what\s+is\s+the\s+date|tell\s+me\s+the\s+date|today(?:'s)?\s+date)\b/i.test(normalized) ||
+    /\b(?:what(?:'s|\s+is)\s+(?:the\s+)?time|what\s+time\s+is\s+it|tell\s+me\s+the\s+time|current\s+time)\b/i.test(normalized) ||
+    /^(?:what|which)\s+(?:day(?:\s+of\s+the\s+week)?|weekday)\s+(?:is|was|will\s+be)\s+[a-z0-9\s,]+$/i.test(normalized) ||
+    /^(?:what\s+is\s+today|what\s+day\s+is\s+it|what\s+day\s+is\s+it\s+today)$/i.test(normalized);
+
+  if (isDateTimeQuery) {
+    return {
+      plan: {
+        type: ACTION_TYPES.CONVERSATION_INFO,
+        topic: 'datetime',
+        query: trimmed,
+      },
+      confidence: 'high',
+      fallbackToLlm: false,
+    };
+  }
+
   // 3. Informational Questions about Artist, Song, Album or General Knowledge (Must NOT trigger playback!)
   if (
     /\b(?:tell\s+me\s+about|who\s+is|who\s+wrote|who\s+sings|what\s+genre\s+is|information\s+about|lyrics\s+of)\b/i.test(normalized)

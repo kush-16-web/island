@@ -296,7 +296,9 @@ async function pollLoop() {
     console.warn('[Dynamic Island SW] pollLoop error:', err);
   } finally {
     isPolling = false;
-    const delay = consecutiveErrors > 3 ? ERROR_BACKOFF_MS : POLL_INTERVAL_MS;
+    const delay = consecutiveErrors > 3
+      ? ERROR_BACKOFF_MS
+      : (ytMusicTabs.size > 0 ? 1000 : POLL_INTERVAL_MS);
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = setTimeout(pollLoop, delay);
   }

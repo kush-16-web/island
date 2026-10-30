@@ -288,6 +288,13 @@ export function deriveSpecificActionConfirmation(actionResult) {
   if (act === 'session_dismiss') {
     return 'Have a great day.';
   }
+  if (act === 'query_status' || act === 'query_timer' || act === 'query_alarm' || act === 'query_label') {
+    return actionResult.displayText || actionResult.message || 'Checked scheduler.';
+  }
 
-  return 'Ready.';
+  // Priority 2 Fix: Never fall back to misleading static strings like 'Ready.'
+  if (actionResult.message) return actionResult.message;
+  if (actionResult.displayText) return actionResult.displayText;
+  if (actionResult.confirmation) return actionResult.confirmation;
+  return actionResult.ok ? 'Done.' : (actionResult.error || "I couldn't complete that action.");
 }

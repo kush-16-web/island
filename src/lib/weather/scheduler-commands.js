@@ -219,10 +219,14 @@ export function extractPurposeLabel(norm, rawText = '') {
   if (!norm || typeof norm !== 'string') return null;
 
   // 1. "to <purpose>" clause:
-  // e.g. "set a timer for one minute to drink water", "give me five minutes to stretch", "alarm at seven to go to the gym"
+  // e.g. "set a timer for one minute to drink water", "remind me to check the oven in 15 minutes", "take a break"
   const toMatch = norm.match(/\bto\s+([a-z0-9\s]+?)(?:[.,;!?]|$)/i);
   if (toMatch) {
     let candidate = toMatch[1].trim();
+    // Stop before trailing relative duration: "check the oven in 15 minutes" -> "check the oven"
+    candidate = candidate.replace(/\s+(?:in|for)\s+(?:\d+|[a-z]+)\s*(?:seconds?|minutes?|hours?|mins?|secs?)\b.*$/i, '').trim();
+    // Strip leading "remind me to" or "remember to"
+    candidate = candidate.replace(/^(?:remind\s+(?:me|us)\s+to\s+|remember\s+to\s+)/i, '').trim();
     // Normalize phrases like "go to the gym" -> "Gym"
     if (/\b(?:go\s+to\s+the\s+)?gym\b/i.test(candidate)) {
       return 'Gym';
@@ -561,8 +565,23 @@ export function parseSchedulerIntent(rawText, options = {}) {
     };
   }
 
-  // 2. Status & Remaining Time Queries
-  // e.g. "How much time is left?", "How much time is left on my timer?", "What alarms do I have?", "Do I have any timers?"
+  // 2. Label & Name Queries
+  // e.g. "What did you label my timer?", "What is my timer called?", "What is the label on my timer?", "What's my timer named?"
+  const isLabelQuery =
+    /\b(?:what\s+(?:did\s+you\s+label|is\s+(?:the\s+)?label|is\s+my\s+timer\s+called|is\s+the\s+name\s+of\s+my\s+timer))\b/i.test(norm) ||
+    /^(?:what(?:'s|\s+is)\s+my\s+timer\s+(?:label|called|named)|what\s+label)\b/i.test(norm);
+
+  if (isLabelQuery) {
+    return {
+      isScheduler: true,
+      intent: 'QUERY_LABEL',
+      target: 'timer',
+      rawText,
+    };
+  }
+
+  // 3. Status & Remaining Time Queries
+  // e.g. "How much time is left?", "How much time is left on my timer?", "What alarms do I have?", "Do I have any timers?", "Which timers are running?"
   const isRemainingQuery =
     /^(?:how\s+much\s+time\s+is\s+left|how\s+much\s+time\s+left|what\s+is\s+the\s+time\s+left|time\s+left)\b/i.test(norm) ||
     /\b(?:how\s+much\s+time\s+is\s+left|time\s+left\s+on\s+my\s+timer|remaining\s+time)\b/i.test(norm);
@@ -572,8 +591,8 @@ export function parseSchedulerIntent(rawText, options = {}) {
     /\b(?:what\s+alarms\s+do\s+i\s+have|do\s+i\s+have\s+(?:an\s+|any\s+)?alarms?|show\s+my\s+alarms)\b/i.test(norm);
 
   const isTimerQuery =
-    /^(?:do\s+i\s+have|show|list|any)\s+(?:any\s+|my\s+)?timers?\b/i.test(norm) ||
-    /\b(?:do\s+i\s+have\s+(?:a\s+|any\s+)?timers?|show\s+my\s+timers|timers?\s+running)\b/i.test(norm);
+    /^(?:do\s+i\s+have|show|list|any|which)\s+(?:any\s+|my\s+)?timers?\b/i.test(norm) ||
+    /\b(?:do\s+i\s+have\s+(?:a\s+|any\s+)?timers?|show\s+my\s+timers|which\s+timers?|timers?\s+(?:are\s+)?running|active\s+timers?)\b/i.test(norm);
 
   if (isRemainingQuery || isAlarmQuery || isTimerQuery) {
     return {
@@ -589,6 +608,7 @@ export function parseSchedulerIntent(rawText, options = {}) {
   // "give me five minutes to stretch", "start a ten-minute break timer"
   const isTimerTrigger =
     /\b(?:timer|countdown)\b/i.test(norm) ||
+    /\b(?:remind\s+(?:me|us)|set\s+(?:a\s+)?reminder)\b/i.test(norm) ||
     (/\balarm\b/i.test(norm) && /\b(?:for|in)\s+(\d+|[a-z]+)\s*(?:seconds?|minutes?|hours?|secs?|mins?)\b/i.test(norm)) ||
     /\b(?:give\s+me|need|take)\s+(?:\d+|[a-z]+)\s*(?:seconds?|minutes?|hours?|mins?|secs?)\b/i.test(norm) ||
     /^(?:start|set|put\s+on)\s+(?:a\s+)?(?:\d+|[a-z]+)[-\s](?:second|minute|hour)\b/i.test(norm);
@@ -851,15 +871,62 @@ export async function executeSchedulerIntent(parsed, env = {}) {
     }
   }
 
-  // 5. QUERY_STATUS
-  if (parsed.intent === 'QUERY_STATUS') {
+  // 5. QUERY_LABEL (Phase 3.5: Query exact timer labels)
+  if (parsed.intent === 'QUERY_LABEL') {
+    const getFireAt = (i) => i.fireAt || i.endAt || i.expiresAt || 0;
     const activeTimers = schedule
-      .filter((i) => i.kind === 'timer' && i.enabled && i.fireAt > now)
-      .sort((a, b) => a.fireAt - b.fireAt);
+      .filter((i) => (i.kind === 'timer' || i.type === 'timer') && i.enabled !== false && getFireAt(i) > now)
+      .sort((a, b) => getFireAt(a) - getFireAt(b));
+
+    if (activeTimers.length === 0) {
+      return {
+        ok: true,
+        action: 'query_label',
+        spokenConfirmation: "You don't have any active timers running right now.",
+        displayText: "No active timers.",
+      };
+    }
+
+    if (activeTimers.length === 1) {
+      const t = activeTimers[0];
+      const rem = formatDurationSpeech(getFireAt(t) - now);
+      const hasCustom = t.label && t.label !== 'Timer' && t.label !== 'Alarm';
+      const spoken = hasCustom
+        ? `Your timer is labeled ${t.label}, with ${rem} remaining.`
+        : `Your timer does not have a custom label; it is running with ${rem} remaining.`;
+      return {
+        ok: true,
+        action: 'query_label',
+        label: t.label,
+        item: t,
+        spokenConfirmation: spoken,
+        displayText: spoken,
+      };
+    }
+
+    const summary = activeTimers
+      .map((t) => `${t.label || 'Timer'} (${formatDurationSpeech(getFireAt(t) - now)} remaining)`)
+      .join(', ');
+    const spoken = `You have ${activeTimers.length} active timers: ${summary}.`;
+    return {
+      ok: true,
+      action: 'query_label',
+      activeTimers,
+      spokenConfirmation: spoken,
+      displayText: spoken,
+    };
+  }
+
+  // 6. QUERY_STATUS
+  if (parsed.intent === 'QUERY_STATUS') {
+    const getFireAt = (i) => i.fireAt || i.endAt || i.expiresAt || 0;
+    const activeTimers = schedule
+      .filter((i) => (i.kind === 'timer' || i.type === 'timer') && i.enabled !== false && getFireAt(i) > now)
+      .sort((a, b) => getFireAt(a) - getFireAt(b));
 
     const activeAlarms = schedule
-      .filter((i) => i.kind === 'alarm' && i.enabled && i.fireAt)
-      .sort((a, b) => a.fireAt - b.fireAt);
+      .filter((i) => (i.kind === 'alarm' || i.type === 'alarm') && i.enabled !== false && (i.time || getFireAt(i)))
+      .sort((a, b) => getFireAt(a) - getFireAt(b));
 
     if (parsed.target === 'timer') {
       if (activeTimers.length === 0) {
@@ -872,7 +939,7 @@ export async function executeSchedulerIntent(parsed, env = {}) {
       }
       if (activeTimers.length === 1) {
         const t = activeTimers[0];
-        const rem = formatDurationSpeech(t.fireAt - now);
+        const rem = formatDurationSpeech(getFireAt(t) - now);
         const spoken = t.label && t.label !== 'Timer'
           ? `You have ${rem} left on your ${t.label} timer.`
           : `You have ${rem} left on your timer.`;
@@ -885,10 +952,9 @@ export async function executeSchedulerIntent(parsed, env = {}) {
       }
       // Multiple timers
       const summary = activeTimers
-        .slice(0, 3)
-        .map((t) => `${formatDurationSpeech(t.fireAt - now)}${t.label && t.label !== 'Timer' ? ` for ${t.label}` : ''}`)
+        .map((t) => `${t.label && t.label !== 'Timer' ? t.label : 'Timer'}: ${formatDurationSpeech(getFireAt(t) - now)} remaining`)
         .join(', and ');
-      const spoken = `You have ${activeTimers.length} active timers: ${summary}.`;
+      const spoken = `You have ${activeTimers.length} timers running: ${summary}.`;
       return {
         ok: true,
         action: 'query_status',

@@ -6,6 +6,13 @@ import { Icon } from '../icons';
 import WindowsVoicePreview from '../voice/WindowsVoicePreview';
 import VoiceOutputDiagnostic from '../voice/VoiceOutputDiagnostic';
 import { getAssistantName, setAssistantName } from '../../lib/assistant';
+import {
+  getUserLocation,
+  setUserLocation,
+  initInstallationLocation,
+  searchLocations,
+  SURAT_DEFAULT_LOCATION,
+} from '../../lib/weather';
 
 /**
  * SettingsPanel: Apple-inspired desktop preferences for Dynamic Island.
@@ -93,6 +100,39 @@ export default function SettingsPanel({ accentColor }) {
   const [refreshModelsMsg, setRefreshModelsMsg] = useState(null);
   const [refreshModelsError, setRefreshModelsError] = useState(null);
   const [groqModelNotice, setGroqModelNotice] = useState(null);
+  const [userLocation, setUserLocationState] = useState(() => {
+    return getUserLocation() || initInstallationLocation() || SURAT_DEFAULT_LOCATION;
+  });
+  const [citySearchInput, setCitySearchInput] = useState('');
+  const [locationSearchResults, setLocationSearchResults] = useState([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [locationStatusMsg, setLocationStatusMsg] = useState(null);
+
+  const handleSelectCityPreset = (cityItem) => {
+    setUserLocation(cityItem);
+    setUserLocationState(cityItem);
+    setLocationStatusMsg(`Location set to ${cityItem.city}, ${cityItem.country || 'India'}`);
+    setTimeout(() => setLocationStatusMsg(null), 3000);
+  };
+
+  const handleSearchCity = async () => {
+    if (!citySearchInput.trim()) return;
+    setIsSearchingLocation(true);
+    setLocationSearchResults([]);
+    try {
+      const results = await searchLocations(citySearchInput.trim());
+      setLocationSearchResults(results);
+      if (results.length === 0) {
+        setLocationStatusMsg('No matching cities found.');
+        setTimeout(() => setLocationStatusMsg(null), 3000);
+      }
+    } catch {
+      setLocationStatusMsg('Error searching for locations.');
+      setTimeout(() => setLocationStatusMsg(null), 3000);
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
 
   useEffect(() => {
     window.island?.getWindowDock?.().then((res) => {
@@ -703,6 +743,92 @@ export default function SettingsPanel({ accentColor }) {
               placeholder="Friend"
             />
           </div>
+        </div>
+      </div>
+
+      {/* Weather Location Preference */}
+      <div className="settings-group">
+        <div className="settings-row settings-row--wrap">
+          <div className="settings-row__text">
+            <span className="settings-row__title">Weather Location</span>
+            <span className="settings-row__sub">
+              {userLocation
+                ? `${userLocation.city}${userLocation.state ? ', ' + userLocation.state : ''}, ${userLocation.country || 'India'} • ${userLocation.timezone || 'Asia/Kolkata'}`
+                : 'No location configured • Select your city below'}
+            </span>
+          </div>
+          <div className="settings-chips">
+            {[
+              { city: 'Surat', state: 'Gujarat', country: 'India', lat: 21.1702, lon: 72.8311, timezone: 'Asia/Kolkata', label: 'Surat (Default)' },
+              { city: 'Ahmedabad', state: 'Gujarat', country: 'India', lat: 23.0225, lon: 72.5714, timezone: 'Asia/Kolkata', label: 'Ahmedabad' },
+              { city: 'Mumbai', state: 'Maharashtra', country: 'India', lat: 19.0760, lon: 72.8777, timezone: 'Asia/Kolkata', label: 'Mumbai' },
+              { city: 'Delhi', state: 'Delhi', country: 'India', lat: 28.6139, lon: 77.2090, timezone: 'Asia/Kolkata', label: 'Delhi' },
+              { city: 'Bengaluru', state: 'Karnataka', country: 'India', lat: 12.9716, lon: 77.5946, timezone: 'Asia/Kolkata', label: 'Bengaluru' },
+              { city: 'London', state: 'England', country: 'United Kingdom', lat: 51.5074, lon: -0.1278, timezone: 'Europe/London', label: 'London' },
+            ].map((locItem) => (
+              <button
+                key={locItem.label}
+                type="button"
+                className={`settings-chip ${userLocation?.city?.toLowerCase() === locItem.city.toLowerCase() ? 'is-active' : ''}`}
+                onClick={() => handleSelectCityPreset(locItem)}
+              >
+                {locItem.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Custom City Search & Disambiguation */}
+        <div style={{ marginTop: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="text"
+              className="settings-text-input"
+              value={citySearchInput}
+              onChange={(e) => setCitySearchInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearchCity(); }}
+              placeholder="Search any city (e.g. Pune, Tokyo, New York)..."
+              style={{ flex: 1, height: 32, fontSize: 11 }}
+            />
+            <button
+              type="button"
+              className="settings-chip is-active"
+              onClick={handleSearchCity}
+              disabled={isSearchingLocation || !citySearchInput.trim()}
+              style={{ height: 32 }}
+            >
+              {isSearchingLocation ? 'Searching...' : 'Search'}
+            </button>
+          </div>
+
+          {locationStatusMsg && (
+            <span className="settings-row__sub" style={{ color: 'var(--panel-accent)', fontSize: 11 }}>
+              {locationStatusMsg}
+            </span>
+          )}
+
+          {locationSearchResults.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+              <span className="settings-row__sub" style={{ fontSize: 10, opacity: 0.7 }}>Select matching city:</span>
+              <div className="settings-chips" style={{ flexWrap: 'wrap' }}>
+                {locationSearchResults.map((res, idx) => (
+                  <button
+                    key={`${res.city}-${idx}`}
+                    type="button"
+                    className="settings-chip"
+                    onClick={() => {
+                      handleSelectCityPreset(res);
+                      setLocationSearchResults([]);
+                      setCitySearchInput('');
+                    }}
+                    style={{ fontSize: 11 }}
+                  >
+                    {res.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

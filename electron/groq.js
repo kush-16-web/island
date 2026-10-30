@@ -242,13 +242,44 @@ const ISLAND_SCHEDULER_TOOLS = [
   },
 ];
 
-const ALL_ISLAND_TOOLS = [...ISLAND_MUSIC_TOOLS, ...ISLAND_SCHEDULER_TOOLS];
+// Standard Island Weather Tool Definitions (1 tool)
+const ISLAND_WEATHER_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_weather',
+      description: 'Get current weather and forecast for a given city or the local default area.',
+      parameters: {
+        type: 'object',
+        properties: {
+          location: {
+            type: 'string',
+            description: 'City name (e.g. Surat, Mumbai, New York) or empty for current/default location.',
+          },
+          timeframe: {
+            type: 'string',
+            enum: ['current', 'tomorrow', 'evening'],
+            description: 'Timeframe for the weather report.',
+          },
+          questionType: {
+            type: 'string',
+            enum: ['general', 'rain', 'heat', 'temperature'],
+            description: 'Type of weather question.',
+          },
+        },
+      },
+    },
+  },
+];
+
+const ALL_ISLAND_TOOLS = [...ISLAND_MUSIC_TOOLS, ...ISLAND_SCHEDULER_TOOLS, ...ISLAND_WEATHER_TOOLS];
 
 class GroqService {
   constructor(options = {}) {
     this.store = options.store || null;
     this.apiKey = this._loadApiKey();
     this.accessibleModels = this._loadAccessibleModels();
+    this.activeStreams = new Map();
   }
 
   /**
@@ -269,7 +300,19 @@ class GroqService {
     // Explicit command verbs
     const hasExplicitMusicCommand = /^(?:play|pause|resume|skip|stop|shuffle)\b/i.test(clean);
 
-    return isQuestion && !isPlaybackQuery && !hasExplicitMusicCommand;
+    // Weather questions must not be suppressed
+    const isWeather = this._hasWeatherIntent(clean);
+
+    return isQuestion && !isPlaybackQuery && !hasExplicitMusicCommand && !isWeather;
+  }
+
+  /**
+   * Check if utterance relates to weather or atmospheric conditions.
+   */
+  _hasWeatherIntent(text) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.trim().toLowerCase();
+    return /\b(?:weather|temperature|forecast|rain|raining|sunny|how\s+hot|is\s+it\s+hot|how\s+cold|is\s+it\s+cold)\b/i.test(clean);
   }
 
   /**
@@ -312,25 +355,22 @@ class GroqService {
     const clean = text.trim();
     const history = options.history || [];
 
-    // If conversational question without playback intent, provide NO tools!
-    if (this._isConversationalQuestion(clean)) {
+    const hasWeather = this._hasWeatherIntent(clean);
+
+    // If conversational question without playback or weather intent, provide NO tools!
+    if (this._isConversationalQuestion(clean) && !hasWeather) {
       return [];
     }
 
     const hasMusic = this._hasMusicIntent(clean, history);
     const hasScheduler = this._hasSchedulerIntent(clean);
 
-    if (hasMusic && hasScheduler) {
-      return ALL_ISLAND_TOOLS;
-    }
-    if (hasMusic) {
-      return ISLAND_MUSIC_TOOLS;
-    }
-    if (hasScheduler) {
-      return ISLAND_SCHEDULER_TOOLS;
-    }
+    let eligible = [];
+    if (hasMusic) eligible = eligible.concat(ISLAND_MUSIC_TOOLS);
+    if (hasScheduler) eligible = eligible.concat(ISLAND_SCHEDULER_TOOLS);
+    if (hasWeather) eligible = eligible.concat(ISLAND_WEATHER_TOOLS);
 
-    return [];
+    return eligible;
   }
 
   setStore(store) {
@@ -709,7 +749,29 @@ class GroqService {
       ? `Respond naturally in Hindi or Hinglish. If the user addresses you in English, respond in English.`
       : `Default to English, but naturally accommodate the language intentionally used by the user. Do not switch languages on isolated proper nouns or song titles.`;
 
+    const now = new Date();
+    let tz = 'Asia/Kolkata';
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+    } catch {}
+
+    let currentDateTimeStr = now.toISOString();
+    try {
+      const timeFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+      currentDateTimeStr = timeFormatter.format(now);
+    } catch {}
+
     const systemPrompt = `You are "${resolvedName}", an intelligent, witty, warm and concise desktop companion living inside Island for your human friend "${userName}".
+Temporal Ground Truth: Right now is ${currentDateTimeStr} (${tz} timezone). Today is firmly the current real-world date. Always respect this ground truth and never hallucinate past or future years.
 Keep your answers very concise (1 to 2 sentences maximum, never lengthy paragraphs or lists) so it sounds like real spoken dialogue.
 ${langInstruction}
 Never output markdown symbols like asterisks, bullet points, or emojis, since your text will be read aloud as speech.
@@ -945,6 +1007,341 @@ Never execute music or scheduler tools for conversational questions, philosophic
   }
 
   /**
+   * Conversational Streaming Chat API (Phase 3):
+   * Calls /openai/v1/chat/completions with stream: true and SSE parsing.
+   * Emits tokens and sentence/clause chunks progressively.
+   * Strictly enforces tool-call safety: never dispatches incomplete or unauthorized tools.
+   */
+  async chatStream({
+    streamId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    text,
+    history = [],
+    assistantName,
+    userName = 'Friend',
+    model = GROQ_DEFAULT_CHAT_MODEL,
+    temperature = 0.6,
+    language = 'en',
+    tools = undefined,
+    onToken = null,
+    onSentenceChunk = null,
+  }) {
+    if (!this.hasKey()) {
+      return {
+        ok: false,
+        error: 'GROQ_API_KEY is not configured. Please add your key in Settings -> AI Assistant.',
+        code: 'NO_KEY',
+      };
+    }
+
+    const requestedModel = model || GROQ_DEFAULT_CHAT_MODEL;
+    const resolvedName = (assistantName || 'Assistant').trim();
+    const preferredLang = (language || 'en').toLowerCase();
+    const langInstruction = preferredLang === 'en'
+      ? `Default to English for all responses. You also naturally understand Hindi, Hinglish, and other languages, but only switch languages when the user clearly and intentionally speaks in that language or asks you to speak in it. Never switch languages due to a single foreign word, proper noun, song title (e.g. Pashmina), or noisy transcription.`
+      : preferredLang === 'hi'
+      ? `Respond naturally in Hindi or Hinglish. If the user addresses you in English, respond in English.`
+      : `Default to English, but naturally accommodate the language intentionally used by the user. Do not switch languages on isolated proper nouns or song titles.`;
+
+    const now = new Date();
+    let tz = 'Asia/Kolkata';
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+    } catch {}
+
+    let currentDateTimeStr = now.toISOString();
+    try {
+      const timeFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+      currentDateTimeStr = timeFormatter.format(now);
+    } catch {}
+
+    const systemPrompt = `You are "${resolvedName}", an intelligent, witty, warm and concise desktop companion living inside Island for your human friend "${userName}".
+Temporal Ground Truth: Right now is ${currentDateTimeStr} (${tz} timezone). Today is firmly the current real-world date. Always respect this ground truth and never hallucinate past or future years.
+Keep your answers very concise (1 to 2 sentences maximum, never lengthy paragraphs or lists) so it sounds like real spoken dialogue.
+${langInstruction}
+Never output markdown symbols like asterisks, bullet points, or emojis, since your text will be read aloud as speech.
+When the user asks to play music, check the current song, or control playback, use the appropriate tool function.
+CRITICAL TOOL USAGE RULE:
+Never execute music or scheduler tools for conversational questions, philosophical queries, opinion questions (such as "What is your favourite Marvel character?"), or inquiries about fictional or real-world people/topics. Only execute a tool if the user explicitly commands a media action or scheduler action.`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+    ];
+
+    if (Array.isArray(history) && history.length > 0) {
+      const recent = history.slice(-6);
+      for (const item of recent) {
+        if (item.text && item.role) {
+          messages.push({
+            role: item.role === 'user' ? 'user' : 'assistant',
+            content: item.text,
+          });
+        }
+      }
+    }
+
+    if (text && text.trim()) {
+      messages.push({ role: 'user', content: text.trim() });
+    }
+
+    const eligibleTools = tools !== undefined
+      ? tools
+      : this.resolveEligibleTools(text, { history: messages });
+
+    const payload = {
+      model: requestedModel,
+      messages,
+      temperature,
+      max_tokens: 250,
+      stream: true,
+    };
+
+    if (Array.isArray(eligibleTools) && eligibleTools.length > 0) {
+      payload.tools = eligibleTools;
+      payload.tool_choice = 'auto';
+    }
+
+    const postData = JSON.stringify(payload);
+    const startTime = Date.now();
+
+    return new Promise((resolve) => {
+      let isAborted = false;
+      let firstTokenTime = null;
+      let accumulatedText = '';
+      let pendingSentenceText = '';
+      let sentenceChunkIndex = 0;
+      let sseBuffer = '';
+      const accumulatedToolCalls = [];
+
+      const req = https.request({
+        hostname: 'api.groq.com',
+        path: '/openai/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+        },
+        timeout: 15000,
+      }, (res) => {
+        if (typeof res.setEncoding === 'function') res.setEncoding('utf8');
+
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          let errBody = '';
+          res.on('data', (c) => { errBody += c; });
+          res.on('end', () => {
+            this.activeStreams.delete(streamId);
+            const errDetails = this._extractError(errBody, res);
+            resolve({
+              ok: false,
+              error: errDetails.message,
+              statusCode: res.statusCode,
+              code: errDetails.code,
+              streamFallback: true,
+            });
+          });
+          return;
+        }
+
+        res.on('data', (rawChunk) => {
+          if (isAborted) return;
+          sseBuffer += rawChunk;
+          const lines = sseBuffer.split(/\r?\n/);
+          // Keep incomplete line in buffer
+          sseBuffer = lines.pop();
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed === 'data: [DONE]') {
+              continue;
+            }
+            if (trimmed.startsWith('data: ')) {
+              const jsonStr = trimmed.slice(6).trim();
+              try {
+                const parsed = JSON.parse(jsonStr);
+                const choice = parsed.choices?.[0];
+                const delta = choice?.delta;
+
+                // 1. Accumulate and stream text tokens
+                if (delta?.content) {
+                  const token = delta.content;
+                  if (!firstTokenTime) {
+                    firstTokenTime = Date.now();
+                  }
+                  accumulatedText += token;
+                  pendingSentenceText += token;
+
+                  if (onToken) {
+                    onToken(token, accumulatedText);
+                  }
+
+                  // 2. Sentence boundary detection for TTS chunking
+                  // Splits on terminal punctuation (. ? ! \n) followed by whitespace, or clause breaks with length >= 28
+                  const boundaryMatch = pendingSentenceText.match(/([.?!]|\n+)(?:\s+|$)/);
+                  if (boundaryMatch) {
+                    const splitIdx = boundaryMatch.index + boundaryMatch[1].length;
+                    const chunkToEmit = pendingSentenceText.slice(0, splitIdx).trim();
+                    pendingSentenceText = pendingSentenceText.slice(splitIdx).trimStart();
+
+                    if (chunkToEmit && onSentenceChunk) {
+                      onSentenceChunk({
+                        index: sentenceChunkIndex++,
+                        text: chunkToEmit,
+                        isFinal: false,
+                      });
+                    }
+                  }
+                }
+
+                // 3. Tool Calls accumulation (never execute early or partially!)
+                if (Array.isArray(delta?.tool_calls)) {
+                  for (const tc of delta.tool_calls) {
+                    const idx = tc.index ?? 0;
+                    if (!accumulatedToolCalls[idx]) {
+                      accumulatedToolCalls[idx] = {
+                        name: tc.function?.name || '',
+                        arguments: tc.function?.arguments || '',
+                      };
+                    } else {
+                      if (tc.function?.name) accumulatedToolCalls[idx].name += tc.function.name;
+                      if (tc.function?.arguments) accumulatedToolCalls[idx].arguments += tc.function.arguments;
+                    }
+                  }
+                }
+              } catch {}
+            }
+          }
+        });
+
+        res.on('end', () => {
+          this.activeStreams.delete(streamId);
+          if (isAborted) return;
+
+          // Emit any trailing text as final sentence chunk
+          if (pendingSentenceText.trim() && onSentenceChunk) {
+            onSentenceChunk({
+              index: sentenceChunkIndex++,
+              text: pendingSentenceText.trim(),
+              isFinal: true,
+            });
+          }
+
+          // Process accumulated tool call, validating with Phase 1 authorization
+          let actionTag = null;
+          if (accumulatedToolCalls.length > 0) {
+            const firstTc = accumulatedToolCalls[0];
+            const fnName = firstTc.name;
+            let fnArgs = {};
+            try {
+              fnArgs = JSON.parse(firstTc.arguments || '{}');
+            } catch {}
+
+            // Validate that tool was actually eligible
+            const isAuthorized = Array.isArray(eligibleTools) &&
+              eligibleTools.some((t) => t.function?.name === fnName);
+
+            if (isAuthorized) {
+              actionTag = {
+                action: fnName,
+                query: fnArgs.query || undefined,
+              };
+            }
+          }
+
+          let finalModelText = accumulatedText.trim();
+          if (actionTag) {
+            const tagStr = `[[ACTION:${JSON.stringify(actionTag)}]]`;
+            finalModelText = finalModelText ? `${finalModelText} ${tagStr}` : tagStr;
+          }
+
+          const durationMs = Date.now() - startTime;
+          const firstTokenMs = firstTokenTime ? firstTokenTime - startTime : null;
+
+          this._logDiagnostic({
+            timestamp: new Date().toISOString(),
+            provider: 'groq',
+            model: requestedModel,
+            callType: 'chat-stream',
+            ok: true,
+            httpStatus: res.statusCode,
+            durationMs,
+            firstTokenMs,
+          });
+
+          resolve({
+            ok: true,
+            text: finalModelText,
+            hasAction: Boolean(actionTag),
+            action: actionTag,
+            provider: 'groq',
+            model: requestedModel,
+            firstTokenMs,
+            durationMs,
+            streamed: true,
+          });
+        });
+      });
+
+      req.on('timeout', () => {
+        this.activeStreams.delete(streamId);
+        req.destroy();
+        resolve({
+          ok: false,
+          error: 'Connection to Groq streaming API timed out (15s)',
+          provider: 'groq',
+          model: requestedModel,
+          streamFallback: true,
+        });
+      });
+
+      req.on('error', (err) => {
+        this.activeStreams.delete(streamId);
+        if (isAborted) {
+          resolve({ ok: false, error: 'Stream aborted', aborted: true });
+        } else {
+          resolve({
+            ok: false,
+            error: err.message || 'Network error on Groq stream',
+            provider: 'groq',
+            model: requestedModel,
+            streamFallback: true,
+          });
+        }
+      });
+
+      this.activeStreams.set(streamId, {
+        req,
+        abort: () => {
+          isAborted = true;
+          try { req.destroy(); } catch {}
+          this.activeStreams.delete(streamId);
+        },
+      });
+
+      req.write(postData);
+      req.end();
+    });
+  }
+
+  abortStream(streamId) {
+    const entry = this.activeStreams.get(streamId);
+    if (entry) {
+      entry.abort();
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Speech Recognition API (Groq Whisper):
    * Calls /openai/v1/audio/transcriptions with multipart/form-data.
    *
@@ -1132,6 +1529,7 @@ module.exports = {
   GroqService,
   ISLAND_MUSIC_TOOLS,
   ISLAND_SCHEDULER_TOOLS,
+  ISLAND_WEATHER_TOOLS,
   ALL_ISLAND_TOOLS,
   GROQ_DEFAULT_CHAT_MODEL,
   GROQ_FAST_CHAT_MODEL,

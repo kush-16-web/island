@@ -91,6 +91,9 @@ function CompactVoiceView({ voice, width }) {
   } else if (voice.status === 'speaking') {
     dotClass = 'is-speaking';
     stateLabel = 'Speaking';
+  } else if (voice.status === 'preparing_speech') {
+    dotClass = 'is-thinking';
+    stateLabel = 'Preparing';
   } else if (voice.status === 'connecting') {
     dotClass = 'is-connecting';
     stateLabel = 'Connecting';

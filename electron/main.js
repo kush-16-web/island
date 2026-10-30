@@ -1236,6 +1236,27 @@ function wireIpc() {
     return groqService.chat(params || {});
   });
 
+  handle('groq:chat-stream', (params) => {
+    if (!groqService) groqService = new GroqService({ store });
+    const streamId = params?.streamId || `stream_${Date.now()}`;
+    return groqService.chatStream({
+      ...params,
+      streamId,
+      onToken: (token, fullText) => {
+        send('groq:stream-token', { streamId, token, fullText });
+      },
+      onSentenceChunk: (chunk) => {
+        send('groq:stream-chunk', { streamId, ...chunk });
+      },
+    });
+  });
+
+  handle('groq:abort-stream', (params) => {
+    if (!groqService) groqService = new GroqService({ store });
+    const streamId = typeof params === 'string' ? params : params?.streamId;
+    return { ok: groqService.abortStream(streamId) };
+  });
+
   handle('groq:transcribe', (params) => {
     if (!groqService) groqService = new GroqService({ store });
     return groqService.transcribe(params || {});

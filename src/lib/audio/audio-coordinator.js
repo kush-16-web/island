@@ -389,4 +389,5 @@ class AudioCoordinator {
 }
 
 export const audioCoordinator = new AudioCoordinator();
+export { AudioCoordinator };
 export default audioCoordinator;

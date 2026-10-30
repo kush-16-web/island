@@ -17,6 +17,7 @@ import {
 import { latencyTracker } from '../lib/latency-tracker';
 import { parseSchedulerIntent, executeSchedulerIntent } from '../lib/scheduler-commands';
 import { splitIntoSpeechSentences } from '../lib/sentence-chunker';
+import { sentenceChunkPlayer } from '../lib/audio/sentence-chunk-player';
 const isDev = Boolean(import.meta.env?.DEV);
 
 function logDevStage(stageNumber, stageDescription, extra = {}) {
@@ -140,6 +141,9 @@ export function useRealtimeVoice(options = {}) {
   const historyRef = useRef([]);
   const handledTurnsRef = useRef(new Set());
   const activeUtteranceRef = useRef(null);
+  const activeStreamIdRef = useRef(null);
+  const activeStreamTokenUnsubRef = useRef(null);
+  const activeStreamChunkUnsubRef = useRef(null);
 
   // Deterministic Turn Controller
   const controllerRef = useRef(null);
@@ -149,9 +153,15 @@ export function useRealtimeVoice(options = {}) {
       sampleRate: 16000,
       speechThreshold: 0.02,
       interruptThreshold: 0.045,
-      minUtteranceDurationMs: 400,
+      minUtteranceDurationMs: 300,
       onSpeechDetected: () => {
         logDevStage(2, 'Speech detected');
+        if (controllerRef.current) {
+          latencyTracker.recordStage(controllerRef.current.turnId + 1, 'speech_start');
+        }
+      },
+      onInterrupt: () => {
+        interrupt();
       },
       onStateChange: (newState, _oldState, meta) => {
         if (newState === 'cooldown') {
@@ -198,6 +208,20 @@ export function useRealtimeVoice(options = {}) {
   // Clean up all audio contexts, tracks, and timers
   const cleanup = useCallback(() => {
     controller.stopSession();
+    sentenceChunkPlayer.cancel();
+
+    if (activeStreamIdRef.current && window.island?.groq?.abortStream) {
+      try { window.island.groq.abortStream(activeStreamIdRef.current); } catch {}
+      activeStreamIdRef.current = null;
+    }
+    if (activeStreamTokenUnsubRef.current) {
+      activeStreamTokenUnsubRef.current();
+      activeStreamTokenUnsubRef.current = null;
+    }
+    if (activeStreamChunkUnsubRef.current) {
+      activeStreamChunkUnsubRef.current();
+      activeStreamChunkUnsubRef.current = null;
+    }
 
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
@@ -285,6 +309,21 @@ export function useRealtimeVoice(options = {}) {
   const interrupt = useCallback(() => {
     audioCoordinator.cancelDucking();
     stopActivePlayback();
+    sentenceChunkPlayer.cancel();
+
+    if (activeStreamIdRef.current && window.island?.groq?.abortStream) {
+      try { window.island.groq.abortStream(activeStreamIdRef.current); } catch {}
+      activeStreamIdRef.current = null;
+    }
+    if (activeStreamTokenUnsubRef.current) {
+      activeStreamTokenUnsubRef.current();
+      activeStreamTokenUnsubRef.current = null;
+    }
+    if (activeStreamChunkUnsubRef.current) {
+      activeStreamChunkUnsubRef.current();
+      activeStreamChunkUnsubRef.current = null;
+    }
+
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.onended = null;
@@ -780,6 +819,15 @@ export function useRealtimeVoice(options = {}) {
         let agentResponse;
         if (localMusicResult.isWeather) {
           agentResponse = formatWeatherResponse(localMusicResult.weather);
+        } else if (localMusicResult.isDateTime) {
+          agentResponse = createAgentResponse({
+            displayText: localMusicResult.displayText || localMusicResult.spokenConfirmation,
+            spokenText: localMusicResult.spokenConfirmation,
+            toolResults: {
+              dateTime: localMusicResult.dateTime || null,
+            },
+            responseStatus: 'success',
+          });
         } else if (localMusicResult.action === 'list_favorites') {
           agentResponse = formatFavoritesResponse(localMusicResult, {
             readAloud: Boolean(localMusicResult.readAloud),
@@ -818,14 +866,81 @@ export function useRealtimeVoice(options = {}) {
             throw new Error('Groq conversational service is not available in Electron.');
           }
 
-          const chatRes = await window.island.groq.chat({
-            text: userText,
-            history: historyRef.current,
-            assistantName,
-            userName,
-            model: groqChatModel,
-            language: speechLanguage,
-          });
+          let chatRes;
+          const streamId = `stream_${turnId}_${Date.now()}`;
+          activeStreamIdRef.current = streamId;
+
+          // Groq streaming integration with progressive text and tool validation safety
+          if (window.island?.groq?.chatStream) {
+            let firstTokenReported = false;
+            let streamedTextAccumulator = '';
+
+            if (activeStreamTokenUnsubRef.current) {
+              activeStreamTokenUnsubRef.current();
+              activeStreamTokenUnsubRef.current = null;
+            }
+
+            if (window.island?.on) {
+              activeStreamTokenUnsubRef.current = window.island.on('groq:stream-token', (payload) => {
+                if (payload?.streamId === streamId && controller.isTurnActive(turnId)) {
+                  if (!firstTokenReported) {
+                    firstTokenReported = true;
+                    latencyTracker.recordStage(turnId, 'llm_first_token');
+                  }
+                  streamedTextAccumulator = payload.fullText || (streamedTextAccumulator + (payload.token || ''));
+                  setTranscript((prev) => {
+                    const withoutStream = prev.filter((m) => m._streamId !== streamId);
+                    return [
+                      ...withoutStream,
+                      { role: 'assistant', text: streamedTextAccumulator, _streamId: streamId, isPartial: true },
+                    ];
+                  });
+                }
+              });
+            }
+
+            try {
+              chatRes = await window.island.groq.chatStream({
+                streamId,
+                text: userText,
+                history: historyRef.current,
+                assistantName,
+                userName,
+                model: groqChatModel,
+                language: speechLanguage,
+              });
+            } catch (sErr) {
+              console.warn('[Voice] Groq stream error, falling back to standard chat:', sErr);
+              chatRes = { ok: false, streamFallback: true };
+            } finally {
+              if (activeStreamTokenUnsubRef.current) {
+                activeStreamTokenUnsubRef.current();
+                activeStreamTokenUnsubRef.current = null;
+              }
+              activeStreamIdRef.current = null;
+            }
+
+            // Fall back to nonstreaming chat if stream failed or requested fallback
+            if (!chatRes?.ok && chatRes?.streamFallback) {
+              chatRes = await window.island.groq.chat({
+                text: userText,
+                history: historyRef.current,
+                assistantName,
+                userName,
+                model: groqChatModel,
+                language: speechLanguage,
+              });
+            }
+          } else {
+            chatRes = await window.island.groq.chat({
+              text: userText,
+              history: historyRef.current,
+              assistantName,
+              userName,
+              model: groqChatModel,
+              language: speechLanguage,
+            });
+          }
 
           if (!controller.isTurnActive(turnId)) return;
 
@@ -1261,88 +1376,110 @@ export function useRealtimeVoice(options = {}) {
 
           if (speechSentences.length <= 1) {
             const spokenAudioBase64 = await synthesizeSpeechText(finalSpokenText);
+            latencyTracker.recordStage(turnId, 'tts_first_audio');
             latencyTracker.recordStage(turnId, 'tts_end');
 
             if (controller.isTurnActive(turnId)) {
-              await speakAssistantResponse({
-                audioBase64: spokenAudioBase64,
-                text: finalSpokenText,
-                turnId,
-                isIntermediate: false,
-              });
-            }
-          } else {
-            // Pipelined sentence playback:
-            // Synthesize sentence 1 immediately so first audio starts in <200ms
-            const sentence1 = speechSentences[0];
-            const synth1Promise = synthesizeSpeechText(sentence1);
-
-            // Concurrently launch background syntheses for remaining sentences
-            const backgroundPromises = speechSentences.slice(1).map((s) => synthesizeSpeechText(s));
-
-            const audio1 = await synth1Promise;
-            latencyTracker.recordStage(turnId, 'tts_end');
-
-            if (controller.isTurnActive(turnId) && audio1) {
-              // First chunk begins audible playback immediately!
-              await speakAssistantResponse({
-                audioBase64: audio1,
-                text: sentence1,
-                turnId,
-                isIntermediate: true,
-              });
-
-              // Play subsequent sentences seamlessly as background synthesis completes
-              for (let i = 0; i < backgroundPromises.length; i++) {
-                if (!controller.isTurnActive(turnId)) break;
-                const nextAudio = await backgroundPromises[i];
-                const isLast = i === backgroundPromises.length - 1;
-                if (controller.isTurnActive(turnId) && nextAudio) {
-                  await speakAssistantResponse({
-                    audioBase64: nextAudio,
-                    text: speechSentences[i + 1],
-                    turnId,
-                    isIntermediate: !isLast,
-                  });
+              if (spokenAudioBase64) {
+                latencyTracker.recordStage(turnId, 'audio_first_chunk');
+                await speakAssistantResponse({
+                  audioBase64: spokenAudioBase64,
+                  text: finalSpokenText,
+                  turnId,
+                  isIntermediate: false,
+                });
+              } else {
+                // Primary TTS produced no audio; attempt Web Speech or gracefully complete
+                const played = typeof window !== 'undefined' && window.speechSynthesis
+                  ? await playWebSpeech(finalSpokenText, turnId, false)
+                  : false;
+                if (!played) {
+                  setErrorMessage('Speech output was unavailable. Speaking was skipped.');
                 }
               }
-            } else if (controller.isTurnActive(turnId)) {
-              // Fallback to full speech if chunk 1 was empty
-              const fullAudio = await synthesizeSpeechText(finalSpokenText);
-              await speakAssistantResponse({
-                audioBase64: fullAudio,
-                text: finalSpokenText,
-                turnId,
-                isIntermediate: false,
-              });
             }
+          } else {
+            // Low-latency Sentence Chunk Queue:
+            // Plays chunk 0 immediately upon synthesis while subsequent chunks synthesize in the background
+            await new Promise((resolve) => {
+              sentenceChunkPlayer.startSession(turnId, {
+                synthesizeChunk: async (chunkText, index) => {
+                  const audio = await synthesizeSpeechText(chunkText);
+                  if (index === 0) {
+                    latencyTracker.recordStage(turnId, 'tts_first_audio');
+                  }
+                  return audio;
+                },
+                onFirstAudio: () => {
+                  if (controller.isTurnActive(turnId)) {
+                    controller.beginSpeaking(turnId);
+                    setStatus('speaking');
+                    window.island?.setVoiceMood?.('speaking');
+                    latencyTracker.recordStage(turnId, 'audio_first_chunk');
+                  }
+                },
+                onEnded: () => {
+                  latencyTracker.recordStage(turnId, 'tts_end');
+                  resolve();
+                },
+                onError: (err) => {
+                  console.warn('[SentenceChunkPlayer error]', err);
+                },
+              });
+
+              for (let i = 0; i < speechSentences.length; i++) {
+                const isFinal = i === speechSentences.length - 1;
+                sentenceChunkPlayer.enqueueChunk({
+                  index: i,
+                  text: speechSentences[i],
+                  isFinal,
+                });
+              }
+            });
           }
 
-          // Priority 2: Transient dismissal for confirmed music playback commands or polite session closings
-          const action = turnResult.actionResult?.action;
-          const isPlaybackHandoff =
-            action === 'play_favorite' ||
-            action === 'play_track' ||
-            action === 'compound_pause_play' ||
-            action === 'next_track' ||
-            action === 'previous_track';
-          const isSuccessful = turnResult.actionResult?.ok;
-          const needsClarification = Boolean(
-            turnResult.actionResult?.clarificationNeeded || turnResult.actionResult?.ambiguous
-          );
-          const isSessionDismiss = action === 'session_dismiss' || Boolean(turnResult.actionResult?.isSessionEnd);
+          // Authoritative Turn Completion & Lifecycle State Machine (Priority 1 Fix)
+          if (controller.isTurnActive(turnId)) {
+            const action = turnResult.actionResult?.action;
+            const isPlaybackHandoff =
+              action === 'play_favorite' ||
+              action === 'play_track' ||
+              action === 'compound_pause_play' ||
+              action === 'next_track' ||
+              action === 'previous_track';
+            const isSuccessful = turnResult.actionResult?.ok;
+            const needsClarification = Boolean(
+              turnResult.actionResult?.clarificationNeeded || turnResult.actionResult?.ambiguous
+            );
+            const isSessionDismiss = action === 'session_dismiss' || Boolean(turnResult.actionResult?.isSessionEnd);
 
-          if ((isPlaybackHandoff && isSuccessful && !needsClarification) || isSessionDismiss) {
-            controller.stopSession();
-            setStatus('idle');
-            audioCoordinator.restoreVolume({ durationMs: 600 });
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('island:dismiss-voice'));
+            if ((isPlaybackHandoff && isSuccessful && !needsClarification) || isSessionDismiss) {
+              controller.stopSession();
+              setStatus('idle');
+              audioCoordinator.restoreVolume({ durationMs: 600 });
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('island:dismiss-voice'));
+              }
+            } else {
+              // Guaranteed return to listening state for all conversational, weather, scheduler & informational turns
+              audioCoordinator.restoreVolume({ durationMs: 1100 });
+              controller.finishSpeaking(turnId, 'listening');
+              setStatus('listening');
+              window.island?.setVoiceMood?.('listening');
+              logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
             }
+          } else {
+            audioCoordinator.restoreVolume({ durationMs: 1100 });
+            controller.finishSpeaking(turnId, 'listening');
+            setStatus('listening');
+            window.island?.setVoiceMood?.('listening');
+            logDevStage(10, 'Voice turn completion (superseded)', { turnId, nextState: 'listening' });
           }
         } else {
           audioCoordinator.restoreVolume({ durationMs: 1100 });
           controller.finishSpeaking(turnId, 'listening');
+          setStatus('listening');
+          window.island?.setVoiceMood?.('listening');
           logDevStage(10, 'Voice turn completion', { turnId, nextState: 'listening' });
         }
       }
@@ -1350,13 +1487,22 @@ export function useRealtimeVoice(options = {}) {
       console.warn('[Voice Turn Error]', err);
       audioCoordinator.cancelDucking();
       controller.handleTurnFailure(turnId, err.message || 'Error processing speech turn.');
+    } finally {
+      // Guaranteed Turn Safety: Ensure locks are always released on all execution paths
+      if (controller.activeTurnId === turnId && controller.isProcessing) {
+        audioCoordinator.restoreVolume({ durationMs: 800 });
+        controller.finishSpeaking(turnId, 'listening');
+        setStatus('listening');
+        window.island?.setVoiceMood?.('listening');
+      }
     }
   }, [controller, speakAssistantResponse]);
 
   // Wire turn submission handler to controller
   useEffect(() => {
-    controller.onTurnTriggered = (samples, turnId) => {
+    controller.onTurnTriggered = (samples, turnId, meta = {}) => {
       latencyTracker.startTurn(turnId, { sampleCount: samples.length, userSpeechEndTime: Date.now() });
+      latencyTracker.recordStage(turnId, 'speech_endpoint', { durationMs: meta?.utteranceDurationMs });
       logDevStage(3, 'Speech segment finalized', {
         sampleCount: samples.length,
         durationMs: Math.round((samples.length / 16000) * 1000),
@@ -1365,6 +1511,21 @@ export function useRealtimeVoice(options = {}) {
       submitUserSpeech(samples, 16000, turnId);
     };
   }, [controller, submitUserSpeech]);
+
+  // Phase 3.5 Preparing-Speech Watchdog:
+  // Guarantees that neither network latency, TTS silence, nor chunk stalls can leave Island stuck in 'preparing_speech'.
+  useEffect(() => {
+    if (status === 'preparing_speech') {
+      const watchdog = setTimeout(() => {
+        console.warn('[useRealtimeVoice] preparing_speech watchdog triggered after 15s; recovering to listening.');
+        audioCoordinator.restoreVolume({ durationMs: 800 });
+        controller.finishSpeaking(controller.activeTurnId, 'listening');
+        setStatus('listening');
+        window.island?.setVoiceMood?.('listening');
+      }, 15000);
+      return () => clearTimeout(watchdog);
+    }
+  }, [status, controller]);
 
   // Start real-time voice session
   const startSession = useCallback(async () => {
@@ -1395,7 +1556,19 @@ export function useRealtimeVoice(options = {}) {
         }
       }
 
-      // 2. Acquire microphone stream
+      // Clean up previous stream and context if present to avoid duplicate mic streams
+      if (micStreamRef.current) {
+        try {
+          micStreamRef.current.getTracks().forEach((t) => t.stop());
+        } catch {}
+        micStreamRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try { audioContextRef.current.close(); } catch {}
+        audioContextRef.current = null;
+      }
+
+      // 2. Acquire microphone stream with echo cancellation, noise suppression, AGC
       let micStream;
       try {
         micStream = await navigator.mediaDevices.getUserMedia({
@@ -1406,6 +1579,18 @@ export function useRealtimeVoice(options = {}) {
           },
         });
         micStreamRef.current = micStream;
+
+        // Listen for device removal or permission changes
+        const audioTrack = micStream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.onended = () => {
+            console.warn('[Microphone] Audio track ended or permission lost');
+            controller.handleTurnFailure(controller.turnId, 'Microphone disconnected or permission lost.');
+            cleanup();
+            setStatus('error');
+            setErrorMessage('Microphone disconnected.');
+          };
+        }
       } catch (err) {
         throw new Error(
           err.name === 'NotAllowedError'

@@ -44,6 +44,18 @@ class CompanionBridge extends EventEmitter {
     this.lastDispatchedCommand = null;
     this.lastAck = null;
     this.lastError = null;
+
+    // Authoritative volume state coordinator (Phase 2 - Task 3)
+    this.volumeState = {
+      isDucked: false,
+      confirmedDucked: false,
+      pendingRestore: false,
+      currentMultiplier: 1.0,
+      originalVolume: null,
+      uncertain: false,
+      inFlightVolumeId: null,
+      activeSpeechSession: null,
+    };
   }
 
   /**
@@ -51,7 +63,11 @@ class CompanionBridge extends EventEmitter {
    */
   isConnected() {
     if (!this.lastPingTimestamp) return false;
-    return Date.now() - this.lastPingTimestamp <= this.pingExpiryMs;
+    const connected = Date.now() - this.lastPingTimestamp <= this.pingExpiryMs;
+    if (!connected && (this.volumeState.isDucked || this.volumeState.confirmedDucked)) {
+      this.volumeState.uncertain = true;
+    }
+    return connected;
   }
 
   /**
@@ -93,6 +109,7 @@ class CompanionBridge extends EventEmitter {
       lastAck: this.lastAck,
       lastError: this.lastError,
       currentTrack: this.companionInfo.currentTrack,
+      volumeState: { ...this.volumeState },
     };
   }
 
@@ -120,9 +137,9 @@ class CompanionBridge extends EventEmitter {
    */
   handlePing(payload = {}) {
     const now = Date.now();
+    const prevConnected = this.isConnected();
     this.lastPingTimestamp = now;
 
-    const prevConnected = this.companionInfo.connected;
     const isYtMusicActive = Boolean(payload.isYtMusic);
 
     this.companionInfo = {
@@ -138,6 +155,10 @@ class CompanionBridge extends EventEmitter {
     };
 
     if (!prevConnected) {
+      if (this.volumeState.uncertain) {
+        this.volumeState.uncertain = false;
+        this.dispatchCommand({ action: 'restore_volume' }).catch(() => {});
+      }
       this.emit('connection-change', { connected: true, info: this.getStatus() });
     }
 
@@ -187,12 +208,17 @@ class CompanionBridge extends EventEmitter {
    * Dispatch a playback command to the companion.
    * Returns a promise that resolves when the companion acknowledges execution.
    */
-  dispatchCommand({ action = 'play_track', videoId = null, title = '', artist = '', url = null, timeoutMs = null } = {}) {
+  dispatchCommand({ action = 'play_track', videoId = null, title = '', artist = '', url = null, level = null, volume = null, timeoutMs = null } = {}) {
     const now = Date.now();
     const isVolumeCmd = action === 'duck' || action === 'restore_volume' || action === 'set_volume';
 
     // 0. Best-effort volume commands: fail-fast immediately if companion is not connected or no YTM tab is active
     if (isVolumeCmd && (!this.isConnected() || !this.companionInfo.isYtMusicActive)) {
+      if (action === 'restore_volume') {
+        this.volumeState.isDucked = false;
+        this.volumeState.confirmedDucked = false;
+        this.volumeState.pendingRestore = false;
+      }
       return Promise.resolve({
         ok: false,
         status: 'no_player',
@@ -201,8 +227,19 @@ class CompanionBridge extends EventEmitter {
       });
     }
 
-    // Deduplicate redundant restore_volume requests: return in-flight promise if active
+    // Deduplicate redundant restore_volume requests:
+    // If volume is already completely idle/restored and not in flight, resolve immediately
     if (action === 'restore_volume') {
+      if (!this.volumeState.isDucked && !this.volumeState.confirmedDucked && !this.volumeState.pendingRestore && !this.volumeState.inFlightVolumeId) {
+        return Promise.resolve({
+          ok: true,
+          status: 'already_restored',
+          action: 'restore_volume',
+          message: 'Volume is already restored',
+        });
+      }
+
+      // If an existing restore_volume is already in flight, return its promise
       for (const inFlight of this.inFlightCommands.values()) {
         if (inFlight.command.action === 'restore_volume') {
           return inFlight.promise;
@@ -248,10 +285,23 @@ class CompanionBridge extends EventEmitter {
       title,
       artist,
       url,
+      level,
+      volume,
       timestamp: Date.now(),
     };
 
-    const effectiveTimeout = timeoutMs || (isVolumeCmd ? 2500 : this.commandTimeoutMs);
+    if (action === 'duck') {
+      this.volumeState.isDucked = true;
+      this.volumeState.pendingRestore = false;
+      this.volumeState.currentMultiplier = Number(level) || 0.10;
+      this.volumeState.inFlightVolumeId = id;
+    } else if (action === 'restore_volume') {
+      this.volumeState.isDucked = false;
+      this.volumeState.pendingRestore = true;
+      this.volumeState.inFlightVolumeId = id;
+    }
+
+    const effectiveTimeout = timeoutMs || (isVolumeCmd ? 6000 : this.commandTimeoutMs);
 
     let inFlightEntry;
     const promise = new Promise((resolve, reject) => {
@@ -262,6 +312,20 @@ class CompanionBridge extends EventEmitter {
 
         this.lastError = `Command "${action}" timed out after ${effectiveTimeout}ms`;
         this.emit('command-settled', { commandId: id, status: 'timed_out', error: this.lastError });
+
+        if (action === 'duck') {
+          this.volumeState.inFlightVolumeId = null;
+          // Failed or timed out ducking must not prevent Island from speaking or cause unhandled error
+          resolve({ ok: false, status: 'timed_out', action, error: this.lastError });
+          return;
+        }
+
+        if (action === 'restore_volume') {
+          this.volumeState.inFlightVolumeId = null;
+          this.volumeState.pendingRestore = false;
+          resolve({ ok: false, status: 'timed_out', action, error: this.lastError });
+          return;
+        }
 
         const err = new Error(this.lastError);
         err.code = 'COMMAND_TIMEOUT';
@@ -312,6 +376,19 @@ class CompanionBridge extends EventEmitter {
 
     let finalStatus = status;
 
+    if (command.action === 'duck') {
+      this.volumeState.confirmedDucked = true;
+      this.volumeState.inFlightVolumeId = null;
+      if (ack.originalVolume != null) {
+        this.volumeState.originalVolume = ack.originalVolume;
+      }
+    } else if (command.action === 'restore_volume') {
+      this.volumeState.confirmedDucked = false;
+      this.volumeState.pendingRestore = false;
+      this.volumeState.currentMultiplier = 1.0;
+      this.volumeState.inFlightVolumeId = null;
+    }
+
     if (status === 'playing' || status === 'confirmed_playing') {
       finalStatus = 'confirmed_playing';
       this.companionInfo.playbackState = 'confirmed_playing';
@@ -334,11 +411,15 @@ class CompanionBridge extends EventEmitter {
     } else if (status === 'failed') {
       finalStatus = 'failed';
       this.companionInfo.playbackState = 'failed';
-      const err = new Error(error || 'Companion failed to execute command');
-      err.code = 'COMMAND_FAILED';
-      err.command = command;
-      err.commandId = commandId;
-      reject(err);
+      if (command.action === 'duck' || command.action === 'restore_volume') {
+        resolve({ ok: false, status: 'failed', command, ack, error: error || 'Volume command failed' });
+      } else {
+        const err = new Error(error || 'Companion failed to execute command');
+        err.code = 'COMMAND_FAILED';
+        err.command = command;
+        err.commandId = commandId;
+        reject(err);
+      }
     } else {
       resolve({ ok: true, status: status || 'ok', command, ack });
     }
@@ -370,6 +451,16 @@ class CompanionBridge extends EventEmitter {
       currentTrack: null,
       playbackState: 'idle',
       lastSeenMs: Infinity,
+    };
+    this.volumeState = {
+      isDucked: false,
+      confirmedDucked: false,
+      pendingRestore: false,
+      currentMultiplier: 1.0,
+      originalVolume: null,
+      uncertain: false,
+      inFlightVolumeId: null,
+      activeSpeechSession: null,
     };
   }
 }

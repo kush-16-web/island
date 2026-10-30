@@ -5,7 +5,7 @@
     "artist": "Test Ensemble",
     "lyrics": "A quiet echo in the empty hall"
   },
-  "createdAt": "2026-10-26T06:44:34.268Z",
+  "createdAt": "2026-10-30T06:38:54.752Z",
   "status": "workflow_validated",
   "generator": {
     "status": "workflow_validated",
@@ -29,7 +29,7 @@
     "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
     "cpuCores": 8,
     "totalRamMB": 5965,
-    "freeRamMB": 590,
+    "freeRamMB": 715,
     "nodeVersion": "v22.12.0"
   }
 }

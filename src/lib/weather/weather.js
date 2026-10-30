@@ -67,7 +67,144 @@ export function resetWeatherContext() {
 /**
  * Resolve coordinates and city name using 4-tier resolution priority.
  */
-async function resolveLocation(locationQuery = null, options = {}, storage = null) {
+export const SURAT_DEFAULT_LOCATION = Object.freeze({
+  city: 'Surat',
+  state: 'Gujarat',
+  country: 'India',
+  lat: 21.1702,
+  lon: 72.8311,
+  timezone: 'Asia/Kolkata',
+});
+
+export const STORAGE_KEY_LOCATION = 'island_weather_location';
+export const STORAGE_KEY_DEFAULT_CITY = 'island_weather_default_city';
+export const STORAGE_KEY_INIT = 'island_location_initialized';
+
+/**
+ * Retrieve user's configured location preference from storage.
+ */
+export function getUserLocation(storage = null) {
+  const store = storage || (typeof window !== 'undefined' ? window.localStorage : null);
+  if (!store) return null;
+  try {
+    const raw = store.getItem(STORAGE_KEY_LOCATION);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.city && typeof parsed.lat === 'number' && typeof parsed.lon === 'number') {
+        return parsed;
+      }
+    }
+    const legacy = store.getItem(STORAGE_KEY_DEFAULT_CITY);
+    if (legacy && typeof legacy === 'string' && legacy.trim()) {
+      return { city: legacy.trim() };
+    }
+  } catch (err) {
+    console.warn('[Weather] Error reading user location:', err);
+  }
+  return null;
+}
+
+/**
+ * Persist user's configured location preference to storage.
+ */
+export function setUserLocation(location, storage = null) {
+  const store = storage || (typeof window !== 'undefined' ? window.localStorage : null);
+  if (!store || !location || typeof location !== 'object') return false;
+  try {
+    const loc = {
+      city: location.city || 'Surat',
+      state: location.state || '',
+      country: location.country || 'India',
+      lat: Number(location.lat) || 21.1702,
+      lon: Number(location.lon) || 72.8311,
+      timezone: location.timezone || 'Asia/Kolkata',
+    };
+    store.setItem(STORAGE_KEY_LOCATION, JSON.stringify(loc));
+    store.setItem(STORAGE_KEY_DEFAULT_CITY, loc.city);
+    store.setItem(STORAGE_KEY_INIT, 'true');
+    if (typeof store.removeItem === 'function') {
+      store.removeItem('island_location_cleared');
+    }
+    weatherCache.clear();
+    lastWeatherSessionContext = { ...loc, type: 'default' };
+    return true;
+  } catch (err) {
+    console.warn('[Weather] Error saving user location:', err);
+    return false;
+  }
+}
+
+/**
+ * Clear configured user location.
+ */
+export function clearUserLocation(storage = null) {
+  const store = storage || (typeof window !== 'undefined' ? window.localStorage : null);
+  if (!store) return;
+  try {
+    store.removeItem(STORAGE_KEY_LOCATION);
+    store.removeItem(STORAGE_KEY_DEFAULT_CITY);
+    store.setItem('island_location_cleared', 'true');
+    weatherCache.clear();
+    lastWeatherSessionContext = null;
+  } catch {}
+}
+
+/**
+ * Initialize location preference for this user's installation to Surat, Gujarat, India.
+ * Does not overwrite if the user has already configured or changed their location.
+ */
+export function initInstallationLocation(storage = null) {
+  const store = storage || (typeof window !== 'undefined' ? window.localStorage : null);
+  if (!store) return null;
+  try {
+    const existing = getUserLocation(store);
+    if (existing) return existing;
+    const wasInit = store.getItem(STORAGE_KEY_INIT);
+    if (!wasInit) {
+      setUserLocation(SURAT_DEFAULT_LOCATION, store);
+      return { ...SURAT_DEFAULT_LOCATION };
+    }
+  } catch (err) {
+    console.warn('[Weather] Error initializing installation location:', err);
+  }
+  return null;
+}
+
+/**
+ * Search locations and cities using Open-Meteo geocoding API.
+ */
+export async function searchLocations(query) {
+  if (!query || typeof query !== 'string' || !query.trim()) return [];
+  try {
+    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query.trim())}&count=5`;
+    const res = await fetch(geoUrl, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data?.results)) return [];
+    return data.results.map((item) => ({
+      city: item.name,
+      state: item.admin1 || '',
+      country: item.country || '',
+      lat: item.latitude,
+      lon: item.longitude,
+      timezone: item.timezone || 'Asia/Kolkata',
+      label: [item.name, item.admin1, item.country].filter(Boolean).join(', '),
+    }));
+  } catch (err) {
+    console.warn('[Weather] searchLocations geocoding error:', err);
+    return [];
+  }
+}
+
+/**
+ * Resolve coordinates and city name using strict location priority:
+ * 1. Explicitly named location in the current request.
+ * 2. Conversational context location (follow-up queries).
+ * 3. Windows system location (when supported integration is available).
+ * 4. Previously validated saved location.
+ * 5. Return null to request user selection. Never silently substitute an IP-detected city.
+ */
+export async function resolveLocation(locationQuery = null, options = {}, storage = null) {
   const store = storage || (typeof window !== 'undefined' ? window.localStorage : null);
   const { timeframe = 'current', isFollowUp = false } = options || {};
 
@@ -83,9 +220,11 @@ async function resolveLocation(locationQuery = null, options = {}, storage = nul
           const match = data.results[0];
           const resolved = {
             city: match.name,
+            state: match.admin1 || '',
             country: match.country || '',
             lat: match.latitude,
             lon: match.longitude,
+            timezone: match.timezone || 'Asia/Kolkata',
             type: 'explicit',
           };
           lastWeatherSessionContext = { ...resolved };
@@ -97,8 +236,9 @@ async function resolveLocation(locationQuery = null, options = {}, storage = nul
     }
   }
 
-  // Conversational context location (if follow-up question or tomorrow forecast without named city)
-  if (!locationQuery && (isFollowUp || timeframe === 'tomorrow' || timeframe === 'evening')) {
+  // Conversational context location (if follow-up question, retry, or forecast without named city)
+  const isRetry = options.isRetry || (typeof locationQuery === 'string' && /\b(?:again|retry)\b/i.test(locationQuery));
+  if ((!locationQuery || isRetry) && (isFollowUp || isRetry || timeframe === 'tomorrow' || timeframe === 'evening')) {
     if (lastWeatherSessionContext?.city && lastWeatherSessionContext?.lat) {
       return {
         ...lastWeatherSessionContext,
@@ -107,61 +247,89 @@ async function resolveLocation(locationQuery = null, options = {}, storage = nul
     }
   }
 
-  // Priority 2: User-selected persistent default weather city
-  try {
-    const defaultCity = store ? store.getItem('island_weather_default_city') : null;
-    if (defaultCity && typeof defaultCity === 'string' && defaultCity.trim()) {
-      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(defaultCity.trim())}&count=1`;
-      const res = await fetch(geoUrl, { headers: { Accept: 'application/json' } });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.results) && data.results.length > 0) {
-          const match = data.results[0];
-          const resolved = {
-            city: match.name,
-            country: match.country || '',
-            lat: match.latitude,
-            lon: match.longitude,
-            type: 'default',
-          };
-          lastWeatherSessionContext = { ...resolved };
-          return resolved;
-        }
-      }
-    }
-  } catch (storeErr) {
-    console.warn('[Weather] Default city lookup error:', storeErr);
-  }
-
-  // Priority 4: Clearly labeled approximate IP-based city
-  try {
-    const ipRes = await fetch('http://ip-api.com/json/', { headers: { Accept: 'application/json' } });
-    if (ipRes.ok) {
-      const ipData = await ipRes.json();
-      if (ipData && ipData.lat && ipData.lon) {
+  // Priority 2: Windows system location when supported integration is available
+  if (typeof window !== 'undefined' && window.island?.getSystemLocation) {
+    try {
+      const sysLoc = await window.island.getSystemLocation();
+      if (sysLoc && sysLoc.lat && sysLoc.lon) {
         const resolved = {
-          city: ipData.city || 'your area',
-          country: ipData.country || '',
-          lat: ipData.lat,
-          lon: ipData.lon,
-          type: 'approximate_ip',
+          city: sysLoc.city || 'Local Area',
+          state: sysLoc.state || '',
+          country: sysLoc.country || '',
+          lat: sysLoc.lat,
+          lon: sysLoc.lon,
+          timezone: sysLoc.timezone || 'Asia/Kolkata',
+          type: 'system',
         };
         lastWeatherSessionContext = { ...resolved };
         return resolved;
       }
-    }
-  } catch (ipErr) {
-    console.warn('[Weather] IP geolocation lookup error:', ipErr);
+    } catch {}
   }
 
-  // Fallback default coordinates (London / GMT reference)
-  return {
-    city: 'your area',
-    country: '',
-    lat: 51.5074,
-    lon: -0.1278,
-    type: 'fallback',
-  };
+  // Priority 3: Previously validated saved location
+  const saved = getUserLocation(store);
+  if (saved) {
+    if (typeof saved.lat === 'number' && typeof saved.lon === 'number') {
+      const resolved = {
+        city: saved.city,
+        state: saved.state || '',
+        country: saved.country || '',
+        lat: saved.lat,
+        lon: saved.lon,
+        timezone: saved.timezone || 'Asia/Kolkata',
+        type: 'default',
+      };
+      lastWeatherSessionContext = { ...resolved };
+      return resolved;
+    } else if (saved.city) {
+      // Legacy city name without coordinates, geocode once
+      try {
+        const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(saved.city)}&count=1`;
+        const res = await fetch(geoUrl, { headers: { Accept: 'application/json' } });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.results) && data.results.length > 0) {
+            const match = data.results[0];
+            const resolved = {
+              city: match.name,
+              state: match.admin1 || '',
+              country: match.country || '',
+              lat: match.latitude,
+              lon: match.longitude,
+              timezone: match.timezone || 'Asia/Kolkata',
+              type: 'default',
+            };
+            lastWeatherSessionContext = { ...resolved };
+            return resolved;
+          }
+        }
+      } catch (err) {
+        console.warn('[Weather] Geocoding lookup error for saved city:', err);
+      }
+    }
+  }
+
+  // Priority 4: Default installation location (Surat, Gujarat, India) when uninitialized.
+  // Ensures Island always provides accurate weather on brand-new installs without requiring manual configuration,
+  // while honoring explicit user clearing if the user deliberately emptied their location in settings.
+  const isExplicitlyCleared = store && store.getItem('island_location_cleared') === 'true';
+  if (!isExplicitlyCleared) {
+    const initLoc = initInstallationLocation(store) || { ...SURAT_DEFAULT_LOCATION, type: 'default' };
+    const resolved = {
+      city: initLoc.city,
+      state: initLoc.state || '',
+      country: initLoc.country || '',
+      lat: initLoc.lat,
+      lon: initLoc.lon,
+      timezone: initLoc.timezone || 'Asia/Kolkata',
+      type: 'default',
+    };
+    lastWeatherSessionContext = { ...resolved };
+    return resolved;
+  }
+
+  return null;
 }
 
 /**
@@ -262,16 +430,26 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
   } = options || {};
 
   const cleanLoc = locationQuery ? locationQuery.toLowerCase().trim() : '';
+  const isRetry = options.isRetry || (cleanLoc && /\b(?:again|retry)\b/i.test(cleanLoc));
   const cacheKey = `${cleanLoc || '__default_loc__'}:${timeframe}:${questionType}`;
   const cached = weatherCache.get(cacheKey);
   const now = Date.now();
 
-  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+  if (!isRetry && cached && now - cached.timestamp < CACHE_TTL_MS) {
     return cached.data;
   }
 
   try {
     const loc = await resolveLocation(locationQuery, options, storage);
+    if (!loc) {
+      return {
+        ok: false,
+        needsLocation: true,
+        speech: "I don't have a location set. Please select your city in settings so I can provide accurate weather.",
+        error: 'Location not configured',
+      };
+    }
+
     const forecastUrl =
       `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
       `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,is_day` +
@@ -376,10 +554,17 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
     return result;
   } catch (err) {
     console.warn('[Weather] Fetch error:', err);
+    if (cached?.data) {
+      return {
+        ...cached.data,
+        isStale: true,
+        speech: `Live weather is currently unreachable. Previously recorded weather in ${cached.data.city} was ${cached.data.temperature}°C with ${cached.data.condition}.`,
+      };
+    }
     return {
       ok: false,
       error: err.message,
-      speech: "I couldn't retrieve the live weather right now. Please check your internet connection.",
+      speech: "Live weather is currently unavailable. Please check your internet connection.",
     };
   }
 }

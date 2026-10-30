@@ -31,7 +31,9 @@ class LatencyTracker {
       turnId: String(turnId),
       startTime: now,
       stages: {
+        speech_start: now,
         speech_end: now,
+        speech_endpoint: now,
       },
       metadata: { ...metadata },
     });
@@ -39,9 +41,20 @@ class LatencyTracker {
 
   /**
    * Record a milestone stage in the turn.
+   * Supported stages:
+   * - 'speech_start': Speech start detected
+   * - 'speech_endpoint': Speech endpoint detected / silence trip
+   * - 'stt_start' | 'stt_end': Whisper STT start & completion
+   * - 'intent_start' | 'intent_end': NLU intent resolution
+   * - 'tool_start' | 'tool_end': Tool execution
+   * - 'llm_start' | 'llm_first_token' | 'llm_end': LLM generation
+   * - 'tts_start' | 'tts_first_audio' | 'tts_end': TTS synthesis
+   * - 'audio_first_chunk': Exact moment of first audible playback (onStart)
+   * - 'speech_completed': End of speech audio output (onEnded)
+   *
    * @param {string|number} turnId
-   * @param {string} stageName - 'stt_start'|'stt_end'|'intent_start'|'intent_end'|'tool_start'|'tool_end'|'llm_start'|'llm_end'|'tts_start'|'tts_end'|'audio_first_chunk'|'speech_completed'
-   * @param {object} extra - Optional stage metadata
+   * @param {string} stageName
+   * @param {object} extra - Stage metadata (never private text/keys)
    */
   recordStage(turnId, stageName, extra = {}) {
     const id = String(turnId);
@@ -59,8 +72,46 @@ class LatencyTracker {
     }
 
     turn.stages[stageName] = now;
+    if (stageName === 'speech_endpoint' && !turn.stages.speech_end) {
+      turn.stages.speech_end = now;
+    } else if (stageName === 'speech_end' && !turn.stages.speech_endpoint) {
+      turn.stages.speech_endpoint = now;
+    }
+
     if (extra && Object.keys(extra).length > 0) {
       turn.metadata = { ...turn.metadata, ...extra };
+    }
+
+    this.logDevTiming(id, stageName, extra);
+  }
+
+  /**
+   * Safe development-only timing logger.
+   * Strictly logs timestamps and delta latencies, NEVER private transcript text or API keys.
+   */
+  logDevTiming(turnId, stageName, extra = {}) {
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+      return;
+    }
+    const id = String(turnId);
+    const turn = this.turns.get(id);
+    if (!turn) return;
+
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const elapsedSinceStart = Math.round(now - turn.startTime);
+    const safeExtra = { ...extra };
+    // Strip sensitive fields
+    delete safeExtra.text;
+    delete safeExtra.userText;
+    delete safeExtra.transcript;
+    delete safeExtra.apiKey;
+    delete safeExtra.key;
+
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug(
+        `[VoiceTiming] Turn #${id} [${stageName}] +${elapsedSinceStart}ms`,
+        Object.keys(safeExtra).length > 0 ? safeExtra : ''
+      );
     }
   }
 
@@ -78,33 +129,43 @@ class LatencyTracker {
     if (!turn) return null;
 
     const s = turn.stages;
-    const speechEnd = s.speech_end || turn.startTime;
+    const speechEndpoint = s.speech_endpoint || s.speech_end || turn.startTime;
+    const speechStart = s.speech_start || turn.startTime;
 
+    const userSpeechDurationMs = Math.max(0, Math.round(speechEndpoint - speechStart));
     const sttMs = (s.stt_end && s.stt_start) ? Math.max(0, Math.round(s.stt_end - s.stt_start)) : 0;
     const intentMs = (s.intent_end && s.intent_start) ? Math.max(0, Math.round(s.intent_end - s.intent_start)) : 0;
     const toolMs = (s.tool_end && s.tool_start) ? Math.max(0, Math.round(s.tool_end - s.tool_start)) : 0;
+    const llmFirstTokenMs = (s.llm_first_token && s.llm_start) ? Math.max(0, Math.round(s.llm_first_token - s.llm_start)) : null;
     const llmMs = (s.llm_end && s.llm_start) ? Math.max(0, Math.round(s.llm_end - s.llm_start)) : 0;
+    const ttsFirstAudioMs = (s.tts_first_audio && s.tts_start) ? Math.max(0, Math.round(s.tts_first_audio - s.tts_start)) : null;
     const ttsMs = (s.tts_end && s.tts_start) ? Math.max(0, Math.round(s.tts_end - s.tts_start)) : 0;
 
-    const firstAudioTime = s.audio_first_chunk || s.tts_end || now;
-    const firstAudioLatencyMs = Math.max(0, Math.round(firstAudioTime - speechEnd));
+    const firstAudioTime = s.audio_first_chunk || s.tts_first_audio || s.tts_end || now;
+    const firstAudioLatencyMs = Math.max(0, Math.round(firstAudioTime - speechEndpoint));
+    const userStopToAudioMs = firstAudioLatencyMs;
 
     const speechCompleted = s.speech_completed || now;
     const playbackDurationMs = s.audio_first_chunk ? Math.max(0, Math.round(speechCompleted - s.audio_first_chunk)) : 0;
-    const totalTurnMs = Math.max(0, Math.round(speechCompleted - speechEnd));
+    const totalTurnMs = Math.max(0, Math.round(speechCompleted - speechEndpoint));
 
     const metrics = {
       turnId: id,
       status,
       timestamp: Date.now(),
+      userSpeechDurationMs,
       sttMs,
       intentMs,
       toolMs,
+      llmFirstTokenMs,
       llmMs,
+      ttsFirstAudioMs,
       ttsMs,
       firstAudioLatencyMs,
+      userStopToAudioMs,
       playbackDurationMs,
       totalTurnMs,
+      stages: { ...s },
       metadata: turn.metadata,
     };
 
@@ -120,7 +181,7 @@ class LatencyTracker {
 
     if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'test') {
       console.log(
-        `[Island Latency Report] Turn #${id} (${status}): FirstAudio=${firstAudioLatencyMs}ms [STT:${sttMs}ms, Intent:${intentMs}ms, Tool:${toolMs}ms, LLM:${llmMs}ms, TTS:${ttsMs}ms] Total=${totalTurnMs}ms`
+        `[Island Latency Report] Turn #${id} (${status}): UserStopToAudio=${userStopToAudioMs}ms [STT:${sttMs}ms, LLMFirstToken:${llmFirstTokenMs ?? 'n/a'}ms, TTSFirstAudio:${ttsFirstAudioMs ?? 'n/a'}ms, TotalTTS:${ttsMs}ms] Total=${totalTurnMs}ms`
       );
     }
 

@@ -22,6 +22,8 @@ const CHANNELS = new Set([
   'system:accent-color',
   'companion:playback-state',
   'companion:status-changed',
+  'groq:stream-token',
+  'groq:stream-chunk',
 ]);
 
 contextBridge.exposeInMainWorld('island', {
@@ -75,6 +77,8 @@ contextBridge.exposeInMainWorld('island', {
   // Groq Service (Conversational Llama & Whisper STT)
   groq: {
     chat: (params) => ipcRenderer.invoke('groq:chat', params),
+    chatStream: (params) => ipcRenderer.invoke('groq:chat-stream', params),
+    abortStream: (streamId) => ipcRenderer.invoke('groq:abort-stream', typeof streamId === 'string' ? { streamId } : streamId),
     transcribe: (params) => ipcRenderer.invoke('groq:transcribe', params),
     getStatus: () => ipcRenderer.invoke('groq:get-status'),
     setKey: (keyOrParams) => ipcRenderer.invoke('groq:set-key', typeof keyOrParams === 'string' ? { key: keyOrParams } : keyOrParams),
