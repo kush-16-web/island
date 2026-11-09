@@ -28,6 +28,7 @@ export default function PrecisionLyricLine({
   className = '',
   style = {},
   presentation = null,
+  lyricsStyle = 'classic',
 }) {
   const containerRef = useRef(null);
   const contentRef = useRef(null);
@@ -192,7 +193,8 @@ export default function PrecisionLyricLine({
       return;
     }
 
-    if (!playing || !overflow || maxScroll <= 0 || !line) {
+    const hasWords = line?.words && line.words.length > 0;
+    if (!playing || (!overflow && !hasWords) || !line) {
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
@@ -208,12 +210,43 @@ export default function PrecisionLyricLine({
       const perfNow = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const currentMs = clockAnchorRef.current.timeMs + (perfNow - clockAnchorRef.current.perfNow);
 
-      const targetOffset = calculateLyricScrollOffset(currentMs, line, maxScroll, { subpixel: true });
-      const nextOffset = Math.max(currentOffsetRef.current, targetOffset);
+      if (maxScroll > 0) {
+        const targetOffset = calculateLyricScrollOffset(currentMs, line, maxScroll, { subpixel: true });
+        const nextOffset = Math.max(currentOffsetRef.current, targetOffset);
 
-      if (Math.abs(nextOffset - currentOffsetRef.current) >= 0.01) {
-        currentOffsetRef.current = nextOffset;
-        applyOffset(nextOffset, maxScroll);
+        if (Math.abs(nextOffset - currentOffsetRef.current) >= 0.01) {
+          currentOffsetRef.current = nextOffset;
+          applyOffset(nextOffset, maxScroll);
+        }
+      }
+
+      // Smooth display-refresh-rate word fill animation directly on the active word element
+      if (hasWords && contentRef.current) {
+        const wordEls = contentRef.current.querySelectorAll('.k-word');
+        for (let wIdx = 0; wIdx < line.words.length; wIdx++) {
+          const w = line.words[wIdx];
+          const el = wordEls[wIdx];
+          if (!el) continue;
+          if (currentMs >= w.endMs) {
+            if (!el.classList.contains('is-sung')) {
+              el.classList.add('is-sung');
+              el.classList.remove('is-active-word');
+              el.style.removeProperty('--word-fill');
+            }
+          } else if (currentMs >= w.startMs) {
+            if (!el.classList.contains('is-active-word')) {
+              el.classList.add('is-active-word');
+              el.classList.remove('is-sung');
+            }
+            const prog = w.durationMs > 0 ? Math.min(1, Math.max(0, (currentMs - w.startMs) / w.durationMs)) : 1;
+            el.style.setProperty('--word-fill', `${Math.round(prog * 100)}%`);
+          } else {
+            if (el.classList.contains('is-sung') || el.classList.contains('is-active-word')) {
+              el.classList.remove('is-sung', 'is-active-word');
+              el.style.removeProperty('--word-fill');
+            }
+          }
+        }
       }
 
       rafIdRef.current = requestAnimationFrame(tick);
@@ -235,7 +268,7 @@ export default function PrecisionLyricLine({
   return (
     <div
       ref={containerRef}
-      className={`precision-lyric-container ${className}`}
+      className={`precision-lyric-container ${className}${lyricsStyle === 'ghost-wave' ? ' precision-lyric--ghost-wave' : ''}`}
       style={style}
       title={rawText || undefined}
     >
@@ -243,7 +276,47 @@ export default function PrecisionLyricLine({
         ref={contentRef}
         className="precision-lyric-content"
       >
-        {presentation?.style === 'kinetic' && presentation?.kineticEffect && presentation.targetWord ? (
+        {(line?.syncType === 'word' || (!line?.syncType && line?.words)) && line?.words && line.words.length > 0 ? (
+          <span className={`karaoke-words${lyricsStyle === 'ghost-wave' ? ' is-ghost-wave' : ''}`}>
+            {line.words.map((w, wIdx) => {
+              const isWordPast = currentPositionMs >= w.endMs;
+              const isWordCurrent = currentPositionMs >= w.startMs && currentPositionMs < w.endMs;
+              const fillProgress = isWordCurrent && w.durationMs > 0
+                ? Math.min(1, Math.max(0, (currentPositionMs - w.startMs) / w.durationMs))
+                : isWordPast ? 1 : 0;
+
+              let wordClass = 'k-word';
+              if (isWordPast) wordClass += ' is-sung';
+              else if (isWordCurrent) wordClass += ' is-active-word';
+
+              if (
+                presentation?.style === 'kinetic' &&
+                presentation?.kineticEffect &&
+                presentation?.targetWord &&
+                w.text.trim().toLowerCase() === presentation.targetWord.trim().toLowerCase()
+              ) {
+                wordClass += ` k-fx-${presentation.kineticEffect}`;
+              }
+
+              const wordStyle = isWordCurrent
+                ? {
+                    '--word-fill': `${Math.round(fillProgress * 100)}%`,
+                    '--word-idx': wIdx,
+                  }
+                : { '--word-idx': wIdx };
+
+              return (
+                <span key={wIdx} className={wordClass} style={wordStyle}>
+                  {w.text}{' '}
+                </span>
+              );
+            })}
+          </span>
+        ) : lyricsStyle === 'ghost-wave' ? (
+          <span className="ghost-wave-line ghost-wave-line--mini">
+            {rawText}
+          </span>
+        ) : presentation?.style === 'kinetic' && presentation?.kineticEffect && presentation.targetWord ? (
           (() => {
             const raw = rawText;
             const start = presentation.startIndex != null ? presentation.startIndex : raw.indexOf(presentation.targetWord);

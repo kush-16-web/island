@@ -15,6 +15,7 @@ import {
   setLyricsStyle,
 } from '../lib/lyrics-style-engine';
 import FloatingLyricsStage from './FloatingLyricsStage';
+import LyricsSettingsPopover from './LyricsSettingsPopover';
 
 const isReducedMotion =
   typeof window !== 'undefined' &&
@@ -89,9 +90,11 @@ export default function FullLyrics({
   useEffect(() => {
     if (!showSettingsPopover) return;
     const handleOutsideClick = (e) => {
-      if (settingsAnchorRef.current && !settingsAnchorRef.current.contains(e.target)) {
-        setShowSettingsPopover(false);
+      const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+      if (el && (el.closest('.lyrics-settings-popover') || el.closest('.np__lyrics-popover') || el.closest('.full-lyrics__settings-anchor'))) {
+        return;
       }
+      setShowSettingsPopover(false);
     };
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
@@ -118,6 +121,13 @@ export default function FullLyrics({
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubPositionMs, setScrubPositionMs] = useState(null);
   const barRef = useRef(null);
+
+  // Active word calculation for dev diagnostics
+  const activeLine = lyricsData?.lines && activeLineIndex >= 0 ? lyricsData.lines[activeLineIndex] : null;
+  const activeWordIndex = activeLine?.words && activeLine.words.length > 0
+    ? activeLine.words.findIndex((w) => currentPositionMs >= w.startMs && currentPositionMs < w.endMs)
+    : -1;
+  const syncType = lyricsData?.syncType || (lyricsData?.hasWordSync ? 'word' : (lyricsData?.isSynced ? 'line' : 'unsynced'));
 
   // Volume control state
   const [volume, setVolume] = useState(() => audioCoordinator.getUserVolume());
@@ -186,17 +196,22 @@ export default function FullLyrics({
     return () => clearTimeout(timer);
   }, [isClosing, onClose]);
 
-  // Keyboard navigation: Escape key returns smoothly to player
+  // Keyboard navigation: Escape key returns smoothly to player (unless popover is open)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        if (showSettingsPopover) {
+          setShowSettingsPopover(false);
+          e.stopPropagation();
+          return;
+        }
         e.preventDefault();
         handleRequestClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isClosing]);
+  }, [isClosing, showSettingsPopover]);
 
   // Preload incoming artwork and keep previous cover visible until ready
   useEffect(() => {
@@ -365,7 +380,30 @@ export default function FullLyrics({
       }}
     >
       {/* 1. Top Bar: Segmented Tabs (Artwork / Concert) + Settings + Close Button */}
-      <div className="full-lyrics__top-bar">
+      <motion.div
+        className="full-lyrics__top-bar"
+        initial={{ opacity: 0, y: -4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {Boolean(import.meta.env?.DEV) && lyricsData && (
+          <div className="lyric-sync-diagnostic" title="Lyric Sync Dev Diagnostic">
+            <span className="lsd__item">{lyricsData.provider || 'LRCLIB'}</span>
+            <span className="lsd__dot">•</span>
+            <span className={`lsd__badge lsd__badge--${syncType}`}>{syncType}</span>
+            <span className="lsd__dot">•</span>
+            <span className="lsd__item">
+              {(lyricsData.lines || []).filter((l) => l.words && l.words.length > 0).length}/{(lyricsData.lines || []).length} words
+            </span>
+            <span className="lsd__dot">•</span>
+            <span className="lsd__item">
+              L#{activeLineIndex >= 0 ? activeLineIndex : '-'}{activeWordIndex >= 0 ? ` W#${activeWordIndex}` : ''}
+            </span>
+            <span className="lsd__dot">•</span>
+            <span className="lsd__item">{(currentPositionMs / 1000).toFixed(1)}s</span>
+          </div>
+        )}
+
         <div className="full-lyrics__seg-control" role="tablist" aria-label="View selector">
           <button
             type="button"
@@ -400,72 +438,21 @@ export default function FullLyrics({
               <Icon.Settings width={12} height={12} />
             </button>
 
-            {showSettingsPopover && (
-              <div
-                className="full-lyrics__settings-popover"
-                role="dialog"
-                aria-label="Lyrics Settings"
-                style={{
-                  '--popover-accent': accentColor || 'var(--lyric-accent, #ff3b69)',
-                }}
-              >
-                {/* Section 1: Lyrics Layout (Floating vs Normal) */}
-                <div className="full-lyrics__settings-section">
-                  <div className="full-lyrics__settings-heading">Lyrics Layout</div>
-                  <button
-                    type="button"
-                    className={`full-lyrics__settings-opt${lyricsLayout === LYRICS_LAYOUTS.FLOATING ? ' is-active' : ''}`}
-                    onClick={() => handleSelectLayout(LYRICS_LAYOUTS.FLOATING)}
-                  >
-                    <div className="full-lyrics__opt-info">
-                      <span className="full-lyrics__opt-title">Floating</span>
-                      <span className="full-lyrics__opt-desc">Cinematic typography around artwork</span>
-                    </div>
-                    {lyricsLayout === LYRICS_LAYOUTS.FLOATING && <Icon.Check width={12} height={12} />}
-                  </button>
-                  <button
-                    type="button"
-                    className={`full-lyrics__settings-opt${lyricsLayout === LYRICS_LAYOUTS.NORMAL ? ' is-active' : ''}`}
-                    onClick={() => handleSelectLayout(LYRICS_LAYOUTS.NORMAL)}
-                  >
-                    <div className="full-lyrics__opt-info">
-                      <span className="full-lyrics__opt-title">Normal</span>
-                      <span className="full-lyrics__opt-desc">Classic synchronized scrolling</span>
-                    </div>
-                    {lyricsLayout === LYRICS_LAYOUTS.NORMAL && <Icon.Check width={12} height={12} />}
-                  </button>
-                </div>
-
-                <div className="full-lyrics__settings-divider" />
-
-                {/* Section 2: Typography (Classic vs Kinetic) */}
-                <div className="full-lyrics__settings-section">
-                  <div className="full-lyrics__settings-heading">Typography</div>
-                  <button
-                    type="button"
-                    className={`full-lyrics__settings-opt${currentLyricsStyle === LYRICS_STYLES.CLASSIC ? ' is-active' : ''}`}
-                    onClick={() => handleSelectStyle(LYRICS_STYLES.CLASSIC)}
-                  >
-                    <div className="full-lyrics__opt-info">
-                      <span className="full-lyrics__opt-title">Classic</span>
-                      <span className="full-lyrics__opt-desc">Original clean typography</span>
-                    </div>
-                    {currentLyricsStyle === LYRICS_STYLES.CLASSIC && <Icon.Check width={12} height={12} />}
-                  </button>
-                  <button
-                    type="button"
-                    className={`full-lyrics__settings-opt${currentLyricsStyle === LYRICS_STYLES.KINETIC ? ' is-active' : ''}`}
-                    onClick={() => handleSelectStyle(LYRICS_STYLES.KINETIC)}
-                  >
-                    <div className="full-lyrics__opt-info">
-                      <span className="full-lyrics__opt-title">Kinetic</span>
-                      <span className="full-lyrics__opt-desc">Meaning-aware subtle effects</span>
-                    </div>
-                    {currentLyricsStyle === LYRICS_STYLES.KINETIC && <Icon.Check width={12} height={12} />}
-                  </button>
-                </div>
-              </div>
-            )}
+            <AnimatePresence>
+              {showSettingsPopover && (
+                <LyricsSettingsPopover
+                  anchorRef={settingsAnchorRef}
+                  isOpen={showSettingsPopover}
+                  onClose={() => setShowSettingsPopover(false)}
+                  layout={lyricsLayout}
+                  onLayoutChange={handleSelectLayout}
+                  style={currentLyricsStyle}
+                  onStyleChange={handleSelectStyle}
+                  accentColor={accentColor}
+                  preferredPlacement="bottom"
+                />
+              )}
+            </AnimatePresence>
           </div>
 
           <button
@@ -478,7 +465,7 @@ export default function FullLyrics({
             <Icon.Close width={12} height={12} />
           </button>
         </div>
-      </div>
+      </motion.div>
 
       {/* Main Body */}
       {activeTab === 'concert' ? (
@@ -715,9 +702,14 @@ export default function FullLyrics({
                     else if (isPast) lineClass += ' is-past';
                     else if (isFuture) lineClass += ' is-future';
 
+                    if (isActive && currentLyricsStyle === 'ghost-wave') {
+                      lineClass += ' full-lyrics__line--ghost-wave';
+                    }
+
                     const showWordKaraoke =
                       isSynced &&
                       hasWordSync &&
+                      (line?.syncType === 'word' || (!line?.syncType && line?.words)) &&
                       isActive &&
                       line.words &&
                       line.words.length > 0;
@@ -736,14 +728,19 @@ export default function FullLyrics({
                         title={isSynced ? 'Jump to this lyric' : undefined}
                       >
                         {showWordKaraoke ? (
-                          <span className="karaoke-words">
+                          <span className={`karaoke-words${currentLyricsStyle === 'ghost-wave' ? ' is-ghost-wave' : ''}`}>
                             {line.words.map((w, wIdx) => {
                               const isWordPast = effectivePosition >= w.endMs;
                               const isWordCurrent =
                                 effectivePosition >= w.startMs && effectivePosition < w.endMs;
+                              const fillProgress = isWordCurrent && w.durationMs > 0
+                                ? Math.min(1, Math.max(0, (effectivePosition - w.startMs) / w.durationMs))
+                                : isWordPast ? 1 : 0;
+
                               let wordClass = 'k-word';
                               if (isWordPast) wordClass += ' is-sung';
                               else if (isWordCurrent) wordClass += ' is-active-word';
+
                               if (
                                 pres?.style === 'kinetic' &&
                                 pres?.kineticEffect &&
@@ -752,12 +749,24 @@ export default function FullLyrics({
                               ) {
                                 wordClass += ` k-fx-${pres.kineticEffect}`;
                               }
+
+                              const wordStyle = isWordCurrent
+                                ? {
+                                    '--word-fill': `${Math.round(fillProgress * 100)}%`,
+                                    '--word-idx': wIdx,
+                                  }
+                                : { '--word-idx': wIdx };
+
                               return (
-                                <span key={wIdx} className={wordClass}>
+                                <span key={wIdx} className={wordClass} style={wordStyle}>
                                   {w.text}{' '}
                                 </span>
                               );
                             })}
+                          </span>
+                        ) : currentLyricsStyle === 'ghost-wave' && isActive ? (
+                          <span className="ghost-wave-line">
+                            {line.text}
                           </span>
                         ) : (
                           <span>

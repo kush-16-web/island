@@ -253,97 +253,109 @@ export default function FloatingLyricsStage({
 
     // Normal progression: update roles, mark outgoing as dissolving, add incoming
     setFragments((prev) => {
-      const updated = [];
-      const existingIndices = new Set();
+      const existingMap = new Map(prev.map((f) => [f.lineIndex, f]));
 
-      // 1. Process existing fragments
+      // 1. Establish authoritative active line placement first
+      let activeFrag = existingMap.get(activeLineIndex);
+      let activePlacement = activeFrag?.placement;
+
+      // Verify active line placement validity (never occlude cover/metadata or clip)
+      const exclusions = getStageExclusionZones(DEFAULT_STAGE_BOUNDS);
+      const needsNewActivePlacement =
+        !activeFrag ||
+        !activePlacement ||
+        checkRectCollision(activePlacement, exclusions.cover, 2) ||
+        checkRectCollision(activePlacement, exclusions.metadata, 4);
+
+      if (needsNewActivePlacement && lines[activeLineIndex]) {
+        activePlacement = solveAdaptivePlacement(lines[activeLineIndex], 'active', [], {
+          stageBounds: DEFAULT_STAGE_BOUNDS,
+          previousZoneId: lastPlacedZoneIdRef.current,
+          trackSeed: seed,
+        });
+        lastPlacedZoneIdRef.current = activePlacement.zoneId;
+      }
+
+      // 2. Filter & process existing fragments with strict collision eviction against active line
+      const survivorFrags = [];
+      const handledIndices = new Set();
+
+      // Push active line first
+      if (lines[activeLineIndex] && activePlacement) {
+        survivorFrags.push({
+          lineIndex: activeLineIndex,
+          line: lines[activeLineIndex],
+          displayText: activePlacement.displayText || lines[activeLineIndex].text,
+          role: 'active',
+          placement: activePlacement,
+          style: createPlacementStyle(activePlacement),
+          status: activeFrag ? 'settled' : 'emerging',
+        });
+        handledIndices.add(activeLineIndex);
+      }
+
+      // Process remaining fragments from prev
       for (const frag of prev) {
+        if (frag.lineIndex === activeLineIndex) continue;
+
+        // Strict collision check against active line
+        const collidesActive =
+          activePlacement &&
+          (checkRectCollision(activePlacement, frag.placement, 10) ||
+            (activePlacement.zoneId === 'above' && frag.placement.zoneId === 'above'));
+
+        if (collidesActive) {
+          // Immediately evict colliding supporting/dissolving fragment to preserve 100% active line legibility
+          if (exitTimersRef.current.has(frag.lineIndex)) {
+            clearTimeout(exitTimersRef.current.get(frag.lineIndex));
+            exitTimersRef.current.delete(frag.lineIndex);
+          }
+          continue;
+        }
+
         if (frag.status === 'dissolving' || frag.status === 'exiting') {
-          // Keep dissolving fragment until its timer completes
-          updated.push(frag);
+          survivorFrags.push(frag);
+          handledIndices.add(frag.lineIndex);
           continue;
         }
 
         if (targetSet.has(frag.lineIndex)) {
-          // Still in active window
           const offset = frag.lineIndex - activeLineIndex;
           let role = 'distant';
-          if (offset === 0) role = 'active';
-          else if (offset === -1) role = 'past';
+          if (offset === -1) role = 'past';
           else if (offset === 1) role = 'upcoming';
 
-          let placement = frag.placement;
-          let style = frag.style;
-
-          // If promoted to active, verify complete-line readability & cover clearance
-          if (role === 'active') {
-            const exclusions = getStageExclusionZones(DEFAULT_STAGE_BOUNDS);
-            const collidesCover = checkRectCollision(placement, exclusions.cover, 2);
-            const collidesMeta = checkRectCollision(placement, exclusions.metadata, 4);
-            const collidesAbove = placement.zoneId === 'above' && (placement.y + placement.height > exclusions.cover.y - 2);
-
-            if (collidesCover || collidesMeta || collidesAbove || frag.role !== 'active') {
-              // Re-evaluate placement with strict active priority & zero cover occlusion
-              placement = solveAdaptivePlacement(frag.line, 'active', updated, {
-                stageBounds: DEFAULT_STAGE_BOUNDS,
-                trackSeed: seed,
-              });
-              style = createPlacementStyle(placement);
-            }
-          }
-
-          updated.push({
+          survivorFrags.push({
             ...frag,
             role,
-            placement,
-            style,
             status: 'settled',
           });
-          existingIndices.add(frag.lineIndex);
+          handledIndices.add(frag.lineIndex);
         } else {
-          // Exiting the active window: start gentle background dissolve
+          // Exiting active window: dissolve
           const dissolvingFrag = {
             ...frag,
             status: 'dissolving',
           };
-          updated.push(dissolvingFrag);
+          survivorFrags.push(dissolvingFrag);
+          handledIndices.add(frag.lineIndex);
 
-          // Clear any existing timer for this line
           if (exitTimersRef.current.has(frag.lineIndex)) {
             clearTimeout(exitTimersRef.current.get(frag.lineIndex));
           }
 
-          // Schedule complete unmount after 520ms transition completes
           const timer = setTimeout(() => {
             exitTimersRef.current.delete(frag.lineIndex);
             setFragments((current) => current.filter((f) => f.lineIndex !== frag.lineIndex));
-          }, 520);
+          }, 450);
 
           exitTimersRef.current.set(frag.lineIndex, timer);
         }
       }
 
-      // 2. Active Lyric Collision Eviction: Active line has 100% priority over supporting fragments
-      const activeFrag = updated.find((f) => f.role === 'active' && f.status !== 'dissolving' && f.status !== 'exiting');
-      const survivorFrags = [];
-
-      for (const f of updated) {
-        if (!activeFrag || f.lineIndex === activeFrag.lineIndex || f.role === 'active') {
-          survivorFrags.push(f);
-        } else if (!checkRectCollision(activeFrag.placement, f.placement, 8)) {
-          survivorFrags.push(f);
-        } else {
-          // Evict colliding supporting fragment to guarantee 100% active line readability
-          if (exitTimersRef.current.has(f.lineIndex)) {
-            clearTimeout(exitTimersRef.current.get(f.lineIndex));
-            exitTimersRef.current.delete(f.lineIndex);
-          }
-        }
-      }
-
-      // 3. Add incoming fragments with adaptive content-aware placement
+      // 3. Add any incoming target fragments not yet placed
       activeTargetIndices.forEach((idx) => {
-        if (!existingIndices.has(idx)) {
+        if (!handledIndices.has(idx) && lines[idx]) {
           const offset = idx - activeLineIndex;
           let role = 'distant';
           if (offset === 0) role = 'active';
@@ -356,7 +368,6 @@ export default function FloatingLyricsStage({
             trackSeed: seed,
           });
 
-          // Skip adding supporting fragment if no clear collision-free zone exists (score < 0)
           if (role !== 'active' && placement.score != null && placement.score < 0) {
             return;
           }
@@ -372,6 +383,7 @@ export default function FloatingLyricsStage({
             style: createPlacementStyle(placement),
             status: 'emerging',
           });
+          handledIndices.add(idx);
         }
       });
 
@@ -411,6 +423,9 @@ export default function FloatingLyricsStage({
             if (!isExiting) {
               if (isActive) {
                 roleClass += ' floating-lyric--active';
+                if (lyricsStyle === 'ghost-wave') {
+                  roleClass += ' floating-lyric--ghost-wave';
+                }
               } else if (role === 'past') {
                 roleClass += ' floating-lyric--past';
               } else if (role === 'upcoming') {
@@ -437,25 +452,69 @@ export default function FloatingLyricsStage({
                 role={isActive ? 'text' : undefined}
                 aria-current={isActive ? 'true' : undefined}
               >
-                {isActive && pres?.style === 'kinetic' && pres?.kineticEffect && pres?.targetWord ? (
-                  (() => {
-                    const raw = displayText;
-                    const start = pres.startIndex != null ? pres.startIndex : raw.indexOf(pres.targetWord);
-                    const end = pres.endIndex != null ? pres.endIndex : (start >= 0 ? start + pres.targetWord.length : -1);
-                    if (start >= 0 && end > start) {
-                      const before = raw.slice(0, start);
-                      const target = raw.slice(start, end);
-                      const after = raw.slice(end);
-                      return (
-                        <>
-                          {before}
-                          <span className={`k-fx-${pres.kineticEffect}`}>{target}</span>
-                          {after}
-                        </>
-                      );
-                    }
-                    return raw;
-                  })()
+                {isActive ? (
+                  (line?.syncType === 'word' || (!line?.syncType && line?.words)) && line?.words && line.words.length > 0 ? (
+                    <span className={`karaoke-words${lyricsStyle === 'ghost-wave' ? ' is-ghost-wave' : ''}`}>
+                      {line.words.map((w, wIdx) => {
+                        const isWordPast = currentPositionMs >= w.endMs;
+                        const isWordCurrent = currentPositionMs >= w.startMs && currentPositionMs < w.endMs;
+                        const fillProgress = isWordCurrent && w.durationMs > 0
+                          ? Math.min(1, Math.max(0, (currentPositionMs - w.startMs) / w.durationMs))
+                          : isWordPast ? 1 : 0;
+
+                        let wordClass = 'k-word';
+                        if (isWordPast) wordClass += ' is-sung';
+                        else if (isWordCurrent) wordClass += ' is-active-word';
+
+                        if (
+                          pres?.style === 'kinetic' &&
+                          pres?.kineticEffect &&
+                          pres?.targetWord &&
+                          w.text.trim().toLowerCase() === pres.targetWord.trim().toLowerCase()
+                        ) {
+                          wordClass += ` k-fx-${pres.kineticEffect}`;
+                        }
+
+                        const wordStyle = isWordCurrent
+                          ? {
+                              '--word-fill': `${Math.round(fillProgress * 100)}%`,
+                              '--word-idx': wIdx,
+                            }
+                          : { '--word-idx': wIdx };
+
+                        return (
+                          <span key={wIdx} className={wordClass} style={wordStyle}>
+                            {w.text}{' '}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  ) : lyricsStyle === 'ghost-wave' ? (
+                    <span className="ghost-wave-line">
+                      {displayText}
+                    </span>
+                  ) : pres?.style === 'kinetic' && pres?.kineticEffect && pres?.targetWord ? (
+                    (() => {
+                      const raw = displayText;
+                      const start = pres.startIndex != null ? pres.startIndex : raw.indexOf(pres.targetWord);
+                      const end = pres.endIndex != null ? pres.endIndex : (start >= 0 ? start + pres.targetWord.length : -1);
+                      if (start >= 0 && end > start) {
+                        const before = raw.slice(0, start);
+                        const target = raw.slice(start, end);
+                        const after = raw.slice(end);
+                        return (
+                          <>
+                            {before}
+                            <span className={`k-fx-${pres.kineticEffect}`}>{target}</span>
+                            {after}
+                          </>
+                        );
+                      }
+                      return raw;
+                    })()
+                  ) : (
+                    displayText
+                  )
                 ) : (
                   displayText
                 )}

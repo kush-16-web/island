@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Island AI — Lyrics Popover Visual Regression Verification</title>
+  <link rel="stylesheet" href="../../src/styles.css">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 11, 15, 0.95);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      color: #fff;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Container replicating Island top dock positioning */
+    .test-viewport {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 16px;
+    }
+
+    .island-player-mock {
+      position: relative;
+      width: 440px;
+      background: rgba(14, 15, 20, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ipm__top {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .ipm__art {
+      width: 64px;
+      height: 64px;
+      border-radius: 12px;
+      flex-shrink: 0;
+      background-size: cover;
+      background-position: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .ipm__center {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .ipm__title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ipm__artist {
+      font-size: 11.5px;
+      color: rgba(255, 255, 255, 0.55);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ipm__mini-lyrics {
+      margin-top: 4px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 550;
+      color: #ffffff;
+      opacity: 0.92;
+      overflow: hidden;
+    }
+
+    .ipm__bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 4px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .ipm__tabs {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    /* Full Lyrics Modal View Mock */
+    .full-lyrics-mock {
+      position: absolute;
+      inset: 12px;
+      background: radial-gradient(130% 130% at 50% -10%, rgba(30, 58, 138, 0.4) 0%, #0d0f17 100%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 22px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8);
+      z-index: 10;
+    }
+
+    .flm__top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .flm__content {
+      flex: 1;
+      display: flex;
+      gap: 20px;
+      padding: 16px 0;
+      align-items: center;
+    }
+
+    .flm__art {
+      width: 140px;
+      height: 140px;
+      border-radius: 16px;
+      background-size: cover;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+    }
+
+    .flm__lyrics {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .flm__line {
+      font-size: 15px;
+      color: rgba(255, 255, 255, 0.4);
+      font-weight: 500;
+    }
+    .flm__line.is-active {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-viewport" id="viewport">
+    
+    <!-- Compact Player View -->
+    <div class="island-player-mock" id="compact-player">
+      <div class="ipm__top">
+        <div class="ipm__art" id="player-art" style="background-image: linear-gradient(135deg, #1e3a8a, #0284c7);"></div>
+        <div class="ipm__center">
+          <div class="ipm__title" id="player-title">São Paulo (feat. Anitta)</div>
+          <div class="ipm__artist" id="player-artist">The Weeknd, Anitta</div>
+          <div class="ipm__mini-lyrics" id="player-lyrics">
+            <span class="karaoke-words is-ghost-wave">
+              <span class="k-word is-sung">Gimme </span>
+              <span class="k-word is-active-word" style="--word-fill: 85%;">kinda </span>
+              <span class="k-word">love </span>
+              <span class="k-word">till </span>
+              <span class="k-word">I </span>
+              <span class="k-word">pass </span>
+              <span class="k-word">out</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ipm__bottom">
+        <span style="font-size: 10px; color: rgba(255,255,255,0.4);">1:14 / 3:42</span>
+        <div class="ipm__tabs">
+          <div class="np__lyrics-popover-anchor" id="lyrics-anchor">
+            <button type="button" class="np__tab-pill is-active" id="lyrics-btn" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.12); color: #fff; font-size: 11px;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              <span>Lyrics</span>
+            </button>
+          </div>
+          <button type="button" class="np__tab-pill" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background: transparent; color: rgba(255,255,255,0.6); font-size: 11px;">
+            <span>Favorites</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full Lyrics Modal View (Initially hidden) -->
+    <div class="full-lyrics-mock" id="full-lyrics-modal" style="display: none;">
+      <div class="flm__top">
+        <div style="font-size: 13px; font-weight: 600; color: #fff;">Lyrics</div>
+        <div class="full-lyrics__settings-anchor" id="full-lyrics-anchor">
+          <button type="button" class="full-lyrics__icon-btn is-active" id="full-settings-btn" style="padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.12); color: #fff;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="flm__content">
+        <div class="flm__art" id="full-art" style="background-image: linear-gradient(135deg, #1e3a8a, #0284c7);"></div>
+        <div class="flm__lyrics">
+          <div class="flm__line">Baby, tell me what you want from me</div>
+          <div class="flm__line is-active">Gimme kinda love till I pass out</div>
+          <div class="flm__line">Pulling up the keys in the doorway</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- The Actual Portaled Popover Component (Directly in document.body) -->
+    <div
+      id="portal-popover"
+      class="lyrics-settings-popover np__lyrics-popover lyrics-settings-popover--portal lyrics-settings-popover--bottom"
+      role="dialog"
+      aria-label="Lyrics appearance & arrangement options"
+      style="--popover-accent: #38bdf8;"
+    >
+      <div class="lsp__section">
+        <span class="lsp__label">Lyrics appearance</span>
+        <div class="lsp__options-list" role="radiogroup">
+          <button type="button" class="lsp__option-row np__lyrics-popover-option" id="opt-classic">
+            <div class="lsp__option-text">
+              <span class="lsp__option-title">Classic</span>
+              <span class="lsp__option-desc">Original clean typography</span>
+            </div>
+          </button>
+          <button type="button" class="lsp__option-row np__lyrics-popover-option" id="opt-kinetic">
+            <div class="lsp__option-text">
+              <span class="lsp__option-title">Kinetic</span>
+              <span class="lsp__option-desc">Meaning-aware subtle emphasis</span>
+            </div>
+          </button>
+          <button type="button" class="lsp__option-row np__lyrics-popover-option is-active" id="opt-ghost-wave">
+            <div class="lsp__option-text">
+              <span class="lsp__option-title">Ghost + Wave</span>
+              <span class="lsp__option-desc">Flowing vocal wave & fade</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div class="lsp__divider"></div>
+
+      <div class="lsp__section">
+        <span class="lsp__label">Lyrics arrangement</span>
+        <div class="lsp__segmented" role="radiogroup">
+          <button type="button" class="lsp__seg-btn is-active" id="opt-layout-floating">
+            <span>Floating</span>
+          </button>
+          <button type="button" class="lsp__seg-btn" id="opt-layout-normal">
+            <span>Normal</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Reposition popover dynamically relative to active anchor
+    function updatePosition(anchorId, preferredPlacement = 'bottom') {
+      const anchorEl = document.getElementById(anchorId);
+      const popoverEl = document.getElementById('portal-popover');
+      if (!anchorEl || !popoverEl) return;
+
+      const rect = anchorEl.getBoundingClientRect();
+      const winW = window.innerWidth;
+      const winH = window.innerHeight;
+      const pWidth = popoverEl.offsetWidth || 196;
+      const pHeight = popoverEl.offsetHeight || 160;
+      const margin = 10;
+      const offset = 6;
+
+      const spaceAbove = rect.top - margin;
+      const spaceBelow = winH - rect.bottom - margin;
+
+      let top;
+      let placement;
+
+      if (spaceAbove < pHeight + offset) {
+        placement = 'bottom';
+        top = rect.bottom + offset;
+      } else if (spaceBelow < pHeight + offset) {
+        placement = 'top';
+        top = rect.top - pHeight - offset;
+      } else if (preferredPlacement === 'top') {
+        placement = 'top';
+        top = rect.top - pHeight - offset;
+      } else {
+        placement = 'bottom';
+        top = rect.bottom + offset;
+      }
+
+      const clampedTop = Math.max(margin, Math.min(winH - pHeight - margin, top));
+      let left = rect.right - pWidth;
+      const clampedLeft = Math.max(margin, Math.min(winW - pWidth - margin, left));
+      const maxHeight = Math.max(120, winH - clampedTop - margin);
+
+      popoverEl.style.position = 'fixed';
+      popoverEl.style.top = clampedTop + 'px';
+      popoverEl.style.left = clampedLeft + 'px';
+      popoverEl.style.bottom = 'auto';
+      popoverEl.style.right = 'auto';
+      popoverEl.style.maxHeight = maxHeight + 'px';
+    }
+
+    window.setScenario = function(name) {
+      const compact = document.getElementById('compact-player');
+      const full = document.getElementById('full-lyrics-modal');
+      const popover = document.getElementById('portal-popover');
+      const playerArt = document.getElementById('player-art');
+      const fullArt = document.getElementById('full-art');
+
+      // Reset options
+      const optClassic = document.getElementById('opt-classic');
+      const optKinetic = document.getElementById('opt-kinetic');
+      const optGhostWave = document.getElementById('opt-ghost-wave');
+      optClassic.classList.remove('is-active');
+      optKinetic.classList.remove('is-active');
+      optGhostWave.classList.remove('is-active');
+
+      if (name === 'blue_artwork') {
+        compact.style.display = 'flex';
+        full.style.display = 'none';
+        playerArt.style.backgroundImage = 'linear-gradient(135deg, #1e3a8a, #0284c7)';
+        popover.style.setProperty('--popover-accent', '#38bdf8');
+        optGhostWave.classList.add('is-active');
+        updatePosition('lyrics-anchor', 'bottom');
+      } else if (name === 'dark_artwork') {
+        compact.style.display = 'flex';
+        full.style.display = 'none';
+        playerArt.style.backgroundImage = 'linear-gradient(135deg, #3b0764, #1e1b4b)';
+        popover.style.setProperty('--popover-accent', '#c084fc');
+        optKinetic.classList.add('is-active');
+        updatePosition('lyrics-anchor', 'bottom');
+      } else if (name === 'bright_artwork') {
+        compact.style.display = 'flex';
+        full.style.display = 'none';
+        playerArt.style.backgroundImage = 'linear-gradient(135deg, #d97706, #ea580c)';
+        popover.style.setProperty('--popover-accent', '#f59e0b');
+        optClassic.classList.add('is-active');
+        updatePosition('lyrics-anchor', 'bottom');
+      } else if (name === 'expanded_full_lyrics') {
+        compact.style.display = 'none';
+        full.style.display = 'flex';
+        fullArt.style.backgroundImage = 'linear-gradient(135deg, #1e3a8a, #0284c7)';
+        popover.style.setProperty('--popover-accent', '#38bdf8');
+        optGhostWave.classList.add('is-active');
+        updatePosition('full-lyrics-anchor', 'bottom');
+      } else if (name === 'small_window') {
+        compact.style.display = 'flex';
+        full.style.display = 'none';
+        playerArt.style.backgroundImage = 'linear-gradient(135deg, #1e3a8a, #0284c7)';
+        popover.style.setProperty('--popover-accent', '#38bdf8');
+        optGhostWave.classList.add('is-active');
+        updatePosition('lyrics-anchor', 'bottom');
+      }
+    };
+
+    window.addEventListener('resize', () => {
+      const fullVisible = document.getElementById('full-lyrics-modal').style.display !== 'none';
+      updatePosition(fullVisible ? 'full-lyrics-anchor' : 'lyrics-anchor');
+    });
+
+    // Default scenario
+    window.setScenario('blue_artwork');
+  </script>
+</body>
+</html>
+

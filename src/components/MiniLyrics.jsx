@@ -94,6 +94,7 @@ export default function MiniLyrics({
                   className={lineClass}
                   style={{ height: LINE_HEIGHT }}
                   presentation={lyricsPresentation[idx]}
+                  lyricsStyle={lyricsStyle}
                 />
               );
             }

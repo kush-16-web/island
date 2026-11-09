@@ -11,6 +11,7 @@ import MiniLyrics from './MiniLyrics';
 import FullLyrics, { sharedLyricsTransition } from './FullLyrics';
 import VideoPiP from './VideoPiP';
 import FavoritesMenu from './FavoritesMenu';
+import LyricsSettingsPopover from './LyricsSettingsPopover';
 import { isTrackFavorite, addFavorite, removeFavorite, healFavoriteWithExactId } from '../lib/favorites';
 import { playFavoriteTrack, getFriendlyProviderName } from '../lib/music-actions';
 import {
@@ -136,7 +137,11 @@ export default function NowPlaying({
   const seed = `${media.title}${media.artist}`;
 
   // Fetch and synchronize lyrics using current playback position
-  const { lyricsData, loading, activeLineIndex } = useLyrics(media, displayPosition);
+  const { lyricsData, loading, activeLineIndex, syncType, offsetMs } = useLyrics(media, displayPosition);
+  const activeLine = lyricsData?.lines && activeLineIndex >= 0 ? lyricsData.lines[activeLineIndex] : null;
+  const activeWordIndex = activeLine?.words && activeLine.words.length > 0
+    ? activeLine.words.findIndex((w) => displayPosition >= w.startMs && displayPosition < w.endMs)
+    : -1;
 
   const npContainerRef = useRef(null);
   const playerCoverRef = useRef(null);
@@ -176,9 +181,11 @@ export default function NowPlaying({
   useEffect(() => {
     if (!showLyricsStylePopover) return;
     const handleOutsideClick = (e) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
-        setShowLyricsStylePopover(false);
+      const el = e.target instanceof Element ? e.target : e.target?.parentElement;
+      if (el && (el.closest('.lyrics-settings-popover') || el.closest('.np__lyrics-popover') || el.closest('.np__lyrics-popover-anchor'))) {
+        return;
       }
+      setShowLyricsStylePopover(false);
     };
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
@@ -612,6 +619,25 @@ export default function NowPlaying({
               transition={{ duration: 0.28 }}
             >
               <div className="np">
+                {Boolean(import.meta.env?.DEV) && lyricsData && (
+                  <div className="lyric-sync-diagnostic" title="Lyric Sync Dev Diagnostic">
+                    <span className="lsd__item">{lyricsData.provider || 'LRCLIB'}</span>
+                    <span className="lsd__dot">•</span>
+                    <span className={`lsd__item lsd__badge lsd__badge--${syncType || 'line'}`}>{syncType || 'line'}</span>
+                    <span className="lsd__dot">•</span>
+                    <span className="lsd__item">
+                      {(lyricsData.lines || []).filter((l) => l.words && l.words.length > 0).length}/{(lyricsData.lines || []).length} words
+                    </span>
+                    <span className="lsd__dot">•</span>
+                    <span className="lsd__item">
+                      L#{activeLineIndex >= 0 ? activeLineIndex : '-'}{activeWordIndex >= 0 ? ` W#${activeWordIndex}` : ''}
+                    </span>
+                    <span className="lsd__dot">•</span>
+                    <span className="lsd__item">
+                      {(displayPosition / 1000).toFixed(1)}s ({offsetMs >= 0 ? `+${offsetMs}` : offsetMs}ms)
+                    </span>
+                  </div>
+                )}
                 <div className="np__main">
                   {/* Left Column: Cover + Title + Artist */}
                   <div className="np__left">
@@ -699,60 +725,23 @@ export default function NowPlaying({
                           <Icon.Music width={11} height={11} />
                           <span>Lyrics</span>
                         </button>
-                        {showLyricsStylePopover && (
-                          <div
-                            className="np__lyrics-popover"
-                            role="dialog"
-                            aria-label="Lyrics appearance selector"
-                            style={{
-                              '--popover-accent': accentColor || 'var(--accent, #ff3b69)',
-                            }}
-                          >
-                            <div className="np__lyrics-popover-header">Lyrics Layout</div>
-                            <button
-                              type="button"
-                              className={`np__lyrics-popover-option${lyricsLayout === LYRICS_LAYOUTS.FLOATING ? ' is-active' : ''}`}
-                              onClick={() => handleSelectLyricsLayout(LYRICS_LAYOUTS.FLOATING)}
-                            >
-                              <div className="np__lyrics-option-info">
-                                <span className="np__lyrics-option-title">Floating</span>
-                                <span className="np__lyrics-option-desc">Cinematic typography around artwork</span>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              className={`np__lyrics-popover-option${lyricsLayout === LYRICS_LAYOUTS.NORMAL ? ' is-active' : ''}`}
-                              onClick={() => handleSelectLyricsLayout(LYRICS_LAYOUTS.NORMAL)}
-                            >
-                              <div className="np__lyrics-option-info">
-                                <span className="np__lyrics-option-title">Normal</span>
-                                <span className="np__lyrics-option-desc">Classic synchronized scrolling</span>
-                              </div>
-                            </button>
-
-                            <div className="np__lyrics-popover-header" style={{ marginTop: '6px' }}>Typography</div>
-                            <button
-                              type="button"
-                              className={`np__lyrics-popover-option${lyricsStyle === LYRICS_STYLES.CLASSIC ? ' is-active' : ''}`}
-                              onClick={() => handleSelectLyricsStyle(LYRICS_STYLES.CLASSIC)}
-                            >
-                              <div className="np__lyrics-option-info">
-                                <span className="np__lyrics-option-title">Classic</span>
-                                <span className="np__lyrics-option-desc">Original clean typography</span>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              className={`np__lyrics-popover-option${lyricsStyle === LYRICS_STYLES.KINETIC ? ' is-active' : ''}`}
-                              onClick={() => handleSelectLyricsStyle(LYRICS_STYLES.KINETIC)}
-                            >
-                              <div className="np__lyrics-option-info">
-                                <span className="np__lyrics-option-title">Kinetic</span>
-                                <span className="np__lyrics-option-desc">Meaning-aware subtle effects</span>
-                              </div>
-                            </button>
-                          </div>
-                        )}
+                        {/* Lyrics Appearance (Typography) Popover: Classic (Original clean), Kinetic (Meaning-aware), Ghost + Wave */}
+                        {/* np__lyrics-popover lyrics-settings-popover portaled with viewport-aware automatic flipping */}
+                        <AnimatePresence>
+                          {showLyricsStylePopover && (
+                            <LyricsSettingsPopover
+                              anchorRef={popoverRef}
+                              isOpen={showLyricsStylePopover}
+                              onClose={() => setShowLyricsStylePopover(false)}
+                              layout={lyricsLayout}
+                              onLayoutChange={handleSelectLyricsLayout}
+                              style={lyricsStyle}
+                              onStyleChange={handleSelectLyricsStyle}
+                              accentColor={accentColor}
+                              preferredPlacement="bottom"
+                            />
+                          )}
+                        </AnimatePresence>
                       </div>
                       <button
                         type="button"

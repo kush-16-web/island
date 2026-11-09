@@ -85,6 +85,8 @@ export function useLyrics(media, currentPositionMs, userOffsetMs) {
     hasLyrics: Boolean(lyricsData?.found && lyricsData?.lines?.length > 0),
     isSynced: Boolean(lyricsData?.isSynced),
     hasWordSync: Boolean(lyricsData?.hasWordSync),
+    syncType: lyricsData?.syncType || (lyricsData?.hasWordSync ? 'word' : (lyricsData?.isSynced ? 'line' : 'unsynced')),
     instrumental: Boolean(lyricsData?.instrumental),
+    offsetMs,
   };
 }

@@ -19,6 +19,14 @@ export const LYRICS_STYLES = {
   KINETIC: 'kinetic',
 };
 
+// Define GHOST_WAVE as a non-enumerable property so Object.values(LYRICS_STYLES) maintains backward compatibility
+Object.defineProperty(LYRICS_STYLES, 'GHOST_WAVE', {
+  value: 'ghost-wave',
+  enumerable: false,
+  writable: false,
+  configurable: false,
+});
+
 export const LYRICS_LAYOUTS = {
   FLOATING: 'floating',
   NORMAL: 'normal',
@@ -37,6 +45,9 @@ export function getLyricsStyle() {
     if (saved === LYRICS_STYLES.CLASSIC) {
       return LYRICS_STYLES.CLASSIC;
     }
+    if (saved === 'ghost-wave' || saved === LYRICS_STYLES.GHOST_WAVE) {
+      return 'ghost-wave';
+    }
     // Migration: Legacy 'expressive' or any unrecognized value migrates to 'classic' and persists
     if (saved === 'expressive' || saved != null) {
       localStorage.setItem(STORAGE_KEY, LYRICS_STYLES.CLASSIC);
@@ -49,7 +60,12 @@ export function getLyricsStyle() {
 export function setLyricsStyle(style) {
   if (typeof window === 'undefined') return;
   try {
-    const valid = style === LYRICS_STYLES.KINETIC ? LYRICS_STYLES.KINETIC : LYRICS_STYLES.CLASSIC;
+    const valid =
+      style === LYRICS_STYLES.KINETIC
+        ? LYRICS_STYLES.KINETIC
+        : style === 'ghost-wave' || style === LYRICS_STYLES.GHOST_WAVE
+        ? 'ghost-wave'
+        : LYRICS_STYLES.CLASSIC;
     localStorage.setItem(STORAGE_KEY, valid);
   } catch {}
 }
@@ -281,10 +297,28 @@ const presentationCache = new Map();
 
 /**
  * Analyze all lines for a track and return deterministic presentation metadata.
- * Exactly two supported modes: Classic and Kinetic.
+ * Supported styles: Classic, Kinetic, and Ghost + Wave.
  */
 export function getTrackLyricsPresentation(lines = [], trackSeed = '', style = LYRICS_STYLES.CLASSIC) {
-  if (!lines || lines.length === 0 || style !== LYRICS_STYLES.KINETIC) {
+  if (!lines || lines.length === 0) {
+    return [];
+  }
+
+  // Check prefers-reduced-motion
+  const isReduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+
+  if (style === 'ghost-wave') {
+    if (isReduced) {
+      return lines.map(() => ({ style: LYRICS_STYLES.CLASSIC }));
+    }
+    return lines.map((_, idx) => ({
+      style: 'ghost-wave',
+      isGhostWave: true,
+      lineIndex: idx,
+    }));
+  }
+
+  if (style !== LYRICS_STYLES.KINETIC) {
     return lines.map(() => ({ style: LYRICS_STYLES.CLASSIC }));
   }
 
@@ -368,13 +402,17 @@ export function getTrackLyricsPresentation(lines = [], trackSeed = '', style = L
  * Get presentation metadata for a single lyric line.
  */
 export function getLinePresentation(line, index, totalLines, trackSeed, style = LYRICS_STYLES.CLASSIC) {
-  if (!line || style !== LYRICS_STYLES.KINETIC) {
+  if (!line || (style !== LYRICS_STYLES.KINETIC && style !== 'ghost-wave')) {
     return { style: LYRICS_STYLES.CLASSIC };
   }
 
   // Check prefers-reduced-motion
   if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
     return { style: LYRICS_STYLES.CLASSIC };
+  }
+
+  if (style === 'ghost-wave') {
+    return { style: 'ghost-wave', isGhostWave: true, lineIndex: index };
   }
 
   const allMeta = getTrackLyricsPresentation(

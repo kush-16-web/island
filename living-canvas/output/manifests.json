@@ -1,120 +1,12 @@
 [
   {
-    "slug": "the-lumineers_midnight-rain",
-    "song": {
-      "title": "Midnight Rain",
-      "artist": "The Lumineers",
-      "lyrics": "Rain pouring down on cold asphalt, standing under the lone streetlight watching reflections shatter as cars pass by in the quiet dark.",
-      "archetype": "Melancholic / Solitude / Rain / Midnight"
-    },
-    "createdAt": "2026-10-21T06:19:49.122Z",
-    "status": "workflow_validated",
-    "generator": {
-      "status": "workflow_validated",
-      "format": "workflow_json",
-      "source": "interpreter",
-      "model": "rule-based-art-director",
-      "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
-      "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
-    },
-    "qualityScore": 92,
-    "files": {
-      "concept": "concept.json",
-      "prompt": "prompt.json",
-      "workflow": "workflow.json",
-      "evaluation": "evaluation.json",
-      "artwork": null
-    },
-    "hardware": {
-      "platform": "win32",
-      "arch": "x64",
-      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
-      "cpuCores": 8,
-      "totalRamMB": 5965,
-      "freeRamMB": 442,
-      "nodeVersion": "v22.12.0"
-    }
-  },
-  {
-    "slug": "horizon-zero_solar-flare",
-    "song": {
-      "title": "Solar Flare",
-      "artist": "Horizon Zero",
-      "lyrics": "Break the gravitational pull, ascend through the stratosphere into blinding radiant light, unfolding paper wings into the morning sun.",
-      "archetype": "Euphoric / Ascension / Solar / Catharsis"
-    },
-    "createdAt": "2026-10-21T06:19:49.147Z",
-    "status": "workflow_validated",
-    "generator": {
-      "status": "workflow_validated",
-      "format": "workflow_json",
-      "source": "interpreter",
-      "model": "rule-based-art-director",
-      "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
-      "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
-    },
-    "qualityScore": 82,
-    "files": {
-      "concept": "concept.json",
-      "prompt": "prompt.json",
-      "workflow": "workflow.json",
-      "evaluation": "evaluation.json",
-      "artwork": null
-    },
-    "hardware": {
-      "platform": "win32",
-      "arch": "x64",
-      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
-      "cpuCores": 8,
-      "totalRamMB": 5965,
-      "freeRamMB": 442,
-      "nodeVersion": "v22.12.0"
-    }
-  },
-  {
-    "slug": "iron-pine_wooden-porch-echoes",
-    "song": {
-      "title": "Wooden Porch Echoes",
-      "artist": "Iron & Pine",
-      "lyrics": "Creaking floorboards and an old six-string with worn frets, family memories carved into the cedar post by the river roots.",
-      "archetype": "Nostalgic / Acoustic / Memory / Hearth"
-    },
-    "createdAt": "2026-10-21T06:19:49.174Z",
-    "status": "workflow_validated",
-    "generator": {
-      "status": "workflow_validated",
-      "format": "workflow_json",
-      "source": "interpreter",
-      "model": "rule-based-art-director",
-      "checkpoint": "sd_xl_base_1.0.safetensors (required on Office PC)",
-      "notes": "Local ComfyUI is offline. Workflow validated successfully. Ready for execution on GPU machine."
-    },
-    "qualityScore": 100,
-    "files": {
-      "concept": "concept.json",
-      "prompt": "prompt.json",
-      "workflow": "workflow.json",
-      "evaluation": "evaluation.json",
-      "artwork": null
-    },
-    "hardware": {
-      "platform": "win32",
-      "arch": "x64",
-      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
-      "cpuCores": 8,
-      "totalRamMB": 5965,
-      "freeRamMB": 442,
-      "nodeVersion": "v22.12.0"
-    }
-  },
-  {
     "slug": "test-ensemble_test-melody",
     "song": {
       "title": "Test Melody",
       "artist": "Test Ensemble",
       "lyrics": "A quiet echo in the empty hall"
     },
-    "createdAt": "2026-10-30T06:38:54.752Z",
+    "createdAt": "2026-11-03T17:12:37.692Z",
     "status": "workflow_validated",
     "generator": {
       "status": "workflow_validated",
@@ -138,37 +30,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 715,
-      "nodeVersion": "v22.12.0"
-    }
-  },
-  {
-    "slug": "debussy_clair-de-lune",
-    "song": {
-      "title": "Clair de Lune",
-      "artist": "Debussy",
-      "lyrics": "Quiet moonlight bathing still waters"
-    },
-    "createdAt": "2026-10-21T06:14:19.395Z",
-    "generator": {
-      "mode": "mock-svg-renderer",
-      "format": "svg",
-      "source": "interpreter",
-      "model": "rule-based-art-director",
-      "fallbackReason": null
-    },
-    "files": {
-      "concept": "concept.json",
-      "prompt": "prompt.json",
-      "artwork": "artwork.svg"
-    },
-    "hardware": {
-      "platform": "win32",
-      "arch": "x64",
-      "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
-      "cpuCores": 8,
-      "totalRamMB": 5965,
-      "freeRamMB": 455,
+      "freeRamMB": 552,
       "nodeVersion": "v22.12.0"
     }
   },
@@ -178,7 +40,7 @@
       "title": "Silent Northern Aurora",
       "artist": "Fjord Lights"
     },
-    "createdAt": "2026-10-30T06:38:54.736Z",
+    "createdAt": "2026-11-03T17:12:37.656Z",
     "status": "workflow_validated",
     "generator": {
       "status": "workflow_validated",
@@ -202,7 +64,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 707,
+      "freeRamMB": 545,
       "nodeVersion": "v22.12.0"
     }
   }

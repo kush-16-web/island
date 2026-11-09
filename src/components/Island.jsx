@@ -320,6 +320,11 @@ export default function Island() {
         });
         return;
       }
+      // If the lyrics settings popover is open, ignore window:blur so interacting with the popover never dismisses the hub
+      if (typeof document !== 'undefined' && document.querySelector('.lyrics-settings-popover')) {
+        window.island?.logLifecycle?.('window:blur:ignored_popover_open');
+        return;
+      }
       window.island?.logLifecycle?.('window:blur:dismiss_hub');
       setHubOpen(false);
     });
@@ -330,13 +335,16 @@ export default function Island() {
     if (!hubOpen) return undefined;
     const onWindowPointerDown = (e) => {
       const el = e.target instanceof Element ? e.target : e.target?.parentElement;
-      if (!el || (!el.closest('.island') && !el.closest('.pet-container'))) {
+      if (!el || (!el.closest('.island') && !el.closest('.pet-container') && !el.closest('.lyrics-settings-popover') && !el.closest('.np__lyrics-popover') && !el.closest('[data-hit]'))) {
         window.island?.logLifecycle?.('hub:dismiss_pointerdown_outside');
         setHubOpen(false);
       }
     };
     const onWindowKeyDown = (e) => {
       if (e.key === 'Escape') {
+        if (document.querySelector('.lyrics-settings-popover')) {
+          return;
+        }
         window.island?.logLifecycle?.('hub:dismiss_escape_key');
         setHubOpen(false);
       }

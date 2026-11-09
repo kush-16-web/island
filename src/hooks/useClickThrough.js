@@ -19,7 +19,7 @@ export function useClickThrough() {
       }
     };
 
-    const over = (el) => el instanceof Element && Boolean(el.closest('[data-hit]'));
+    const over = (el) => el instanceof Element && Boolean(el.closest('[data-hit], .lyrics-settings-popover, .np__lyrics-popover'));
 
     const onMove = (e) => {
       last = { x: e.clientX, y: e.clientY };
