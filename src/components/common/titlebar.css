@@ -1,0 +1,137 @@
+/* Quiet Glass Titlebar */
+
+.qg-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  background: rgba(14, 16, 21, 0.45);
+  border-bottom: 1px solid var(--qg-border, rgba(255, 255, 255, 0.07));
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  user-select: none;
+  z-index: 1000;
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color 0.2s ease, border-top-left-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-top-right-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.qg-titlebar.is-maximized {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.qg-titlebar__left-action {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  -webkit-app-region: no-drag;
+  padding-left: 8px;
+}
+
+.qg-titlebar__drag {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 12px;
+  -webkit-app-region: drag;
+  overflow: hidden;
+}
+
+.qg-titlebar__identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qg-titlebar__brand-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  filter: none;
+}
+
+.qg-titlebar__gem {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--titlebar-accent, var(--qg-accent, #e2e8f0));
+  flex-shrink: 0;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.qg-titlebar__gem.is-dynamic {
+  box-shadow: 0 0 6px var(--titlebar-accent, var(--qg-accent, #e2e8f0));
+}
+
+.qg-titlebar__title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--qg-text-primary, #f3f4f8);
+  white-space: nowrap;
+}
+
+.qg-titlebar__tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--qg-text-secondary, rgba(243, 244, 248, 0.65));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  letter-spacing: 0.01em;
+}
+
+.qg-titlebar__controls {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.qg-titlebar__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: var(--qg-text-secondary, rgba(243, 244, 248, 0.65));
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.qg-titlebar__btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+}
+
+.qg-titlebar__btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.qg-titlebar__btn--close {
+  border-top-right-radius: 12px;
+  transition: background 0.15s ease, color 0.15s ease, border-top-right-radius 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.qg-titlebar.is-maximized .qg-titlebar__btn--close {
+  border-top-right-radius: 0;
+}
+
+.qg-titlebar__btn--close:hover {
+  background: #e81123 !important;
+  color: #ffffff !important;
+}
+
+.qg-titlebar__btn--close:active {
+  background: #bf0f1d !important;
+  color: #ffffff !important;
+}

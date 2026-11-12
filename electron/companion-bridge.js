@@ -247,11 +247,14 @@ class CompanionBridge extends EventEmitter {
       }
     }
 
-    // 1. Deduplication: Check if identical command was dispatched in the last 1000ms
-    for (const inFlight of this.inFlightCommands.values()) {
-      const c = inFlight.command;
-      if (c.action === action && c.videoId === videoId && c.title === title && now - c.timestamp < 1000) {
-        return inFlight.promise;
+    // 1. Deduplication: Check if identical non-volume command was dispatched in the last 1000ms
+    // Volume commands must never be deduplicated so rapid slider drags always supersede stale values
+    if (!isVolumeCmd) {
+      for (const inFlight of this.inFlightCommands.values()) {
+        const c = inFlight.command;
+        if (c.action === action && c.videoId === videoId && c.title === title && now - c.timestamp < 1000) {
+          return inFlight.promise;
+        }
       }
     }
 

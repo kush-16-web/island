@@ -108,12 +108,65 @@ export function createMockIsland() {
     resetWindowPos() {},
     getWindowPos: async () => ({ x: 0, preset: 'center' }),
     getWindowDock: async () => ({ edge: 'top', preset: 'center', align: 'center' }),
+    getCursorContext: async () => null,
     setIslandExpanded() {},
+    openWorkspace() {
+      if (typeof window !== 'undefined') {
+        window.location.hash = '#workspace';
+        window.location.reload();
+      }
+    },
+    openSettings(_tab) {
+      if (typeof window !== 'undefined') {
+        window.location.hash = '#settings';
+        window.location.reload();
+      }
+    },
+    _isMaximized: false,
+    windowControl(action) {
+      if (action === 'close' && typeof window !== 'undefined') {
+        window.location.hash = '';
+        window.location.reload();
+      } else if (action === 'maximize') {
+        this._isMaximized = !this._isMaximized;
+        emit('window:maximize-change', { isMaximized: this._isMaximized });
+      }
+    },
+    isWindowMaximized: async function() {
+      return Boolean(this._isMaximized);
+    },
+    getAppearanceMode: async () => (typeof window !== 'undefined' ? localStorage.getItem('island_appearance_mode') || 'dynamic_frosted' : 'dynamic_frosted'),
+    setAppearanceMode(mode) {
+      if (typeof window !== 'undefined') {
+        const val = mode === 'dark_frosted' ? 'dark_frosted' : 'dynamic_frosted';
+        localStorage.setItem('island_appearance_mode', val);
+        emit('appearance:mode-changed', { mode: val });
+      }
+    },
+    getNotchVisibilityMode: async () => (typeof window !== 'undefined' ? localStorage.getItem('island_notch_visibility') || 'always' : 'always'),
+    setNotchVisibilityMode(mode) {
+      const val = ['always', 'smart_hide', 'peek'].includes(mode) ? mode : 'always';
+      if (typeof window !== 'undefined') localStorage.setItem('island_notch_visibility', val);
+      emit('notch:visibility-changed', { mode: val });
+      return val;
+    },
+    getNotchDisplays: async () => ({
+      selectedDisplayId: null,
+      primaryDisplayId: 1,
+      displays: [{ id: 1, label: 'Display 1', isPrimary: true, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1032 }, scaleFactor: 1 }],
+    }),
+    setNotchDisplay: async () => ({ x: 690, y: 0, width: 540, height: 440, edge: 'top', preset: 'center', align: 'center', displayId: 1 }),
     movePetBy() {},
     setPetPos() {},
     getPetPos: async () => ({ x: 0, y: 0 }),
     resetPetPos() {},
-    setPetVisible() {},
+    setPetVisible(vis) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('island_pet_visible', String(Boolean(vis)));
+        emit('pet:visibility-changed', { visible: Boolean(vis) });
+      }
+    },
+    getPetVisible: async () => (typeof window !== 'undefined' ? localStorage.getItem('island_pet_visible') === 'true' : false),
     getAutohide: async () => true,
     setAutohide: async () => true,
     getAutohidePet: async () => true,
@@ -186,6 +239,22 @@ export function createMockIsland() {
           reportedAt: Date.now(),
         };
         emit('media', media);
+      },
+      _mockVol: 75,
+      _mockMuted: false,
+      getVolume: async function() {
+        return { ok: true, supported: true, volume: this._mockVol, muted: this._mockMuted };
+      },
+      setVolume: async function(level) {
+        this._mockVol = Math.max(0, Math.min(100, Math.round(Number(level) || 0)));
+        if (this._mockVol > 0) this._mockMuted = false;
+        emit('media:volume-changed', { volume: this._mockVol, muted: this._mockMuted });
+        return { ok: true, supported: true, volume: this._mockVol, muted: this._mockMuted };
+      },
+      setMute: async function(muted) {
+        this._mockMuted = Boolean(muted);
+        emit('media:volume-changed', { volume: this._mockVol, muted: this._mockMuted });
+        return { ok: true, supported: true, volume: this._mockVol, muted: this._mockMuted };
       },
     },
     inbox: {

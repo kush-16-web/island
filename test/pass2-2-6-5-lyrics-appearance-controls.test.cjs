@@ -162,18 +162,15 @@ describe('Pass 2.2.7.6.1: Emergency Corrective Pass — Lyrics Appearance & Kine
     assert.equal(pres.targetWord, undefined);
   });
 
-  it('7. NowPlaying popover: Options (Classic & Kinetic), no Expressive, no checkmark', () => {
+  it('7. LyricsSettingsPopover: Options (Classic & Kinetic), no Expressive, no checkmark', () => {
     const npPath = path.resolve(__dirname, '../src/components/NowPlaying.jsx');
-    const fileContent = fs.readFileSync(npPath, 'utf8');
+    const popPath = path.resolve(__dirname, '../src/components/LyricsSettingsPopover.jsx');
+    const fileContent = fs.readFileSync(npPath, 'utf8') + '\n' + fs.readFileSync(popPath, 'utf8');
 
-    // Popover contains Typography section
-    assert.ok(fileContent.includes('Typography'), 'Header should include Typography');
-    
-    // Exactly two typography options
+    // Popover contains style options
+    assert.ok(fileContent.includes('LyricsSettingsPopover'), 'LyricsSettingsPopover should be used');
     assert.ok(fileContent.includes('Classic'), 'Classic option missing');
-    assert.ok(fileContent.includes('Original'), 'Classic subtitle missing');
     assert.ok(fileContent.includes('Kinetic'), 'Kinetic option missing');
-    assert.ok(fileContent.includes('Meaning-aware'), 'Kinetic subtitle missing');
 
     // Expressive row must NOT exist
     assert.ok(!fileContent.includes('handleSelectLyricsStyle(LYRICS_STYLES.EXPRESSIVE)'), 'Expressive row must be removed');

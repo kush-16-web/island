@@ -306,8 +306,12 @@ export default function PrecisionLyricLine({
                 : { '--word-idx': wIdx };
 
               return (
-                <span key={wIdx} className={wordClass} style={wordStyle}>
-                  {w.text}{' '}
+                <span key={wIdx}>
+                  <span className={wordClass} style={wordStyle}>
+                    <span className="k-word__base">{w.text}</span>
+                    <span className="k-word__fill" aria-hidden="true">{w.text}</span>
+                  </span>
+                  {' '}
                 </span>
               );
             })}

@@ -308,5 +308,20 @@ Second line of plain song
     assert.equal(parsed[2].words[4].text, "goes");
     assert.equal(parsed[2].words[4].endMs, 12269);
   });
+
+  // 10. Word-by-word typography invariant: active word does not mutate font-weight or swap fonts
+  await t.test('10. Word-by-word typography invariant: active word preserves inherited font styling', () => {
+    const cssContent = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf-8');
+    
+    // Extract .k-word.is-active-word rule
+    const activeWordMatch = cssContent.match(/\.k-word\.is-active-word\s*\{([^}]+)\}/);
+    assert.ok(activeWordMatch, 'styles.css must contain .k-word.is-active-word');
+    
+    const ruleBody = activeWordMatch[1];
+    // Must NOT contain font-weight: 600 or any non-inherit font weight
+    assert.ok(!ruleBody.includes('font-weight: 600'), '.k-word.is-active-word must not force font-weight: 600');
+    assert.ok(ruleBody.includes('font-weight: inherit'), '.k-word.is-active-word must explicitly maintain inherited font-weight');
+    assert.ok(ruleBody.includes('font-family: inherit'), '.k-word.is-active-word must explicitly maintain inherited font-family');
+  });
 });
 

@@ -24,6 +24,13 @@ const CHANNELS = new Set([
   'companion:status-changed',
   'groq:stream-token',
   'groq:stream-chunk',
+  'window:maximize-change',
+  'settings:tab-change',
+  'pet:visibility-changed',
+  'appearance:mode-changed',
+  'notch:visibility-changed',
+  'notch:reveal',
+  'media:volume-changed',
 ]);
 
 contextBridge.exposeInMainWorld('island', {
@@ -47,7 +54,20 @@ contextBridge.exposeInMainWorld('island', {
   resetWindowPos: () => ipcRenderer.send('window:reset-pos'),
   getWindowPos: () => ipcRenderer.invoke('window:get-pos'),
   getWindowDock: () => ipcRenderer.invoke('window:get-dock'),
+  getCursorContext: () => ipcRenderer.invoke('win:get-cursor-context'),
   setIslandExpanded: (expanded) => ipcRenderer.send('island:expand', Boolean(expanded)),
+
+  // Multi-Window Management & Controls (Phase 1A)
+  openWorkspace: () => ipcRenderer.send('workspace:open'),
+  openSettings: (tab) => ipcRenderer.send('settings:open', { tab }),
+  windowControl: (action) => ipcRenderer.send('window:control', { action }),
+  isWindowMaximized: () => ipcRenderer.invoke('window:is-maximized'),
+  getAppearanceMode: () => ipcRenderer.invoke('settings:get-appearance-mode'),
+  setAppearanceMode: (mode) => ipcRenderer.send('settings:set-appearance-mode', mode),
+  getNotchVisibilityMode: () => ipcRenderer.invoke('notch:get-visibility-mode'),
+  setNotchVisibilityMode: (mode) => ipcRenderer.invoke('notch:set-visibility-mode', mode),
+  getNotchDisplays: () => ipcRenderer.invoke('notch:get-displays'),
+  setNotchDisplay: (displayId) => ipcRenderer.invoke('notch:set-display', displayId),
 
   // Standalone Desktop Pet Window
   movePetBy: (dx, dy) => ipcRenderer.send('pet:move-by', { dx, dy }),
@@ -55,6 +75,7 @@ contextBridge.exposeInMainWorld('island', {
   getPetPos: () => ipcRenderer.invoke('pet:get-pos'),
   resetPetPos: () => ipcRenderer.send('pet:reset-pos'),
   setPetVisible: (vis) => ipcRenderer.send('pet:set-visible', Boolean(vis)),
+  getPetVisible: () => ipcRenderer.invoke('pet:get-visible'),
   setVoiceMood: (voiceState) => ipcRenderer.send('pet:set-voice-mood', voiceState),
 
   // Fullscreen autohide & dock mode settings
@@ -127,6 +148,9 @@ contextBridge.exposeInMainWorld('island', {
   media: {
     control: (action) => ipcRenderer.send('media:control', action),
     seek: (posSec) => ipcRenderer.send('media:seek', Number(posSec)),
+    getVolume: () => ipcRenderer.invoke('media:get-volume'),
+    setVolume: (level) => ipcRenderer.invoke('media:set-volume', Number(level)),
+    setMute: (muted) => ipcRenderer.invoke('media:set-mute', Boolean(muted)),
     openUrl: (url) => ipcRenderer.send('media:open-url', String(url)),
     getVideoSourceId: () => ipcRenderer.invoke('video:get-source-id'),
     resolveYouTubeId: (query) => ipcRenderer.invoke('video:resolve-youtube-id', query),

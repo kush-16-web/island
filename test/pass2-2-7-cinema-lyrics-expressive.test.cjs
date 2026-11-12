@@ -28,24 +28,13 @@ const engineCode = fs.readFileSync(enginePath, 'utf8');
 const cssCode = fs.readFileSync(cssPath, 'utf8');
 
 test('Pass 2.2.7: Cinema via Cover, Lyrics Style Popover, Expressive Engine & Library Icon', async (t) => {
-  await t.test('1. Navigation: Cinema tab removed from bottom tabs, only Lyrics and Favorites remain', () => {
-    // Check np__right-tabs--bottom container content
-    const tabsContainerIdx = npCode.indexOf('className="np__right-tabs np__right-tabs--bottom"');
-    assert.ok(tabsContainerIdx !== -1, 'np__right-tabs--bottom must exist in NowPlaying');
-
-    const tabsEndIdx = npCode.indexOf('layoutId="island-progress-wrap"');
-    const tabsSnippet = npCode.slice(tabsContainerIdx, tabsEndIdx !== -1 ? tabsEndIdx : tabsContainerIdx + 4500);
-
-    // Must NOT have Cinema button in tabs snippet
-    assert.ok(!tabsSnippet.includes("handleSetViewMode('cinema')"), 'Cinema button must NOT be in the bottom tabs');
-    assert.ok(!tabsSnippet.includes('<span>Cinema</span>'), 'Cinema label must NOT be in the bottom tabs');
-
-    // Must have Lyrics and Favorites
-    assert.ok(tabsSnippet.includes('<span>Lyrics</span>'), 'Lyrics button must be in bottom tabs');
-    assert.ok(tabsSnippet.includes('<span>Favorites</span>'), 'Favorites button must be in bottom tabs');
+  await t.test('1. Navigation: Obsolete bottom Lyrics/Favorites cluster removed; single lyric settings & clickable MiniLyrics remain', () => {
+    assert.ok(!npCode.includes('np__right-tabs--bottom'), 'Obsolete bottom Lyrics/Favorites cluster must be removed');
+    assert.ok(npCode.includes('openFullLyricsWithGlide'), 'Clicking MiniLyrics must still open Full Lyrics');
+    assert.ok(npCode.includes('LyricsSettingsPopover'), 'Single lyric appearance settings popover must remain');
   });
 
-  await t.test('2. Navigation: Album artwork is clickable to open Cinema Mode', () => {
+  await t.test('2. Navigation: Album artwork is clickable to open Cinema Mode (without floating heart overlay)', () => {
     assert.ok(
       npCode.includes('className="np__cover-wrap np__cover-wrap--clickable"'),
       'Album cover must have np__cover-wrap--clickable class'
@@ -66,49 +55,25 @@ test('Pass 2.2.7: Cinema via Cover, Lyrics Style Popover, Expressive Engine & Li
       npCode.includes('tabIndex={0}'),
       'Cover must have tabIndex={0}'
     );
-
-    // Heart overlay button inside cover must preserve favorite functionality
     assert.ok(
-      npCode.includes('className={`heart-btn heart-btn--overlay'),
-      'Heart overlay button must exist inside cover wrap'
-    );
-    assert.ok(
-      npCode.includes('onClick={toggleFavorite}'),
-      'Heart overlay button must call toggleFavorite'
+      !npCode.includes('heart-btn--overlay'),
+      'Floating heart overlay on album art must be removed'
     );
   });
 
-  await t.test('3. Favorites Tab Icon: Uses Library icon instead of Heart icon', () => {
-    const tabsContainerIdx = npCode.indexOf('className="np__right-tabs np__right-tabs--bottom"');
-    const tabsEndIdx = npCode.indexOf('layoutId="island-progress-wrap"');
-    const tabsSnippet = npCode.slice(tabsContainerIdx, tabsEndIdx !== -1 ? tabsEndIdx : tabsContainerIdx + 4500);
-
-    assert.ok(
-      tabsSnippet.includes('<Icon.Library width={11} height={11} />'),
-      'Favorites tab pill must render Icon.Library'
-    );
-    assert.ok(
-      !tabsSnippet.includes('<Icon.Heart width={11} height={11} filled={isFavorite} />'),
-      'Favorites tab pill must NOT use Heart icon'
-    );
-    assert.ok(
-      tabsSnippet.includes('<span>Favorites</span>'),
-      'Tab pill label must remain "Favorites"'
-    );
+  await t.test('3. Favorites Menu remains supported in NowPlaying', () => {
+    assert.ok(npCode.includes("viewMode === 'favorites'"), 'FavoritesMenu viewMode remains supported');
+    assert.ok(npCode.includes('FavoritesMenu'), 'FavoritesMenu component remains wired');
   });
 
-  await t.test('4. Lyrics Tab Popover: Toggles style selector without changing viewMode or interrupting playback', () => {
+  await t.test('4. Lyrics Settings Popover: Toggles style selector without changing viewMode or interrupting playback', () => {
     assert.ok(
       npCode.includes('setShowLyricsStylePopover((prev) => !prev)'),
-      'Clicking Lyrics tab pill must toggle popover'
+      'Clicking Lyrics settings pill must toggle popover'
     );
     assert.ok(
-      npCode.includes('np__lyrics-popover'),
-      'Popover element with class np__lyrics-popover must exist'
-    );
-    assert.ok(
-      npCode.includes('Classic') && npCode.includes('Kinetic') && !npCode.includes('Expressive'),
-      'Popover must include Classic and Kinetic options and must not include Expressive'
+      npCode.includes('LyricsSettingsPopover'),
+      'LyricsSettingsPopover must render in NowPlaying'
     );
     assert.ok(
       npCode.includes('setLyricsStyle(newStyle)'),
@@ -118,8 +83,6 @@ test('Pass 2.2.7: Cinema via Cover, Lyrics Style Popover, Expressive Engine & Li
       npCode.includes('popoverRef'),
       'Must use popoverRef for outside-click dismissal'
     );
-
-    // MiniLyrics direct click still triggers full lyrics
     assert.ok(
       npCode.includes('onClick={openFullLyricsWithGlide}'),
       'MiniLyrics click must open Full Lyrics with glide'

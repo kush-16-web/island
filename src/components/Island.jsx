@@ -1,32 +1,43 @@
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useIsland } from '../hooks/useIsland';
 import { useNow } from '../hooks/useNow';
+import { useLyrics } from '../hooks/useLyrics';
 import { startChime, stopChime } from '../lib/chime';
 import { extractCoverColor } from '../lib/colorExtract';
 import { formatAlarmTime, formatClock, formatRemaining, hueFrom } from '../lib/format';
-import { SPRING } from '../lib/motion';
+import {
+  NOTCH_STATES,
+  NOTCH_EVENTS,
+  HUB_W,
+  transitionNotchState,
+  evaluateNotchVisibility,
+  computeNotchDimensions,
+} from '../lib/notch-state';
+import { MOTION, getMotionTransition } from '../lib/motion';
+import { getIdleNotchPrefs, resolveIdleDisplayFlags } from '../lib/idle-prefs';
+import { useThemeMode } from './common/useThemeMode';
 import { Art, Avatar, Equalizer, Ring, kindColor } from './bits';
+import CompanionEyes from './CompanionEyes';
+import MusicVolumeControl from './MusicVolumeControl';
+import PrecisionLyricLine from './PrecisionLyricLine';
 import Hub from './Hub';
 import { Icon } from './icons';
-import PetSystem from '../pets/PetSystem';
-import { isMock } from '../lib/bridge';
 import { useVideoAmbient, isVideoMedia } from '../hooks/useVideoAmbient';
 import { useRealtimeVoice } from '../hooks/useRealtimeVoice';
 import { getAssistantName } from '../lib/assistant';
 
-const HUB_W = 468;
-const HUB_H = { playing: 282, clock: 384, inbox: 340, pet: 410, settings: 340, voice: 340, launcher: 388 };
 const SIZE = {
-  idle: { w: 142, h: 36 },
-  voice: { w: 220, h: 40 },
-  timer: { w: 184, h: 40 },
-  media: { w: 252, h: 40 },
-  both: { w: 300, h: 40 },
-  toast: { w: 392, h: 68 },
-  ring: { w: 412, h: 96 },
+  idle: { w: 200, h: 36 },
+  voice: { w: 220, h: 38 },
+  timer: { w: 196, h: 38 },
+  media: { w: 220, h: 38 },
+  both: { w: 260, h: 38 },
+  toast: { w: 384, h: 66 },
+  ring: { w: 404, h: 94 },
 };
-const RADIUS = { idle: 18, voice: 20, timer: 20, media: 20, both: 20, toast: 34, ring: 40, hub: 34 };
+
+const NOTCH_TRANSITION = MOTION.notch;
 
 function View({ w, h, className = '', children }) {
   return (
@@ -159,6 +170,240 @@ function RingView({ ring, actions }) {
   );
 }
 
+function HoverPreviewView({
+  mode,
+  media,
+  playing,
+  nextTimer,
+  now,
+  voice,
+  musicColor,
+  isDynamicMode,
+  actions,
+  onOpenHub,
+  width,
+  height,
+  activeLine,
+  nextLine,
+  volume,
+  muted,
+  volumeSupported,
+  volumeUnavailableReason,
+  onVolumeChange,
+  onToggleMute,
+  reducedMotion,
+}) {
+  if (mode === 'media' || mode === 'both') {
+    const lyricKey = activeLine ? `${activeLine.timeMs ?? activeLine.text}` : 'none';
+    const lyricText = activeLine?.text || '';
+    const slotBudgetPx = 156;
+    const measuredWidth = lyricText ? measureTextWidth(lyricText, '500 11.5px Geist, -apple-system, sans-serif') : 0;
+    const lineDurationMs = activeLine && nextLine && Number.isFinite(nextLine.timeMs) && Number.isFinite(activeLine.timeMs)
+      ? Math.max(0, nextLine.timeMs - activeLine.timeMs)
+      : 3200;
+    const shouldWrap = measuredWidth > slotBudgetPx && lineDurationMs >= 1400;
+    return (
+      <View w={width} h={height} className="hover-preview hover-preview--media">
+        <div className="hover-preview__media-grid">
+          {/* LEFT: Small Artwork + Song Title + Artist */}
+          <button
+            type="button"
+            className="hover-preview__media-info"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenHub('playing');
+            }}
+            title="Open Expanded Player"
+          >
+            <Art src={media.art} seed={`${media.title}${media.artist}`} size={38} radius={9} />
+            <div className="hover-preview__meta">
+              <div className="hover-preview__title">{media.title || 'Now Playing'}</div>
+              <div className="hover-preview__sub">{media.artist || 'Unknown artist'}</div>
+            </div>
+          </button>
+
+          {/* CENTER: ONE Synchronized Whole-Line White Lyric (no word-by-word animation in Hover) */}
+          <div className="hover-preview__lyric-slot" aria-live="off">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={lyricKey}
+                className="hover-preview__lyric-line"
+                initial={reducedMotion ? { opacity: 1 } : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                transition={getMotionTransition(MOTION.lyric, reducedMotion)}
+              >
+                {activeLine ? (
+                  <span className={`hover-preview__lyric-text${shouldWrap ? ' is-wrapped' : ''}`}>
+                    {lyricText}
+                  </span>
+                ) : (
+                  <span className="hover-preview__lyric-text hover-preview__lyric-text--muted">
+                    {playing ? 'Playing' : 'Paused'}
+                  </span>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* RIGHT: Monochrome Playback Controls */}
+          <div className="hover-preview__controls">
+            <button
+              type="button"
+              className="hover-preview__ctrl-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                actions.mediaControl('previous');
+              }}
+              aria-label="Previous track"
+              title="Previous"
+            >
+              <Icon.Prev width={13} height={13} />
+            </button>
+            <button
+              type="button"
+              className="hover-preview__ctrl-btn hover-preview__ctrl-btn--primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                actions.mediaControl('playPause');
+              }}
+              aria-label={playing ? 'Pause' : 'Play'}
+              title={playing ? 'Pause' : 'Play'}
+            >
+              {playing ? <Icon.Pause width={13} height={13} /> : <Icon.Play width={13} height={13} />}
+            </button>
+            <button
+              type="button"
+              className="hover-preview__ctrl-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                actions.mediaControl('next');
+              }}
+              aria-label="Next track"
+              title="Next"
+            >
+              <Icon.Next width={13} height={13} />
+            </button>
+          </div>
+        </div>
+
+        {/* BOTTOM: Shared Pill Music Volume Control */}
+        <MusicVolumeControl
+          compact
+          volume={volume}
+          muted={muted}
+          supported={volumeSupported}
+          unavailableReason={volumeUnavailableReason}
+          onVolumeChange={onVolumeChange}
+          onToggleMute={onToggleMute}
+        />
+      </View>
+    );
+  }
+
+  if (mode === 'voice') {
+    const assistantName = getAssistantName();
+    return (
+      <View w={width} h={height} className="hover-preview hover-preview--voice">
+        <div className="hover-preview__row">
+          <div className="hover-preview__meta">
+            <div className="hover-preview__title">{assistantName} Voice</div>
+            <div className="hover-preview__sub">{voice.status === 'speaking' ? 'Speaking…' : 'Listening…'}</div>
+          </div>
+          <button
+            type="button"
+            className="hover-preview__pill-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              voice.stopSession?.();
+            }}
+          >
+            End
+          </button>
+        </div>
+      </View>
+    );
+  }
+
+  if (mode === 'timer' && nextTimer) {
+    const remaining = nextTimer.fireAt - now;
+    const fraction = nextTimer ? remaining / nextTimer.durationMs : 0;
+    return (
+      <View w={width} h={height} className="hover-preview hover-preview--timer">
+        <div className="hover-preview__row">
+          <div className="hover-preview__timer-left">
+            <Ring fraction={fraction} size={28} color="var(--c-timer)" />
+            <div className="hover-preview__meta">
+              <div className="hover-preview__title">{nextTimer.label || 'Timer'}</div>
+              <div className="hover-preview__sub">{formatRemaining(remaining)} remaining</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="hover-preview__pill-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenHub('clock');
+            }}
+          >
+            Open
+          </button>
+        </div>
+      </View>
+    );
+  }
+
+  // Idle Hover Preview: restrained monochrome quick actions
+  return (
+    <View w={width} h={height} className="hover-preview hover-preview--idle">
+      <div className="hover-preview__row">
+        <div className="hover-preview__clock-block">
+          <span className="hover-preview__clock">{formatClock(now)}</span>
+        </div>
+        <div className="hover-preview__quick-actions">
+          <button
+            type="button"
+            className="hover-preview__pill-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              voice.startSession();
+              onOpenHub('voice');
+            }}
+            title="Talk to Island (Ctrl+Shift+Space)"
+          >
+            <Icon.Mic width={12} height={12} />
+            <span>Voice</span>
+          </button>
+          <button
+            type="button"
+            className="hover-preview__pill-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.island?.openWorkspace?.();
+            }}
+            title="Open AI Workspace"
+          >
+            <Icon.Sparkles width={12} height={12} />
+            <span>AI</span>
+          </button>
+          <button
+            type="button"
+            className="hover-preview__ctrl-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.island?.openSettings?.();
+            }}
+            title="Open Settings"
+            aria-label="Open Settings"
+          >
+            <Icon.Sliders width={13} height={13} />
+          </button>
+        </div>
+      </div>
+    </View>
+  );
+}
+
 const measureTextWidth = (text, font = '500 12.5px Geist, -apple-system, sans-serif') => {
   if (!text || typeof document === 'undefined') return 60;
   if (!measureTextWidth.canvas) {
@@ -173,25 +418,170 @@ export default function Island() {
   const { state: s, actions } = useIsland();
   const voice = useRealtimeVoice({ media: s.media, onControl: actions.mediaControl, schedule: s.schedule });
   const now = useNow(1000);
-  const [hubOpen, setHubOpen] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
+  const { appearanceMode, isDynamic: isDynamicMode } = useThemeMode();
+
+  const [notchState, setNotchState] = useState(NOTCH_STATES.COMPACT);
+  const hubOpen = notchState === NOTCH_STATES.EXPANDED;
+  const setHubOpen = useCallback((openOrFn) => {
+    setNotchState((prev) => {
+      const wantOpen = typeof openOrFn === 'function' ? openOrFn(prev === NOTCH_STATES.EXPANDED) : Boolean(openOrFn);
+      return transitionNotchState(prev, wantOpen ? NOTCH_EVENTS.CLICK : NOTCH_EVENTS.COLLAPSE);
+    });
+  }, []);
+
   const [tab, setTab] = useState(s.media?.active ? 'playing' : 'launcher');
   const [hovered, setHovered] = useState(false);
   const [typing, setTyping] = useState(false);
   const [isLyricsFull, setIsLyricsFull] = useState(false);
-  const [dock, setDock] = useState({ edge: 'top', preset: 'center' });
+  const [dock, setDock] = useState({ edge: 'top', preset: 'center', align: 'center' });
+  const [visibilityMode, setVisibilityMode] = useState('always');
+  const [idlePrefs, setIdlePrefs] = useState(getIdleNotchPrefs);
+  const [volume, setVolume] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = Number(localStorage.getItem('island_music_volume'));
+      return Number.isFinite(saved) && saved > 0 && saved <= 100 ? saved : 75;
+    }
+    return 75;
+  });
+  const [muted, setMuted] = useState(false);
+  const [volumeSupported, setVolumeSupported] = useState(true);
+  const [volumeUnavailableReason, setVolumeUnavailableReason] = useState('');
+  const lastKnownVolumeRef = useRef(volume > 0 ? volume : 75);
 
-  // Sync dock position and edge state from Electron
+  const handleVolumeChange = useCallback((nextVal, meta = {}) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(Number(nextVal))));
+    if (!Number.isFinite(clamped)) return;
+    const prevKnown = lastKnownVolumeRef.current;
+    setVolume(clamped);
+    if (clamped > 0) {
+      setMuted(false);
+      lastKnownVolumeRef.current = clamped;
+      if (typeof window !== 'undefined' && meta?.phase !== 'move') {
+        localStorage.setItem('island_music_volume', String(clamped));
+      }
+    }
+    if (window.island?.media?.setVolume) {
+      window.island.media.setVolume(clamped).then((res) => {
+        if (!res) return;
+        if (res.coalesced) return;
+        if (res.ok === false || res.supported === false) {
+          setVolumeSupported(false);
+          setVolumeUnavailableReason(res.reason || 'Volume control unavailable for this source');
+          setVolume(prevKnown);
+          return;
+        }
+        setVolumeSupported(true);
+        setVolumeUnavailableReason('');
+      }).catch(() => {});
+    }
+  }, []);
+
+  const handleToggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      const restoreVol = lastKnownVolumeRef.current > 0 ? lastKnownVolumeRef.current : 75;
+      if (!next) {
+        setVolume(restoreVol);
+      }
+      window.island?.media?.setMute?.(next)?.then((res) => {
+        if (!res) return;
+        if (res.ok === false || res.supported === false) {
+          setVolumeSupported(false);
+          setVolumeUnavailableReason(res.reason || 'Mute unavailable for this source');
+          return;
+        }
+        setVolumeSupported(true);
+        setVolumeUnavailableReason('');
+      })?.catch?.(() => {});
+      return next;
+    });
+  }, []);
+
+  // Sync real per-app volume from Windows audio session / companion when media becomes active
+  useEffect(() => {
+    if (!s.media?.active) return undefined;
+    let cancelled = false;
+    const syncExternalVolume = () => {
+      window.island?.media?.getVolume?.().then((res) => {
+        if (cancelled || !res) return;
+        if (res.supported === false) {
+          setVolumeSupported(false);
+          setVolumeUnavailableReason(res.reason || 'Volume control unavailable for this source');
+          return;
+        }
+        setVolumeSupported(true);
+        setVolumeUnavailableReason('');
+        if (Number.isFinite(res.volume)) {
+          if (res.volume > 0) lastKnownVolumeRef.current = res.volume;
+          setVolume(res.volume);
+        }
+        if (typeof res.muted === 'boolean') setMuted(res.muted);
+      }).catch(() => {});
+    };
+    syncExternalVolume();
+    const unsubVol = window.island?.on?.('media:volume-changed', (data) => {
+      if (Number.isFinite(data?.volume)) {
+        if (data.volume > 0) lastKnownVolumeRef.current = data.volume;
+        setVolume(data.volume);
+      }
+      if (typeof data?.muted === 'boolean') setMuted(data.muted);
+    });
+    return () => {
+      cancelled = true;
+      unsubVol?.();
+    };
+  }, [s.media?.active, s.media?.app, notchState]);
+
+  useEffect(() => {
+    const onIdlePrefsChanged = (e) => {
+      if (e.detail) setIdlePrefs(e.detail);
+      else setIdlePrefs(getIdleNotchPrefs());
+    };
+    window.addEventListener('island:idle-prefs-changed', onIdlePrefsChanged);
+    return () => window.removeEventListener('island:idle-prefs-changed', onIdlePrefsChanged);
+  }, []);
+
+  const hoverEnterTimerRef = useRef(null);
+  const hoverLeaveTimerRef = useRef(null);
+
+  const clearHoverTimers = useCallback(() => {
+    if (hoverEnterTimerRef.current) {
+      clearTimeout(hoverEnterTimerRef.current);
+      hoverEnterTimerRef.current = null;
+    }
+    if (hoverLeaveTimerRef.current) {
+      clearTimeout(hoverLeaveTimerRef.current);
+      hoverLeaveTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearHoverTimers(), [clearHoverTimers]);
+
+  // Sync dock position and notch visibility mode from Electron
   useEffect(() => {
     if (window.island?.getWindowDock) {
       window.island.getWindowDock().then((d) => {
         if (d && d.edge) setDock(d);
-      });
+      }).catch(() => {});
     }
-    if (window.island?.on) {
-      return window.island.on('window:dock-changed', (d) => {
-        if (d && d.edge) setDock(d);
-      });
+    if (window.island?.getNotchVisibilityMode) {
+      window.island.getNotchVisibilityMode().then((m) => {
+        if (m) setVisibilityMode(m);
+      }).catch(() => {});
     }
+    if (!window.island?.on) return undefined;
+
+    const unsubDock = window.island.on('window:dock-changed', (d) => {
+      if (d && d.edge) setDock(d);
+    });
+    const unsubVis = window.island.on('notch:visibility-changed', (data) => {
+      if (data?.mode) setVisibilityMode(data.mode);
+    });
+    return () => {
+      unsubDock?.();
+      unsubVis?.();
+    };
   }, []);
 
   const { schedule, inbox, media, toast, rings } = s;
@@ -203,14 +593,59 @@ export default function Island() {
   const playing = media.active && media.status === 'playing';
   const unread = inbox.filter((n) => !n.read).length;
 
+  // Companion mood reactions to meaningful events
+  const [musicArriving, setMusicArriving] = useState(false);
+  const prevMediaActiveRef = useRef(Boolean(media.active));
+  useEffect(() => {
+    if (media.active && !prevMediaActiveRef.current) {
+      setMusicArriving(true);
+      const t = setTimeout(() => setMusicArriving(false), 750);
+      prevMediaActiveRef.current = true;
+      return () => clearTimeout(t);
+    }
+    prevMediaActiveRef.current = Boolean(media.active);
+    return undefined;
+  }, [media.active]);
+
+  let companionMood = 'idle';
+  if (ring) companionMood = 'timer_complete';
+  else if (voice.status !== 'idle') companionMood = 'voice';
+  else if (toast) companionMood = 'notification';
+  else if (musicArriving) companionMood = 'music_arriving';
+
+  // Live position interpolation & cached lyrics for Hover Preview
+  const [hoverTickNow, setHoverTickNow] = useState(Date.now);
+  useEffect(() => {
+    if (!playing || notchState !== NOTCH_STATES.HOVER_PREVIEW) return undefined;
+    const id = setInterval(() => setHoverTickNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [playing, notchState]);
+
+  const hoverPosMs = media.active
+    ? Math.max(0, (media.positionMs || (media.positionSec || 0) * 1000) + (playing && media.updatedAt ? Math.max(0, hoverTickNow - media.updatedAt) : 0))
+    : 0;
+  const { lyricsData, activeLineIndex } = useLyrics(media, hoverPosMs);
+  const activeHoverLine = lyricsData?.lines && activeLineIndex >= 0 ? lyricsData.lines[activeLineIndex] : null;
+  const nextHoverLine = lyricsData?.lines && activeLineIndex >= 0 ? (lyricsData.lines[activeLineIndex + 1] || null) : null;
+
   let mode = 'idle';
   if (ring) mode = 'ring';
   else if (hubOpen) mode = 'hub';
   else if (voice.status !== 'idle') mode = 'voice';
   else if (toast) mode = 'toast';
-  else if (nextTimer && playing) mode = 'both';
+  else if (nextTimer && media.active) mode = 'both';
   else if (nextTimer) mode = 'timer';
-  else if (playing) mode = 'media';
+  else if (media.active) mode = 'media';
+
+  const { isHidden, isPeeking } = evaluateNotchVisibility({
+    visibilityMode,
+    notchState,
+    hasActiveMedia: Boolean(media.active),
+    hasActiveTimer: Boolean(nextTimer),
+    hasActiveVoice: voice.status !== 'idle',
+    hasUrgentAlert: Boolean(ring || toast),
+    hovered,
+  });
 
   const getDynamicHubHeight = () => {
     switch (tab) {
@@ -238,35 +673,46 @@ export default function Island() {
         return 410;
       case 'settings':
         return 355;
-      case 'voice':
-        return 350;
       default:
         return 280;
     }
   };
 
-  const getDynamicWidth = () => {
-    if (mode === 'hub') return HUB_W;
-    if (mode === 'voice') return SIZE.voice.w;
-    if (mode === 'media') {
-      const textWidth = Math.ceil(measureTextWidth(media?.title || ''));
-      // Art(26) + padding(22) + gap(9) + textWidth + clean gap(10) + eq(18) = textWidth + 85
-      return Math.min(280, Math.max(148, textWidth + 85));
-    }
-    if (mode === 'both') {
-      const textWidth = Math.ceil(measureTextWidth(media?.title || ''));
-      return Math.min(320, Math.max(220, textWidth + 122));
-    }
-    if (mode === 'timer') {
-      const label = nextTimer?.label || '';
-      const textWidth = Math.ceil(measureTextWidth(label));
-      return Math.min(260, Math.max(168, textWidth + 116));
-    }
-    return SIZE[mode]?.w || 252;
-  };
+  const { width, height: calcHeight, bottomRadius } = computeNotchDimensions({
+    notchState,
+    mode,
+    isPeeking,
+    mediaTitle: media?.title || '',
+    timerLabel: nextTimer?.label || '',
+    tab,
+    isLyricsFull,
+    hasActiveMedia: media.active,
+    scheduleCount: schedule.length,
+    inboxCount: inbox.length,
+    idlePrefs,
+    measureTextFn: measureTextWidth,
+  });
+  const height = (notchState === NOTCH_STATES.EXPANDED || mode === 'hub') && mode !== 'ring' && mode !== 'toast'
+    ? (tab === 'playing' && !isLyricsFull && media.active ? calcHeight : calcHeight)
+    : calcHeight;
 
-  const width = getDynamicWidth();
-  const height = mode === 'hub' ? getDynamicHubHeight() : SIZE[mode].h;
+  const handleNotchPointerEnter = useCallback(() => {
+    setHovered(true);
+    clearHoverTimers();
+    hoverEnterTimerRef.current = setTimeout(() => {
+      hoverEnterTimerRef.current = null;
+      setNotchState((prev) => transitionNotchState(prev, NOTCH_EVENTS.POINTER_ENTER_READY));
+    }, 115);
+  }, [clearHoverTimers]);
+
+  const handleNotchPointerLeave = useCallback(() => {
+    setHovered(false);
+    clearHoverTimers();
+    hoverLeaveTimerRef.current = setTimeout(() => {
+      hoverLeaveTimerRef.current = null;
+      setNotchState((prev) => transitionNotchState(prev, NOTCH_EVENTS.POINTER_LEAVE_READY));
+    }, 180);
+  }, [clearHoverTimers]);
 
   const dragRef = useRef({
     active: false,
@@ -277,11 +723,12 @@ export default function Island() {
   });
 
   const openHub = useCallback((nextTab) => {
+    clearHoverTimers();
     if (nextTab) setTab(nextTab);
     else if (!s.media?.active && tab === 'playing') setTab('launcher');
     setIsLyricsFull(false);
-    setHubOpen(true);
-  }, [s.media?.active, tab]);
+    setNotchState((prev) => transitionNotchState(prev, NOTCH_EVENTS.CLICK));
+  }, [s.media?.active, tab, clearHoverTimers]);
 
   const expandedAtRef = useRef(0);
   const prevHubOpenRef = useRef(hubOpen);
@@ -479,9 +926,15 @@ export default function Island() {
   const isVideo = isVideoMedia(media);
   const { ambientColor: videoAmbientColor, stream: videoStream, streamActive: videoStreamActive, youtubeId } = useVideoAmbient(media, playing);
 
-  const defaultThemeColor = 'rgba(255, 255, 255, 0.85)';
-  const fallbackMusicColor = `hsl(${media.active ? hueFrom(`${media.title}${media.artist}`) : 265} 80% 70%)`;
-  const musicColor = (isVideo && videoAmbientColor) ? videoAmbientColor : (dynamicColor || (media.active ? fallbackMusicColor : defaultThemeColor));
+  const defaultThemeColor = 'rgba(226, 232, 240, 0.88)';
+  const fallbackMusicColor = media.active
+    ? `hsl(${hueFrom(`${media.title}${media.artist}`)} 62% 68%)`
+    : defaultThemeColor;
+  const musicColor = !isDynamicMode
+    ? defaultThemeColor
+    : (isVideo && videoAmbientColor)
+      ? videoAmbientColor
+      : (dynamicColor || fallbackMusicColor);
 
   // Sync Windows system accent color to CSS root variables for external references if needed
   useEffect(() => {
@@ -495,79 +948,49 @@ export default function Island() {
   if (ring) accent = ring.kind === 'alarm' ? 'var(--c-alarm)' : 'var(--c-timer)';
   else if (mode === 'toast') accent = kindColor(toast.kind);
   else if (mode === 'timer') accent = 'var(--c-timer)';
-  else if (mode === 'media' || mode === 'both' || (mode === 'hub' && media.active)) accent = musicColor;
+  else if (isDynamicMode && (mode === 'media' || mode === 'both' || (mode === 'hub' && media.active))) accent = musicColor;
 
   const onIslandPointerDown = (e) => {
     if (e.button !== 0) return;
-    if (mode === 'hub') return;
-    if (e.target.closest('button') || e.target.closest('input')) return;
-
-    dragRef.current = {
-      active: true,
-      startX: e.screenX,
-      startY: e.screenY,
-      hasMoved: false,
-    };
-
-    if (window.island?.startWindowDrag) {
-      window.island.startWindowDrag();
+    if (e.target.closest('button, input, textarea, a, [role="button"], [role="tab"], .interactive, .mini-lyrics, .precision-lyric-container, .full-lyrics__scroller, .lyrics-settings-popover, .np__scrubber, .seek-bar, .cinema-hud, .full-lyrics__body')) {
+      return;
     }
 
-    const onPointerMove = (ev) => {
-      if (!dragRef.current.active) return;
-      const dist = Math.hypot(ev.screenX - dragRef.current.startX, ev.screenY - dragRef.current.startY);
+    // Simple click inside an already open hub should not re-trigger mode changes
+    if (notchState === NOTCH_STATES.EXPANDED || mode === 'hub') return;
 
-      if (dist > 4) {
-        dragRef.current.hasMoved = true;
-        if (window.island?.moveWindowDrag) {
-          window.island.moveWindowDrag();
-        } else if (window.island?.moveWindowBy) {
-          const dx = ev.screenX - dragRef.current.startX;
-          const dy = ev.screenY - dragRef.current.startY;
-          window.island.moveWindowBy(dx, dy);
-        }
-      }
-    };
-
-    const onPointerUp = (ev) => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', onPointerUp);
-
-      if (!dragRef.current.active) return;
-      const { hasMoved } = dragRef.current;
-      dragRef.current.active = false;
-
-      if (hasMoved) {
-        ev?.stopPropagation?.();
-        if (window.island?.endWindowDrag) {
-          window.island.endWindowDrag();
-        }
-        return;
-      }
-
-      // Normal click: expand into hub!
-      if (mode === 'idle') openHub('launcher');
-      else if (mode === 'voice') openHub('voice');
-      else if (mode === 'media') openHub('playing');
-      else if (mode === 'timer' || mode === 'both') openHub('clock');
-      else if (mode === 'toast') {
-        openHub('inbox');
-        actions.clearToast(toast.id);
-      }
-    };
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerUp);
+    // Expand into corresponding Hub control center tab
+    if (mode === 'idle') openHub('launcher');
+    else if (mode === 'voice') openHub('voice');
+    else if (mode === 'media') openHub('playing');
+    else if (mode === 'timer' || mode === 'both') openHub('clock');
+    else if (mode === 'toast') {
+      openHub('inbox');
+      actions.clearToast(toast.id);
+    }
   };
 
+  const idleFlags = resolveIdleDisplayFlags(idlePrefs);
+  const isIdleBlack = mode === 'idle' && !media.active;
+
+  let cachedWeather = null;
+  if (idleFlags.showWeather && typeof window !== 'undefined') {
+    try {
+      const rawW = localStorage.getItem('island_weather_cache');
+      if (rawW) cachedWeather = JSON.parse(rawW);
+    } catch {}
+  }
+
   let view;
-  if (mode === 'ring') view = <RingView ring={ring} actions={actions} />;
-  else if (mode === 'toast') view = <ToastView toast={toast} />;
-  else if (mode === 'hub') {
+  if (isPeeking && notchState === NOTCH_STATES.COMPACT && mode !== 'ring' && mode !== 'toast') {
+    view = <div className="notch-peek-lip" aria-label="Reveal Island" />;
+  } else if (mode === 'ring') {
+    view = <RingView ring={ring} actions={actions} />;
+  } else if (mode === 'toast') {
+    view = <ToastView toast={toast} />;
+  } else if (notchState === NOTCH_STATES.EXPANDED || mode === 'hub') {
     view = (
-      <View w={HUB_W} h={height}>
+      <View w={width} h={height}>
         <Hub
           tab={tab}
           setTab={setTab}
@@ -582,80 +1005,149 @@ export default function Island() {
           videoStreamActive={videoStreamActive}
           youtubeId={youtubeId}
           voice={voice}
+          volume={volume}
+          muted={muted}
+          volumeSupported={volumeSupported}
+          volumeUnavailableReason={volumeUnavailableReason}
+          onVolumeChange={handleVolumeChange}
+          onToggleMute={handleToggleMute}
+          isDynamicMode={isDynamicMode}
+          companionMood={companionMood}
+          companionAnimations={idleFlags.companionAnimations}
         />
       </View>
+    );
+  } else if (notchState === NOTCH_STATES.HOVER_PREVIEW) {
+    view = (
+      <HoverPreviewView
+        mode={mode}
+        media={media}
+        playing={playing}
+        nextTimer={nextTimer}
+        now={now}
+        voice={voice}
+        musicColor={musicColor}
+        isDynamicMode={isDynamicMode}
+        actions={actions}
+        onOpenHub={openHub}
+        width={width}
+        height={height}
+        activeLine={activeHoverLine}
+        nextLine={nextHoverLine}
+        volume={volume}
+        muted={muted}
+        volumeSupported={volumeSupported}
+        volumeUnavailableReason={volumeUnavailableReason}
+        onVolumeChange={handleVolumeChange}
+        onToggleMute={handleToggleMute}
+        reducedMotion={prefersReducedMotion}
+      />
     );
   } else if (mode === 'voice') {
     view = <CompactVoiceView voice={voice} width={width} />;
   } else if (mode === 'idle') {
+    const dateStr = idleFlags.showDate
+      ? new Date(now).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : '';
+    const weatherStr = idleFlags.showWeather
+      ? (cachedWeather && cachedWeather.temp != null ? `${Math.round(cachedWeather.temp)}°` : '--')
+      : '';
+
     view = (
-      <View w={SIZE.idle.w} h={SIZE.idle.h} className="idle">
-        <span className="idle__time">{formatClock(now)}</span>
-        <button
-          type="button"
-          className="idle__mic-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            voice.startSession();
-            openHub('voice');
-          }}
-          title="Talk to Island (Ctrl+Shift+Space)"
-          aria-label="Talk to Island"
-        >
-          <Icon.Mic width={12} height={12} />
-        </button>
-        {unread > 0 && <span className="idle__dot" />}
+      <View w={width} h={height} className={`idle idle--notch${idleFlags.showEyes ? ' has-centered-eyes' : ''}`}>
+        <div className="idle__slot idle__slot--left">
+          {idleFlags.showTime && <span className="idle__time">{formatClock(now)}</span>}
+          {idleFlags.showDate && <span className="idle__date">{dateStr}</span>}
+        </div>
+
+        {idleFlags.showEyes && (
+          <div className="idle__center-eyes">
+            <CompanionEyes
+              mood={companionMood}
+              size="md"
+              animationsEnabled={idleFlags.companionAnimations}
+            />
+          </div>
+        )}
+
+        <div className="idle__slot idle__slot--right">
+          {idleFlags.showWeather && <span className="idle__weather">{weatherStr}</span>}
+          {unread > 0 && <span className="idle__dot" />}
+        </div>
       </View>
     );
   } else {
     view = <CompactView mode={mode} media={media} nextTimer={nextTimer} now={now} musicColor={musicColor} playing={playing} width={width} />;
   }
 
-  const contentKey = mode === 'toast' ? `toast-${toast.id}` : mode === 'ring' ? `ring-${ring.key}` : mode;
+  const contentKey = isPeeking && notchState === NOTCH_STATES.COMPACT
+    ? 'peek'
+    : mode === 'toast'
+      ? `toast-${toast.id}`
+      : mode === 'ring'
+        ? `ring-${ring.key}`
+        : `${notchState}-${mode}`;
+
+  const motionTransition = getMotionTransition(NOTCH_TRANSITION, prefersReducedMotion);
+  const contentTransition = getMotionTransition(MOTION.content, prefersReducedMotion);
 
   return (
-    <div className="stage" data-dock={dock.edge || 'top'} data-align={dock.align || 'center'} data-valign={dock.vAlign || 'center'}>
+    <div className="stage" data-dock={dock.edge || 'top'} data-align={dock.align || 'center'} data-valign={dock.vAlign || 'top'}>
       <motion.div
-        className={`island ${mode !== 'hub' ? 'is-draggable' : ''}`}
-        data-hit
+        className={`island island--notch${isHidden ? ' is-hidden' : ''}${isPeeking ? ' is-peeking' : ''}${isIdleBlack ? ' is-idle-black' : ''}`}
+        data-hit={isHidden ? undefined : true}
         data-mode={mode}
+        data-notch-state={notchState}
+        data-appearance={appearanceMode}
+        data-idle-black={isIdleBlack ? 'true' : undefined}
         data-dock={dock.edge || 'top'}
         data-align={dock.align || 'center'}
-        data-valign={dock.vAlign || 'center'}
-        style={{ '--accent': accent, '--music-accent': musicColor }}
+        data-valign={dock.vAlign || 'top'}
+        style={{
+          '--accent': accent,
+          '--music-accent': musicColor,
+          pointerEvents: isHidden ? 'none' : 'auto',
+        }}
         initial={false}
-        animate={{ width, height, borderRadius: RADIUS[mode] }}
-        transition={SPRING}
-        whileHover={mode === 'idle' ? { scale: 1.04 } : undefined}
-        onPointerEnter={() => setHovered(true)}
-        onPointerLeave={() => setHovered(false)}
+        animate={{
+          width,
+          height,
+          opacity: isHidden ? 0 : 1,
+          borderTopLeftRadius: 0,
+          borderTopRightRadius: 0,
+          borderBottomLeftRadius: bottomRadius,
+          borderBottomRightRadius: bottomRadius,
+        }}
+        transition={motionTransition}
+        onPointerEnter={handleNotchPointerEnter}
+        onPointerLeave={handleNotchPointerLeave}
         onPointerDown={onIslandPointerDown}
       >
-        {/* YouTube Ambient Mode Frame Glow & Full-Island Album Art Background */}
-        {media.active && isVideo && videoAmbientColor ? (
+        {/* Dynamic Frosted Album Art Diffusion (retained when media is active/paused, pitch black when idle) */}
+        {!isIdleBlack && isDynamicMode && media.active && isVideo && videoAmbientColor ? (
           <div className="island__ambient-art" aria-hidden="true">
             <div
               className="island__video-ambient-glow"
               style={{
-                background: `radial-gradient(circle at 50% 25%, color-mix(in srgb, ${videoAmbientColor} 55%, transparent) 0%, color-mix(in srgb, ${videoAmbientColor} 18%, rgba(10, 11, 16, 0.95)) 60%, rgba(10, 11, 16, 0.98) 100%)`,
+                background: `radial-gradient(circle at 50% 25%, color-mix(in srgb, ${videoAmbientColor} 45%, transparent) 0%, color-mix(in srgb, ${videoAmbientColor} 14%, rgba(12, 13, 18, 0.94)) 60%, rgba(12, 13, 18, 0.96) 100%)`,
               }}
             />
           </div>
-        ) : media.active && media.art ? (
+        ) : !isIdleBlack && isDynamicMode && media.active && media.art ? (
           <div className="island__ambient-art" aria-hidden="true">
             <img src={media.art} alt="" className="island__ambient-art-img" />
             <div className="island__ambient-art-overlay" />
           </div>
         ) : null}
 
-        <AnimatePresence initial={false}>
+        <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={contentKey}
             className="content"
-            initial={{ opacity: 0, scale: 0.94, filter: 'blur(8px)' }}
-            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, scale: 0.94, filter: 'blur(8px)', transition: { duration: 0.16 } }}
-            transition={{ duration: 0.28, delay: 0.04 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: prefersReducedMotion ? 0 : 0.1 } }}
+            transition={contentTransition}
           >
             {view}
           </motion.div>

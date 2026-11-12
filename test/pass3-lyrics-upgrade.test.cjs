@@ -234,12 +234,13 @@ test('Pass 3: Lyrics Experience Upgrade Verification Suite', async (t) => {
   });
 
   // Test 8: Popover markup & structure
-  await t.test('8. Popover structure: NowPlaying and FullLyrics contain redesigned settings controls', () => {
+  await t.test('8. Popover structure: NowPlaying and FullLyrics use shared LyricsSettingsPopover controls', () => {
     const npCode = fs.readFileSync(path.resolve(__dirname, '../src/components/NowPlaying.jsx'), 'utf8');
     const flCode = fs.readFileSync(path.resolve(__dirname, '../src/components/FullLyrics.jsx'), 'utf8');
+    const popCode = fs.readFileSync(path.resolve(__dirname, '../src/components/LyricsSettingsPopover.jsx'), 'utf8');
 
-    assert.ok(npCode.includes('lyrics-settings-popover'), 'NowPlaying contains redesigned popover class');
-    assert.ok(npCode.includes('Ghost + Wave'), 'NowPlaying contains Ghost + Wave typography choice');
+    assert.ok(npCode.includes('LyricsSettingsPopover'), 'NowPlaying uses shared LyricsSettingsPopover component');
+    assert.ok(popCode.includes('Ghost + Wave'), 'LyricsSettingsPopover contains Ghost + Wave typography choice');
     assert.ok(flCode.includes('LyricsSettingsPopover'), 'FullLyrics uses shared LyricsSettingsPopover component');
   });
 

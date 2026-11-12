@@ -17,6 +17,7 @@ export function formatRemaining(ms) {
 }
 
 export function formatTrackTime(ms) {
+  if (!Number.isFinite(ms)) return '0:00';
   const total = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(total / 60)}:${pad(total % 60)}`;
 }

@@ -1,31 +1,47 @@
 import { useEffect, useState } from 'react';
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'framer-motion';
 import { getAssistantName } from '../../lib/assistant';
 import { formatRemaining } from '../../lib/format';
+import { MOTION, getMotionTransition } from '../../lib/motion';
 import { Icon } from '../icons';
-import { Art, Equalizer } from '../bits';
+import CompanionEyes from '../CompanionEyes';
+import ClockPanel from '../ClockPanel';
+
+const UTILITIES = [
+  { id: 'timer', title: 'Timer', sub: 'Focus & countdowns', Glyph: Icon.Timer },
+  { id: 'weather', title: 'Weather', sub: 'Local conditions', Glyph: Icon.Sun },
+  { id: 'assistant', title: 'Assistant', sub: 'Text & voice chat', Glyph: Icon.Sparkles },
+  { id: 'controls', title: 'Quick Controls', sub: 'Notch & audio', Glyph: Icon.Sliders },
+];
 
 /**
- * LauncherPanel: Modern Asymmetric Bento Grid Dashboard for Island.
- * Features uneven, modern proportions (inspired by Apple iOS widgets & Bento design):
- * - Hero Music card (2 cols) with unclipped titles, album art, and quick controls
- * - Tall Voice Companion card (1 col) with live waveform/status
- * - Spacious Timers card (1 col) with unclipped chips (+5m, +15m, +25m)
- * - Desktop Pet card (1 col) with companion stats
- * - Inbox card (1 col) with unread badge
- * - Settings & Engine full-width banner (2 cols)
+ * LauncherPanel — Utilities 2×2 Grid & Full-Surface Morphing (Phase 1B.2 Checkpoint D)
+ *
+ * - Compact 2×2 grid of monochrome utility tiles
+ * - Clicking a tile morphs that selected tile into the entire utility surface
+ * - Other tiles exit smoothly (no accordions, no stacked detail cards)
+ * - Small Back control reverses the morph to restore the 2×2 grid
  */
 export default function LauncherPanel({
   s,
   now,
-  actions,
   setTab,
   voice,
   accentColor,
+  companionMood = 'idle',
+  companionAnimations = true,
+  volume = 75,
+  onVolumeChange,
 }) {
+  const prefersReducedMotion = useReducedMotion();
+  const morphTransition = getMotionTransition(MOTION.morph, prefersReducedMotion);
+  const contentTransition = getMotionTransition(MOTION.content, prefersReducedMotion);
+
+  const [activeUtility, setActiveUtility] = useState(null);
   const [assistantName, setAssistantNameState] = useState(getAssistantName);
-  const petName = typeof window !== 'undefined'
-    ? localStorage.getItem('island_pet_name') || 'Mochi'
-    : 'Mochi';
+  const [visibilityMode, setVisibilityMode] = useState('always');
+  const [appearanceMode, setAppearanceMode] = useState('dynamic_frosted');
+  const [draftPrompt, setDraftPrompt] = useState('');
 
   useEffect(() => {
     const handleAssistantChange = (e) => {
@@ -35,274 +51,258 @@ export default function LauncherPanel({
     return () => window.removeEventListener('island:assistant-changed', handleAssistantChange);
   }, []);
 
-  const { media, schedule = [], inbox = [] } = s;
-  const unreadCount = inbox.filter((n) => !n.read).length;
-  const activeTimers = schedule.filter((i) => i.kind === 'timer');
-  const nextTimer = activeTimers.sort((a, b) => a.fireAt - b.fireAt)[0] || null;
-  const isPlaying = media.active && media.status === 'playing';
+  useEffect(() => {
+    window.island?.getNotchVisibilityMode?.().then((m) => {
+      if (m) setVisibilityMode(m);
+    }).catch(() => {});
+    window.island?.getAppearanceMode?.().then((m) => {
+      if (m) setAppearanceMode(m);
+    }).catch(() => {});
+  }, []);
 
-  const handleQuickTimer = (e, minutes, label) => {
-    e.stopPropagation();
-    if (actions?.addTimer) {
-      actions.addTimer(minutes, label);
-      setTab('clock');
+  const { schedule = [] } = s;
+  const activeTimers = schedule.filter((i) => i.kind === 'timer').sort((a, b) => a.fireAt - b.fireAt);
+  const nextTimer = activeTimers[0] || null;
+
+  let cachedWeather = null;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('island_weather_cache');
+      if (raw) cachedWeather = JSON.parse(raw);
+    } catch {}
+  }
+
+  const handleSetVisibility = (mode) => {
+    setVisibilityMode(mode);
+    window.island?.setNotchVisibilityMode?.(mode);
+  };
+
+  const handleSetAppearance = (mode) => {
+    setAppearanceMode(mode);
+    window.island?.setAppearanceMode?.(mode);
+  };
+
+  const renderTileSub = (id) => {
+    if (id === 'timer') {
+      return nextTimer
+        ? `${nextTimer.label || 'Timer'} · ${formatRemaining(nextTimer.fireAt - now)}`
+        : 'Set countdown';
     }
+    if (id === 'weather') {
+      return cachedWeather && cachedWeather.temp != null
+        ? `${Math.round(cachedWeather.temp)}° · ${cachedWeather.condition || 'Clear'}`
+        : 'Conditions';
+    }
+    if (id === 'assistant') {
+      return voice?.status && voice.status !== 'idle'
+        ? `${assistantName} active`
+        : 'Ask anything';
+    }
+    return `${visibilityMode === 'always' ? 'Always' : visibilityMode === 'smart_hide' ? 'Smart' : 'Peek'} · ${volume}%`;
   };
 
-  const handleMediaControl = (e, action) => {
-    e.stopPropagation();
-    actions?.mediaControl?.(action);
-  };
+  const activeMeta = UTILITIES.find((u) => u.id === activeUtility) || null;
 
   return (
-    <div className="launcher" style={{ '--accent': accentColor || 'var(--c-info)' }}>
-      <div className="launcher__grid">
-        {/* 1. Hero Music Card (Spans full width across 2 columns) */}
-        <div
-          className={`launcher-card launcher-card--hero launcher-card--music${isPlaying ? ' is-playing' : ''}`}
-          onClick={() => setTab('playing')}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="launcher-card__head">
-            <span className="launcher-card__icon">
-              <Icon.Music width={15} height={15} />
-            </span>
-            <span className="launcher-card__tag">
-              {isPlaying ? 'Now Playing' : 'Music & Favorites'}
-            </span>
-            {isPlaying && (
-              <div className="launcher-card__eq">
-                <Equalizer color={accentColor || 'var(--c-info)'} playing={isPlaying} />
-              </div>
-            )}
-          </div>
-
-          <div className="launcher-card__content">
-            {media.active ? (
-              <div className="launcher-hero-music">
-                <div className="launcher-hero-left">
-                  {media.art ? (
-                    <Art
-                      src={media.art}
-                      seed={`${media.title}${media.artist}`}
-                      size={46}
-                      radius={10}
-                    />
-                  ) : (
-                    <div className="launcher-hero-art-fallback">
-                      <Icon.Music width={20} height={20} />
-                    </div>
+    <div className="utilities-root" style={{ '--accent': accentColor || 'var(--c-info)' }}>
+      <LayoutGroup id="utilities-morph">
+        <AnimatePresence mode="wait" initial={false}>
+          {!activeUtility ? (
+            <motion.div
+              key="utilities-grid"
+              className="utilities-grid"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={contentTransition}
+            >
+              {UTILITIES.map(({ id, title, Glyph }) => (
+                <motion.button
+                  key={id}
+                  type="button"
+                  layoutId={`utility-surface-${id}`}
+                  className="utility-tile"
+                  onClick={() => setActiveUtility(id)}
+                  transition={morphTransition}
+                >
+                  <span className="utility-tile__icon">
+                    <Glyph width={16} height={16} />
+                  </span>
+                  <div className="utility-tile__text">
+                    <span className="utility-tile__title">{title}</span>
+                    <span className="utility-tile__sub">{renderTileSub(id)}</span>
+                  </div>
+                </motion.button>
+              ))}
+            </motion.div>
+          ) : (
+            <motion.div
+              key={`utility-active-${activeUtility}`}
+              layoutId={`utility-surface-${activeUtility}`}
+              className="utility-surface"
+              transition={morphTransition}
+            >
+              <div className="utility-surface__head">
+                <button
+                  type="button"
+                  className="utility-surface__back"
+                  onClick={() => setActiveUtility(null)}
+                  aria-label="Back to Utilities"
+                >
+                  <Icon.Prev width={12} height={12} />
+                  <span>Utilities</span>
+                </button>
+                <span className="utility-surface__title">{activeMeta?.title}</span>
+                <div className="utility-surface__head-right">
+                  {activeUtility === 'assistant' && (
+                    <CompanionEyes size="sm" mood={companionMood} animationsEnabled={companionAnimations} />
                   )}
-                  <div className="launcher-hero-meta">
-                    <div className="launcher-hero-title" title={media.title}>
-                      {media.title || 'Untitled Track'}
+                </div>
+              </div>
+
+              <div className="utility-surface__body">
+                {activeUtility === 'timer' && (
+                  <div className="utility-pane utility-pane--timer">
+                    <ClockPanel schedule={schedule} now={now} />
+                  </div>
+                )}
+
+                {activeUtility === 'weather' && (
+                  <div className="utility-pane utility-pane--weather">
+                    {cachedWeather ? (
+                      <div className="utility-weather-summary">
+                        <div className="utility-weather-temp">{Math.round(cachedWeather.temp)}°</div>
+                        <div className="utility-weather-meta">
+                          <div className="utility-weather-loc">{cachedWeather.location || 'Local'}</div>
+                          <div className="utility-weather-cond">{cachedWeather.condition || 'Available'}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="utility-empty-state">
+                        <Icon.Sun width={20} height={20} />
+                        <p>Live weather provider connects in the next checkpoint.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeUtility === 'assistant' && (
+                  <div className="utility-pane utility-pane--assistant">
+                    <div className="utility-assistant-empty">
+                      <p>Ask {assistantName} a question or open the full workspace.</p>
                     </div>
-                    <div className="launcher-hero-sub" title={media.artist}>
-                      {media.artist || 'Unknown Artist'}
+                    <div className="utility-assistant-composer">
+                      <input
+                        type="text"
+                        className="utility-assistant-input"
+                        placeholder={`Message ${assistantName}…`}
+                        value={draftPrompt}
+                        onChange={(e) => setDraftPrompt(e.target.value)}
+                      />
+                      {voice && (
+                        <button
+                          type="button"
+                          className="utility-assistant-btn"
+                          onClick={() => {
+                            voice.startSession?.();
+                            setTab?.('voice');
+                          }}
+                          title="Start Voice"
+                          aria-label="Start Voice"
+                        >
+                          <Icon.Mic width={13} height={13} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="utility-assistant-btn utility-assistant-btn--send"
+                        onClick={() => window.island?.openWorkspace?.()}
+                        title="Open AI Workspace"
+                      >
+                        <span>Workspace</span>
+                      </button>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Direct quick playback controls right on the hero card */}
-                <div className="launcher-hero-controls">
-                  <button
-                    type="button"
-                    className="launcher-control-btn"
-                    onClick={(e) => handleMediaControl(e, 'previous')}
-                    title="Previous"
-                    aria-label="Previous track"
-                  >
-                    <Icon.Prev width={14} height={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className="launcher-control-btn launcher-control-btn--play"
-                    onClick={(e) => handleMediaControl(e, 'playpause')}
-                    title={isPlaying ? 'Pause' : 'Play'}
-                    aria-label={isPlaying ? 'Pause' : 'Play'}
-                  >
-                    {isPlaying ? <Icon.Pause width={14} height={14} /> : <Icon.Play width={14} height={14} />}
-                  </button>
-                  <button
-                    type="button"
-                    className="launcher-control-btn"
-                    onClick={(e) => handleMediaControl(e, 'next')}
-                    title="Next"
-                    aria-label="Next track"
-                  >
-                    <Icon.Next width={14} height={14} />
-                  </button>
-                </div>
+                {activeUtility === 'controls' && (
+                  <div className="utility-pane utility-pane--controls">
+                    <div className="utility-ctrl-row">
+                      <span className="utility-ctrl-label">Notch Visibility</span>
+                      <div className="utility-ctrl-pills">
+                        {[
+                          { id: 'always', label: 'Always' },
+                          { id: 'smart_hide', label: 'Smart' },
+                          { id: 'peek', label: 'Peek' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            className={`utility-ctrl-pill${visibilityMode === opt.id ? ' is-active' : ''}`}
+                            onClick={() => handleSetVisibility(opt.id)}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="utility-ctrl-row">
+                      <span className="utility-ctrl-label">Appearance</span>
+                      <div className="utility-ctrl-pills">
+                        <button
+                          type="button"
+                          className={`utility-ctrl-pill${appearanceMode === 'dynamic_frosted' ? ' is-active' : ''}`}
+                          onClick={() => handleSetAppearance('dynamic_frosted')}
+                        >
+                          Dynamic
+                        </button>
+                        <button
+                          type="button"
+                          className={`utility-ctrl-pill${appearanceMode === 'dark_frosted' ? ' is-active' : ''}`}
+                          onClick={() => handleSetAppearance('dark_frosted')}
+                        >
+                          Dark
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="utility-ctrl-row">
+                      <span className="utility-ctrl-label">Music Volume ({volume}%)</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={volume}
+                        onChange={(e) => onVolumeChange?.(Number(e.target.value))}
+                        className="utility-ctrl-slider"
+                        aria-label="Music Volume"
+                      />
+                    </div>
+
+                    <div className="utility-ctrl-footer">
+                      <button
+                        type="button"
+                        className="utility-ctrl-link"
+                        onClick={() => window.island?.openSettings?.()}
+                      >
+                        All Settings
+                      </button>
+                      <button
+                        type="button"
+                        className="utility-ctrl-link"
+                        onClick={() => window.island?.openWorkspace?.()}
+                      >
+                        AI Workspace
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="launcher-hero-empty">
-                <div className="launcher-card__title">Play Music & Favorites</div>
-                <div className="launcher-card__sub">
-                  Browse saved tracks, queue playlists or ask {assistantName}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 2. Voice Assistant Card (Column 1 - Tall & Expressive) */}
-        <div
-          className={`launcher-card launcher-card--voice${voice?.status !== 'idle' ? ' is-active' : ''}`}
-          onClick={() => {
-            if (voice?.status === 'idle' || voice?.status === 'error') {
-              voice?.startSession();
-            }
-            setTab('voice');
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="launcher-card__head">
-            <span className="launcher-card__icon">
-              <Icon.Sparkles width={15} height={15} />
-            </span>
-            <span className="launcher-card__tag">Companion</span>
-            {voice?.status !== 'idle' && (
-              <span className={`launcher-pulse is-${voice.status}`} />
-            )}
-          </div>
-          <div className="launcher-card__content">
-            <div className="launcher-card__title">Talk to {assistantName}</div>
-            <div className="launcher-card__sub">Voice control, music & questions</div>
-            <div className="launcher-voice-badge">
-              <span className={`launcher-status-dot is-${voice?.status || 'idle'}`} />
-              <span className="launcher-status-text">
-                {voice?.status === 'speaking'
-                  ? 'Speaking...'
-                  : voice?.status === 'listening'
-                  ? 'Listening...'
-                  : voice?.status === 'thinking'
-                  ? 'Thinking...'
-                  : 'Tap to speak'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. Timers / Clock Card (Column 2 - Spacious, Zero Clipping) */}
-        <div
-          className="launcher-card launcher-card--clock"
-          onClick={() => setTab('clock')}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="launcher-card__head">
-            <span className="launcher-card__icon">
-              <Icon.Timer width={15} height={15} />
-            </span>
-            <span className="launcher-card__tag">
-              {nextTimer ? 'Timer Active' : 'Timers & Focus'}
-            </span>
-          </div>
-          <div className="launcher-card__content">
-            {nextTimer ? (
-              <div className="launcher-timer-active">
-                <div className="launcher-timer-digits">
-                  {formatRemaining(Math.max(0, nextTimer.fireAt - now))}
-                </div>
-                <div className="launcher-card__sub">{nextTimer.label || 'Active countdown'}</div>
-              </div>
-            ) : (
-              <div className="launcher-timer-idle">
-                <div className="launcher-card__title">Quick Timer</div>
-                <div className="launcher-timer-chips">
-                  <button
-                    type="button"
-                    className="launcher-chip"
-                    onClick={(e) => handleQuickTimer(e, 5, 'Quick 5m')}
-                  >
-                    +5m
-                  </button>
-                  <button
-                    type="button"
-                    className="launcher-chip"
-                    onClick={(e) => handleQuickTimer(e, 15, 'Focus 15m')}
-                  >
-                    +15m
-                  </button>
-                  <button
-                    type="button"
-                    className="launcher-chip"
-                    onClick={(e) => handleQuickTimer(e, 25, 'Pomodoro 25m')}
-                  >
-                    +25m
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 4. Desktop Pet Card (Column 1) */}
-        <div
-          className="launcher-card launcher-card--pet"
-          onClick={() => setTab('pet')}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="launcher-card__head">
-            <span className="launcher-card__icon">
-              <Icon.Paw width={15} height={15} />
-            </span>
-            <span className="launcher-card__tag">Desktop Pet</span>
-          </div>
-          <div className="launcher-card__content">
-            <div className="launcher-card__title">{petName}</div>
-            <div className="launcher-card__sub">Feed, dress up & companion studio</div>
-          </div>
-        </div>
-
-        {/* 5. Notifications / Inbox Card (Column 2) */}
-        <div
-          className="launcher-card launcher-card--inbox"
-          onClick={() => setTab('inbox')}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="launcher-card__head">
-            <span className="launcher-card__icon">
-              <Icon.Inbox width={15} height={15} />
-            </span>
-            <span className="launcher-card__tag">Inbox</span>
-            {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
-          </div>
-          <div className="launcher-card__content">
-            <div className="launcher-card__title">
-              {unreadCount > 0 ? `${unreadCount} Unread Note${unreadCount > 1 ? 's' : ''}` : 'All caught up'}
-            </div>
-            <div className="launcher-card__sub">Recent alerts & clipboard history</div>
-          </div>
-        </div>
-
-        {/* 6. Settings Banner (Spans full width across 2 columns) */}
-        <div
-          className="launcher-card launcher-card--settings launcher-card--full"
-          onClick={() => setTab('settings')}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="launcher-settings-row">
-            <div className="launcher-settings-left">
-              <span className="launcher-card__icon">
-                <Icon.Settings width={15} height={15} />
-              </span>
-              <div className="launcher-settings-text">
-                <div className="launcher-card__title">Settings & Preferences</div>
-                <div className="launcher-card__sub">Voice engine, dock position & shortcuts</div>
-              </div>
-            </div>
-            <span className="launcher-settings-arrow">
-              <Icon.Chevron width={14} height={14} />
-            </span>
-          </div>
-        </div>
-      </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </LayoutGroup>
     </div>
   );
 }

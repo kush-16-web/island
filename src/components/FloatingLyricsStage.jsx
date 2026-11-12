@@ -186,13 +186,15 @@ export default function FloatingLyricsStage({
     lastActiveIndexRef.current = activeLineIndex;
     lastSeedRef.current = seed;
 
-    // Window bounds: active ± 2 lines
-    const minIdx = Math.max(0, activeLineIndex - 2);
-    const maxIdx = Math.min(lines.length - 1, activeLineIndex + 2);
+    // Window bounds: active ± 2 lines (or preview intro lines 0..2)
+    const minIdx = activeLineIndex >= 0 ? Math.max(0, activeLineIndex - 2) : 0;
+    const maxIdx = activeLineIndex >= 0 ? Math.min(lines.length - 1, activeLineIndex + 2) : Math.min(lines.length - 1, 2);
     const targetIndices = [];
 
-    // Prioritize active index first, then adjacent lines
-    const lineOrder = [activeLineIndex, activeLineIndex - 1, activeLineIndex + 1, activeLineIndex - 2, activeLineIndex + 2];
+    // Prioritize active index first, then adjacent lines (or intro lines when active < 0)
+    const lineOrder = activeLineIndex >= 0
+      ? [activeLineIndex, activeLineIndex - 1, activeLineIndex + 1, activeLineIndex - 2, activeLineIndex + 2]
+      : [0, 1, 2];
     lineOrder.forEach((idx) => {
       if (idx >= minIdx && idx <= maxIdx) {
         const text = (lines[idx]?.text || '').trim();
@@ -483,8 +485,12 @@ export default function FloatingLyricsStage({
                           : { '--word-idx': wIdx };
 
                         return (
-                          <span key={wIdx} className={wordClass} style={wordStyle}>
-                            {w.text}{' '}
+                          <span key={wIdx}>
+                            <span className={wordClass} style={wordStyle}>
+                              <span className="k-word__base">{w.text}</span>
+                              <span className="k-word__fill" aria-hidden="true">{w.text}</span>
+                            </span>
+                            {' '}
                           </span>
                         );
                       })}

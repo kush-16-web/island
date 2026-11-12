@@ -38,14 +38,14 @@ test('Pass 2.2.7.3: Artwork Compositor Glide, Wide Metadata & Concert Layering S
     );
   });
 
-  await t.test('2. Global Navigation: Hidden strictly during Full Lyrics and restored on exit', () => {
+  await t.test('2. Global Navigation: Hidden during Expanded Music and Full Lyrics', () => {
     assert.ok(
       hubCode.includes('isLyricsActive = tab === \'playing\' && (lyricsViewMode === \'lyrics\' || lyricsViewMode === true)'),
       'Hub.jsx must compute isLyricsActive conditionally only for playing tab in lyrics mode'
     );
     assert.ok(
-      hubCode.includes('{!isLyricsActive && (') && hubCode.includes('<div className="hub__head">'),
-      'Hub.jsx must omit hub__head completely when isLyricsActive is true'
+      hubCode.includes('{!isExpandedMusic && !isLyricsActive && (') && hubCode.includes('hub__head--minimal'),
+      'Hub.jsx must omit hub__head during Expanded Music and Full Lyrics'
     );
     assert.ok(
       cssCode.includes('.hub--lyrics-active') && cssCode.includes('padding-top: 0;'),

@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EASE_OUT, SPRING } from '../lib/motion';
-import { getAssistantName } from '../lib/assistant';
+import { EASE_OUT } from '../lib/motion';
 import LauncherPanel from './LauncherPanel';
 import ClockPanel from './ClockPanel';
 import InboxPanel from './InboxPanel';
@@ -9,6 +8,7 @@ import NowPlaying from './NowPlaying';
 import PetStudioPanel from './PetStudioPanel';
 import SettingsPanel from './SettingsPanel';
 import VoicePanel from './VoicePanel';
+import CompanionEyes from './CompanionEyes';
 import { Icon } from './icons';
 
 const ALL_TABS = ['launcher', 'playing', 'clock', 'pet', 'inbox', 'settings', 'voice'];
@@ -19,9 +19,18 @@ const tabIndex = (id) => {
 };
 
 const panelVariants = {
-  enter: (dir) => ({ opacity: 0, x: 28 * dir, filter: 'blur(4px)' }),
+  enter: (dir) => ({ opacity: 0, x: 24 * dir, filter: 'blur(3px)' }),
   center: { opacity: 1, x: 0, filter: 'blur(0px)' },
-  exit: (dir) => ({ opacity: 0, x: -28 * dir, filter: 'blur(4px)' }),
+  exit: (dir) => ({ opacity: 0, x: -24 * dir, filter: 'blur(3px)' }),
+};
+
+const TAB_TITLES = {
+  launcher: 'Utilities',
+  clock: 'Timers & Alarms',
+  pet: 'Desktop Pet',
+  inbox: 'Notifications',
+  settings: 'Settings',
+  voice: 'Voice',
 };
 
 export default function Hub({
@@ -38,17 +47,16 @@ export default function Hub({
   videoStreamActive,
   youtubeId,
   voice,
+  volume,
+  muted,
+  volumeSupported = true,
+  volumeUnavailableReason = '',
+  onVolumeChange,
+  onToggleMute,
+  isDynamicMode = true,
+  companionMood = 'idle',
+  companionAnimations = true,
 }) {
-  const [assistantName, setAssistantNameState] = useState(getAssistantName);
-
-  useEffect(() => {
-    const handleAssistantChange = (e) => {
-      if (e.detail?.name) setAssistantNameState(e.detail.name);
-    };
-    window.addEventListener('island:assistant-changed', handleAssistantChange);
-    return () => window.removeEventListener('island:assistant-changed', handleAssistantChange);
-  }, []);
-
   const previous = useRef(tabIndex(tab));
   const dir = tabIndex(tab) >= previous.current ? 1 : -1;
   useEffect(() => {
@@ -56,7 +64,6 @@ export default function Hub({
   }, [tab]);
 
   const unread = s.inbox?.filter((n) => !n.read).length || 0;
-  const hasActiveTimers = s.schedule?.some((i) => i.kind === 'timer');
 
   useEffect(() => {
     if (tab !== 'inbox' || unread === 0) return undefined;
@@ -64,26 +71,13 @@ export default function Hub({
     return () => clearTimeout(id);
   }, [tab, unread, actions]);
 
-  // Contextual segmented navigation bar
-  const visibleTabs = [
-    { id: 'launcher', label: 'Home', Glyph: Icon.Home },
-    { id: 'playing', label: s.media?.active ? 'Playing' : 'Music', Glyph: Icon.Music },
-    { id: 'pet', label: 'Pet', Glyph: Icon.Paw },
-  ];
-
-  if (hasActiveTimers || tab === 'clock') {
-    visibleTabs.push({ id: 'clock', label: 'Clock', Glyph: Icon.Timer });
-  }
-  if (unread > 0 || tab === 'inbox') {
-    visibleTabs.push({ id: 'inbox', label: 'Inbox', Glyph: Icon.Inbox });
-  }
-
   const [lyricsViewMode, setLyricsViewMode] = useState(false);
   const handleLyricsViewChange = useCallback((mode) => {
     setLyricsViewMode(mode);
     onLyricsViewChange?.(mode);
   }, [onLyricsViewChange]);
   const isLyricsActive = tab === 'playing' && (lyricsViewMode === 'lyrics' || lyricsViewMode === true);
+  const isExpandedMusic = tab === 'playing';
 
   // When switching away from Playing tab, reset lyrics view mode
   useEffect(() => {
@@ -100,73 +94,50 @@ export default function Hub({
     };
   }, [onLyricsViewChange]);
 
+  const handleOpenUtilities = useCallback(() => {
+    setTab('launcher');
+  }, [setTab]);
+
+  const handleReturnFromUtilities = useCallback(() => {
+    if (tab === 'launcher') {
+      if (s.media?.active) setTab('playing');
+      else onClose?.();
+      return;
+    }
+    setTab('launcher');
+  }, [tab, s.media?.active, setTab, onClose]);
+
   return (
-    <div className={`hub${isLyricsActive ? ' hub--lyrics-active' : ''}`} style={{ '--accent': accentColor || 'var(--c-info)' }}>
-      {!isLyricsActive && (
-        <div className="hub__head">
+    <div className={`hub${isLyricsActive ? ' hub--lyrics-active' : ''}${isExpandedMusic ? ' hub--music-focus' : ''}`} style={{ '--accent': accentColor || 'var(--c-info)' }}>
+      {/* Minimal contextual header ONLY for non-Music views (Utilities, Timers, Pet, etc.) */}
+      {!isExpandedMusic && !isLyricsActive && (
+        <div className="hub__head hub__head--minimal">
           <div className="hub__nav">
-            <div className="seg" role="tablist" aria-label="Island sections">
-              {visibleTabs.map(({ id, label, Glyph }) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === id}
-                  className={`seg__btn${tab === id ? ' is-active' : ''}`}
-                  onClick={() => {
-                    if (tab === id) onClose?.();
-                    else setTab(id);
-                  }}
-                  title={tab === id ? `Click to collapse ${label}` : label}
-                >
-                  {tab === id && <motion.span layoutId="seg-pill" className="seg__pill" transition={SPRING} />}
-                  <span className="seg__label">
-                    <Glyph width={15} height={15} />
-                    {label}
-                    {id === 'inbox' && unread > 0 && <span className="badge">{unread > 9 ? '9+' : unread}</span>}
-                  </span>
-                </button>
-              ))}
-            </div>
+            {(tab !== 'launcher' || s.media?.active) && (
+              <button
+                type="button"
+                className="hub-back-btn"
+                onClick={handleReturnFromUtilities}
+                title={tab === 'launcher' && s.media?.active ? 'Back to Music' : 'Back to Utilities'}
+                aria-label={tab === 'launcher' && s.media?.active ? 'Back to Music' : 'Back to Utilities'}
+              >
+                <Icon.Chevron width={13} height={13} style={{ transform: 'rotate(90deg)' }} />
+                <span>{tab === 'launcher' && s.media?.active ? 'Music' : 'Utilities'}</span>
+              </button>
+            )}
+            <span className="hub__minimal-title">{TAB_TITLES[tab] || 'Island'}</span>
           </div>
 
           <div className="hub__actions">
             <button
               type="button"
-              className={`hub-action-btn${tab === 'settings' ? ' is-active' : ''}`}
-              onClick={() => {
-                if (tab === 'settings') setTab(s.media?.active ? 'playing' : 'launcher');
-                else setTab('settings');
-              }}
-              title="Settings"
-              aria-label="Settings"
+              className="expanded-music__eyes-btn"
+              onClick={handleReturnFromUtilities}
+              title={s.media?.active ? 'Return to Music' : 'Close Utilities'}
+              aria-label={s.media?.active ? 'Return to Music' : 'Close Utilities'}
             >
-              <Icon.Settings width={15} height={15} />
+              <CompanionEyes size="sm" mood={companionMood} animationsEnabled={companionAnimations} />
             </button>
-
-            {voice && (
-              <button
-                type="button"
-                className={`hub-voice-btn${voice.status !== 'idle' ? ' is-active' : ''}${tab === 'voice' ? ' is-selected' : ''}`}
-                onClick={() => {
-                  if (voice.status === 'idle' || voice.status === 'error') {
-                    voice.startSession();
-                    setTab('voice');
-                  } else if (tab === 'voice') {
-                    setTab(s.media?.active ? 'playing' : 'launcher');
-                  } else {
-                    setTab('voice');
-                  }
-                }}
-                title={voice.status !== 'idle' ? `${assistantName} active (Click to view)` : `Talk to ${assistantName} (Ctrl+Shift+Space)`}
-                aria-label="Voice Companion"
-              >
-                <Icon.Mic width={14} height={14} />
-                {voice.status !== 'idle' && (
-                  <span className={`hub-voice-pulse is-${voice.status}`} />
-                )}
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -181,7 +152,7 @@ export default function Hub({
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{ duration: 0.26, ease: EASE_OUT }}
+            transition={{ duration: 0.24, ease: EASE_OUT }}
           >
             {tab === 'launcher' && (
               <LauncherPanel
@@ -191,6 +162,10 @@ export default function Hub({
                 setTab={setTab}
                 voice={voice}
                 accentColor={accentColor}
+                companionMood={companionMood}
+                companionAnimations={companionAnimations}
+                volume={volume}
+                onVolumeChange={onVolumeChange}
               />
             )}
             {tab === 'playing' && (
@@ -200,10 +175,20 @@ export default function Hub({
                 platform={s.platform}
                 onControl={actions.mediaControl}
                 accentColor={accentColor}
+                isDynamicMode={isDynamicMode}
                 onLyricsViewChange={handleLyricsViewChange}
                 videoStream={videoStream}
                 videoStreamActive={videoStreamActive}
                 youtubeId={youtubeId}
+                volume={volume}
+                muted={muted}
+                volumeSupported={volumeSupported}
+                volumeUnavailableReason={volumeUnavailableReason}
+                onVolumeChange={onVolumeChange}
+                onToggleMute={onToggleMute}
+                onOpenUtilities={handleOpenUtilities}
+                companionMood={companionMood}
+                companionAnimations={companionAnimations}
               />
             )}
             {tab === 'clock' && <ClockPanel schedule={s.schedule} now={now} setTyping={setTyping} />}

@@ -24,10 +24,18 @@ app.commandLine.appendSwitch('force-gpu-mem-available-mb', '2048');
 app.commandLine.appendSwitch('gpu-rasterization-msaa-sample-count', '0');
 
 const { Store } = require('./store');
+const { WindowManager } = require('./window-manager');
+const {
+  NOTCH_WIN_W,
+  NOTCH_WIN_H,
+  normalizeVisibilityMode,
+  computeNotchPosition,
+} = require('./notch-geometry');
 const { Scheduler } = require('./scheduler');
 const { createNotifyServer, DEFAULT_PORT } = require('./notify-server');
 const { CompanionBridge } = require('./companion-bridge');
 const { MediaWatcher } = require('./media');
+const { AppVolumeController } = require('./app-volume');
 const { FullscreenWatcher } = require('./fullscreen');
 const { RealtimeSessionBroker } = require('./realtime');
 const { GeminiVoiceService } = require('./gemini');
@@ -38,10 +46,25 @@ const { GroqService } = require('./groq');
 let geminiVoiceService = null;
 let kokoroLocalService = null;
 let groqService = null;
+let windowManager = null;
+let appVolumeController = null;
+
+// Ensure Windows taskbar grouping, Alt+Tab, and notifications use Island application identity
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.island.app');
+}
+
+// Authoritative desktop application icon (multi-res ICO on Windows, high-res PNG on POSIX)
+const APP_ICON_PATH = path.join(
+  __dirname,
+  '..',
+  'assets',
+  process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+);
 
 const DEV_URL = process.env.ISLAND_DEV_URL || '';
-const WIN_W = 720;
-const WIN_H = 500;
+const WIN_W = NOTCH_WIN_W;
+const WIN_H = NOTCH_WIN_H;
 const PET_WIN_W = 190;
 const PET_WIN_H = 175;
 const INBOX_LIMIT = 100;
@@ -49,6 +72,10 @@ const HUB_SHORTCUT = 'CommandOrControl+Alt+Space';
 const HUB_SHORTCUT_LABEL = 'Ctrl+Alt+Space';
 const VOICE_SHORTCUT = 'CommandOrControl+Shift+Space';
 const VOICE_SHORTCUT_LABEL = 'Ctrl+Shift+Space';
+const WORKSPACE_SHORTCUT = 'CommandOrControl+Alt+A';
+const WORKSPACE_SHORTCUT_LABEL = 'Ctrl+Alt+A';
+const SETTINGS_SHORTCUT = 'CommandOrControl+Alt+S';
+const SETTINGS_SHORTCUT_LABEL = 'Ctrl+Alt+S';
 
 let win = null;
 let petWin = null;
@@ -136,13 +163,17 @@ if (app && typeof app.on === 'function') {
 }
 
 function send(channel, payload) {
-  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
-  if (petWin && !petWin.isDestroyed()) petWin.webContents.send(channel, payload);
+  if (windowManager) {
+    windowManager.broadcast(channel, payload);
+  } else {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+    if (petWin && !petWin.isDestroyed()) petWin.webContents.send(channel, payload);
+  }
 }
 
 function trusted(event) {
-  const url = event.senderFrame ? event.senderFrame.url : '';
-  return url.startsWith('file://') || (DEV_URL !== '' && url.startsWith(DEV_URL));
+  const url = event.senderFrame?.url || (event.sender && typeof event.sender.getURL === 'function' ? event.sender.getURL() : '') || '';
+  return !url || url.startsWith('file://') || (DEV_URL !== '' && url.startsWith(DEV_URL));
 }
 
 function handle(channel, fn) {
@@ -499,11 +530,23 @@ function resolveYouTubeId(query) {
   });
 }
 
+function getNotchPlacement() {
+  const displayId = store ? store.get('notch_display_id', null) : null;
+  const allDisplays = screen.getAllDisplays();
+  const primary = screen.getPrimaryDisplay();
+  return computeNotchPosition({
+    display: primary,
+    allDisplays,
+    displayId,
+    windowWidth: WIN_W,
+    windowHeight: WIN_H,
+  });
+}
+
 function placeWindow() {
   if (!win || win.isDestroyed()) return;
-  const saved = getSavedDock();
-  const target = computeDockPosition(saved);
-  win.setBounds({ x: target.x, y: target.y, width: WIN_W, height: WIN_H });
+  const target = getNotchPlacement();
+  win.setBounds({ x: target.x, y: target.y, width: target.width, height: target.height });
   send('window:dock-changed', target);
 }
 
@@ -515,6 +558,7 @@ function createWindow() {
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
+    icon: APP_ICON_PATH,
     resizable: false,
     movable: true,
     minimizable: false,
@@ -573,6 +617,9 @@ function createWindow() {
   win.once('ready-to-show', () => {
     if (visible) win.showInactive();
   });
+
+  if (windowManager) windowManager.setIslandWindow(win);
+  return win;
 }
 
 function getDisplayBounds() {
@@ -646,6 +693,9 @@ function createPetWindow() {
     const petVisible = store ? store.get('island_pet_visible', false) : false;
     if (visible && petVisible === true) petWin.showInactive();
   });
+
+  if (windowManager) windowManager.setPetWindow(petWin);
+  return petWin;
 }
 
 function restoreAndShowWindow() {
@@ -697,11 +747,46 @@ function toggleVoice() {
 
 // ---------------------------------------------------------------- tray
 
+function setNotchVisibilityMode(mode) {
+  const normalized = normalizeVisibilityMode(mode);
+  if (store) store.set('notch_visibility_mode', normalized);
+  send('notch:visibility-changed', { mode: normalized });
+  buildTrayMenu();
+  return normalized;
+}
+
 function buildTrayMenu() {
   if (!tray) return;
+  const visMode = normalizeVisibilityMode(store ? store.get('notch_visibility_mode', 'always') : 'always');
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      { label: `Open AI Workspace  (${WORKSPACE_SHORTCUT_LABEL})`, click: () => windowManager?.openWorkspace() },
+      { label: `Open Settings  (${SETTINGS_SHORTCUT_LABEL})`, click: () => windowManager?.openSettings() },
+      { type: 'separator' },
       { label: visible ? 'Hide Island' : 'Show Island', click: toggleVisible },
+      {
+        label: 'Notch Visibility',
+        submenu: [
+          {
+            label: 'Always Visible',
+            type: 'radio',
+            checked: visMode === 'always',
+            click: () => setNotchVisibilityMode('always'),
+          },
+          {
+            label: 'Smart Hide',
+            type: 'radio',
+            checked: visMode === 'smart_hide',
+            click: () => setNotchVisibilityMode('smart_hide'),
+          },
+          {
+            label: 'Peek at Top Edge',
+            type: 'radio',
+            checked: visMode === 'peek',
+            click: () => setNotchVisibilityMode('peek'),
+          },
+        ],
+      },
       { label: `Open hub  (${HUB_SHORTCUT_LABEL})`, click: openHub },
       { label: `Talk to Island  (${VOICE_SHORTCUT_LABEL})`, click: toggleVoice },
       { type: 'separator' },
@@ -946,6 +1031,48 @@ function wireIpc() {
 
   listen('media:control', (action) => media && media.control(String(action)));
   listen('media:seek', (pos) => media && media.seek(Number(pos) || 0));
+
+  handle('media:get-volume', async () => {
+    if (!appVolumeController) return { ok: false, supported: false };
+    const hint = mediaState?.app || mediaState?.provider || '';
+    return appVolumeController.getVolume(hint, companionBridge);
+  });
+
+  handle('media:set-volume', async (level) => {
+    if (!appVolumeController) return { ok: false, supported: false };
+    const hint = mediaState?.app || mediaState?.provider || '';
+    const res = await appVolumeController.setVolume(hint, level, companionBridge);
+    if (res?.supported && Number.isFinite(res.volume)) {
+      send('media:volume-changed', { volume: res.volume, muted: Boolean(res.muted), app: res.app || hint });
+    }
+    return res;
+  });
+
+  handle('media:set-mute', async (muted) => {
+    if (!appVolumeController) return { ok: false, supported: false };
+    const hint = mediaState?.app || mediaState?.provider || '';
+    const res = await appVolumeController.setMute(hint, Boolean(muted), companionBridge);
+    if (res?.supported) {
+      send('media:volume-changed', { volume: res.volume, muted: Boolean(res.muted), app: res.app || hint });
+    }
+    return res;
+  });
+
+  handle('win:get-cursor-context', () => {
+    if (!win || win.isDestroyed()) return null;
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = win.getBounds();
+    const disp = screen.getDisplayNearestPoint(cursor);
+    return {
+      cursorX: cursor.x,
+      cursorY: cursor.y,
+      winX: bounds.x,
+      winY: bounds.y,
+      winW: bounds.width,
+      winH: bounds.height,
+      scaleFactor: disp?.scaleFactor || 1,
+    };
+  });
   listen('media:open-url', (rawUrl) => {
     if (typeof rawUrl !== 'string') return;
     const cleanUrl = rawUrl.trim();
@@ -1067,8 +1194,41 @@ function wireIpc() {
   });
 
   handle('window:get-dock', () => {
-    const saved = getSavedDock();
-    return computeDockPosition(saved);
+    return getNotchPlacement();
+  });
+
+  // Notch Visibility Modes & Display Selection (Phase 1B)
+  handle('notch:get-visibility-mode', () => {
+    return normalizeVisibilityMode(store ? store.get('notch_visibility_mode', 'always') : 'always');
+  });
+
+  handle('notch:set-visibility-mode', (mode) => {
+    return setNotchVisibilityMode(mode);
+  });
+
+  handle('notch:get-displays', () => {
+    const primary = screen.getPrimaryDisplay();
+    const selectedId = store ? store.get('notch_display_id', null) : null;
+    return {
+      selectedDisplayId: selectedId,
+      primaryDisplayId: primary?.id ?? null,
+      displays: screen.getAllDisplays().map((d, idx) => ({
+        id: d.id,
+        label: d.label || `Display ${idx + 1}`,
+        isPrimary: d.id === primary?.id,
+        bounds: d.bounds,
+        workArea: d.workArea,
+        scaleFactor: d.scaleFactor,
+      })),
+    };
+  });
+
+  handle('notch:set-display', (displayId) => {
+    const parsedId = displayId === null || displayId === '' ? null : Number(displayId);
+    const val = Number.isFinite(parsedId) ? parsedId : null;
+    if (store) store.set('notch_display_id', val);
+    placeWindow();
+    return getNotchPlacement();
   });
 
   // Focus management for manual expansion (enabling click-outside blur dismissal)
@@ -1077,28 +1237,6 @@ function wireIpc() {
     if (!win || win.isDestroyed()) return;
     if (expanded) {
       win.focus();
-      const saved = getSavedDock();
-      if (saved.edge === 'free') {
-        const [currX, currY] = win.getPosition();
-        const display = getDisplayForPoint(currX + WIN_W / 2, currY + WIN_H / 2);
-        const { y: waY, height: waH } = display.workArea;
-        // Hub bounds inside the 720x500 window: center is at WIN_H / 2 (250).
-        // Hub height is up to 390px, extending from y=55 to y=445 in window coordinates.
-        const hubTop = currY + 55;
-        const hubBottom = currY + 445;
-        let adjY = currY;
-        if (hubTop < waY + 8) adjY = waY + 8 - 55;
-        else if (hubBottom > waY + waH - 8) adjY = waY + waH - 8 - 445;
-        if (adjY !== currY) {
-          win.setPosition(currX, Math.round(adjY));
-        }
-      }
-    } else {
-      const saved = getSavedDock();
-      if (saved.edge === 'free' && Number.isFinite(saved.pillY)) {
-        const [currX] = win.getPosition();
-        win.setPosition(currX, Math.round(saved.pillY - WIN_H / 2));
-      }
     }
   });
 
@@ -1186,10 +1324,57 @@ function wireIpc() {
   });
 
   listen('pet:set-visible', (vis) => {
-    if (store) store.set('island_pet_visible', Boolean(vis));
-    if (!petWin || petWin.isDestroyed()) return;
-    if (vis && visible) petWin.showInactive();
-    else petWin.hide();
+    const isVis = Boolean(vis);
+    if (store) store.set('island_pet_visible', isVis);
+    if (windowManager) {
+      windowManager.setPetVisible(isVis, () => createPetWindow());
+    } else {
+      if (!petWin || petWin.isDestroyed()) {
+        if (isVis) {
+          createPetWindow();
+          if (visible) petWin.showInactive();
+        }
+        return;
+      }
+      if (isVis && visible) petWin.showInactive();
+      else {
+        petWin.hide();
+        petWin.destroy();
+        petWin = null;
+      }
+    }
+  });
+
+  handle('pet:get-visible', () => {
+    return store ? store.get('island_pet_visible', false) : false;
+  });
+
+  // Multi-Window Management & Controls (Phase 1A)
+  listen('workspace:open', () => {
+    windowManager?.openWorkspace();
+  });
+
+  listen('settings:open', (payload) => {
+    windowManager?.openSettings(payload?.tab);
+  });
+
+  ipcMain.on('window:control', (event, payload) => {
+    windowManager?.handleWindowControl(event.sender, payload?.action);
+  });
+
+  handle('window:is-maximized', (event) => {
+    return windowManager ? windowManager.isWindowMaximized(event.sender) : false;
+  });
+
+  // Appearance Mode (Phase 1A.2)
+  handle('settings:get-appearance-mode', () => {
+    return store ? store.get('appearance_mode', 'dynamic_frosted') : 'dynamic_frosted';
+  });
+
+  listen('settings:set-appearance-mode', (mode) => {
+    const valid = mode === 'dark_frosted' ? 'dark_frosted' : 'dynamic_frosted';
+    if (store) store.set('appearance_mode', valid);
+    send('appearance:mode-changed', { mode: valid });
   });
 
   // Gemini Voice Service
@@ -1413,12 +1598,30 @@ if (!app.requestSingleInstanceLock()) {
     store = new Store(path.join(app.getPath('userData'), 'island-state.json'));
     inbox = sanitizeInbox(store.get('inbox', []));
 
+    windowManager = new WindowManager({
+      store,
+      devUrl: DEV_URL,
+      preloadPath: path.join(__dirname, 'preload.js'),
+      distHtmlPath: path.join(__dirname, '..', 'dist', 'index.html'),
+      iconPath: APP_ICON_PATH,
+    });
+
     wireScheduler();
     wireIpc();
     createWindow();
-    createPetWindow();
+
+    // Default pet visibility OFF for new installs; only instantiate petWin if explicitly enabled
+    const petVisible = store ? store.get('island_pet_visible', false) : false;
+    if (petVisible === true) {
+      createPetWindow();
+    }
+
     createTray();
     wireMedia();
+    appVolumeController = new AppVolumeController({
+      workDir: path.join(app.getPath('userData'), 'scripts'),
+      scriptSource: fs.readFileSync(path.join(__dirname, 'ps', 'app-volume.ps1'), 'utf8'),
+    });
     wireNotifyServer();
     wireFullscreen();
 
@@ -1426,6 +1629,8 @@ if (!app.requestSingleInstanceLock()) {
 
     globalShortcut.register(HUB_SHORTCUT, openHub);
     globalShortcut.register(VOICE_SHORTCUT, toggleVoice);
+    globalShortcut.register(WORKSPACE_SHORTCUT, () => windowManager?.openWorkspace());
+    globalShortcut.register(SETTINGS_SHORTCUT, () => windowManager?.openSettings());
 
     for (const event of ['display-metrics-changed', 'display-added', 'display-removed']) {
       screen.on(event, () => {

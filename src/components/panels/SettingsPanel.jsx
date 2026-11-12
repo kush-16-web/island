@@ -464,6 +464,22 @@ export default function SettingsPanel({ accentColor }) {
 
   return (
     <div className="settings-panel scroll" style={{ '--panel-accent': accentColor || 'var(--c-info)' }}>
+      {/* Dedicated Settings Window Launcher */}
+      <div className="settings-dedicated-banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '9px', marginBottom: '10px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Icon.Settings width={13} height={13} />
+          <span style={{ fontSize: '11.5px', fontWeight: 550, color: '#f4f5f8' }}>Dedicated Settings Window</span>
+        </div>
+        <button
+          type="button"
+          className="settings-chip is-active"
+          onClick={() => window.island?.openSettings?.()}
+          style={{ cursor: 'pointer', padding: '3px 8px', fontSize: '11px' }}
+        >
+          Open Window
+        </button>
+      </div>
+
       {/* Mode Segmented Controller with Framer Motion Gliding Pill */}
       <div className="settings-segmented">
         {MODES.map(({ id, label, Glyph, title }) => (

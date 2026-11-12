@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import Island from './components/Island';
 import DesktopPetWindow from './pets/DesktopPetWindow';
+import WorkspaceApp from './components/workspace/WorkspaceApp';
+import SettingsApp from './components/settings/SettingsApp';
 import { island, isMock } from './lib/bridge';
 import { useClickThrough } from './hooks/useClickThrough';
 
@@ -65,21 +67,45 @@ function DevBar() {
       <button type="button" onClick={() => island.scheduler.addTimer({ durationMs: 90000, label: 'Tea' })}>Timer</button>
       <button type="button" onClick={() => island.scheduler.addTimer({ durationMs: 5000, label: 'Quick' })}>5s timer</button>
       <button type="button" onClick={() => dev.ring('alarm')}>Ring alarm</button>
+      <button type="button" onClick={() => { window.location.hash = '#workspace'; window.location.reload(); }}>Workspace</button>
+      <button type="button" onClick={() => { window.location.hash = '#settings'; window.location.reload(); }}>Settings</button>
+      <button type="button" onClick={() => { window.location.hash = ''; window.location.reload(); }}>Island</button>
     </div>
   );
 }
 
 export default function App() {
-  const [isPetWin] = useState(() => window.location.hash === '#pet');
+  const hash = window.location.hash;
+  const isPetWin = hash === '#pet';
+  const isWorkspaceWin = hash === '#workspace';
+  const isSettingsWin = hash === '#settings';
 
   useEffect(() => {
-    if (isMock && !isPetWin) document.body.classList.add('mock');
-  }, [isPetWin]);
+    if (isMock && !isPetWin && !isWorkspaceWin && !isSettingsWin) {
+      document.body.classList.add('mock');
+    }
+  }, [isPetWin, isWorkspaceWin, isSettingsWin]);
 
   if (isPetWin) {
     return (
       <ErrorBoundary>
         <DesktopPetWindow />
+      </ErrorBoundary>
+    );
+  }
+
+  if (isWorkspaceWin) {
+    return (
+      <ErrorBoundary>
+        <WorkspaceApp />
+      </ErrorBoundary>
+    );
+  }
+
+  if (isSettingsWin) {
+    return (
+      <ErrorBoundary>
+        <SettingsApp />
       </ErrorBoundary>
     );
   }

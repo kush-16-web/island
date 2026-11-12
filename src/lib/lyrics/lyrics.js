@@ -48,6 +48,41 @@ export function parseTimecode(str) {
 }
 
 /**
+ * Strictly validates word-level timing:
+ * - Must be a non-empty array
+ * - Finite timestamps in non-decreasing order
+ * - Respects sensible line boundary bounds
+ * - Multi-word lines cannot share identical start timestamps (degenerate timing)
+ */
+export function isValidWordTiming(words, lineStartMs, lineEndMs) {
+  if (!Array.isArray(words) || words.length === 0) return false;
+
+  let prevStart = -Infinity;
+  let allSameStart = words.length > 1;
+  const firstStart = words[0]?.startMs;
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (!w || typeof w.startMs !== 'number' || !Number.isFinite(w.startMs)) return false;
+    if (w.startMs < prevStart) return false;
+    if (w.startMs !== firstStart) allSameStart = false;
+
+    if (typeof lineStartMs === 'number' && Number.isFinite(lineStartMs)) {
+      if (w.startMs < lineStartMs - 2500) return false;
+    }
+    if (typeof lineEndMs === 'number' && Number.isFinite(lineEndMs)) {
+      if (w.startMs > lineEndMs + 2500) return false;
+    }
+    prevStart = w.startMs;
+  }
+
+  // Reject degenerate multi-word timing where every word shares the exact same timestamp
+  if (words.length > 1 && allSameStart) return false;
+
+  return true;
+}
+
+/**
  * Normalizes a list of parsed lines:
  * - Computes endTime and endMs from following lines or duration
  * - Bounds word end times and validates monotonic ordering
@@ -82,17 +117,9 @@ function normalizeLyricLines(rawLines) {
       line.endTime = null;
     }
 
-    if (line.words && Array.isArray(line.words) && line.words.length > 0) {
-      let isMonotonic = true;
-      let prevStart = -1;
-
+    if (line.words && isValidWordTiming(line.words, line.startTimeMs, line.endMs)) {
       for (let wIdx = 0; wIdx < line.words.length; wIdx++) {
         const word = line.words[wIdx];
-        if (typeof word.startMs !== 'number' || isNaN(word.startMs) || word.startMs < prevStart) {
-          isMonotonic = false;
-          break;
-        }
-        prevStart = word.startMs;
 
         // If explicit endMs not given, derive from next word or line end
         if (word.endMs == null || word.endMs <= word.startMs) {
@@ -107,14 +134,9 @@ function normalizeLyricLines(rawLines) {
         word.endTime = word.endMs / 1000;
       }
 
-      if (isMonotonic) {
-        line.syncType = 'word';
-      } else {
-        // Discard invalid/non-monotonic word timing; strictly fall back to line sync
-        line.words = null;
-        line.syncType = isSynced ? 'line' : 'unsynced';
-      }
+      line.syncType = 'word';
     } else {
+      // Discard invalid/degenerate word timing; strictly fall back to line or unsynced
       line.words = null;
       line.syncType = isSynced ? 'line' : 'unsynced';
     }
@@ -694,9 +716,23 @@ export async function fetchLyrics({ title, artist, album, durationSec }) {
       detectedFormat = hasSynced ? 'LRC' : 'Plain';
     }
 
-    const hasWordSync = Boolean(data.hasWordSync || lines.some((l) => l.syncType === 'word' && l.words && l.words.length > 0));
-    const syncType = hasWordSync ? 'word' : (hasSynced ? 'line' : 'unsynced');
-    const wordTimedCount = lines.filter((l) => l.syncType === 'word' && l.words && l.words.length > 0).length;
+    const reliableWordLines = lines.filter((l) => l.syncType === 'word' && Array.isArray(l.words) && l.words.length > 0);
+    // Strictly validate track-level word sync: require real parsed word lines, reject metadata-only claims
+    const hasWordSync = reliableWordLines.length > 0 && (
+      reliableWordLines.length >= Math.min(2, lines.length)
+    );
+    const syncType = hasWordSync ? 'word' : (hasSynced || lines.some((l) => l.startTimeMs != null) ? 'line' : 'unsynced');
+    const wordTimedCount = hasWordSync ? reliableWordLines.length : 0;
+
+    // If word sync is not viable, fall back strictly to pure line or unsynced mode
+    if (!hasWordSync) {
+      for (const line of lines) {
+        line.words = null;
+        if (line.startTimeMs != null) {
+          line.syncType = 'line';
+        }
+      }
+    }
 
     if (Boolean(import.meta.env?.DEV)) {
       console.log(`[LyricsSync] Lyrics loaded from LRCLIB for "${data.trackName || title}" (${syncType} sync, ${wordTimedCount}/${lines.length} word lines)`);

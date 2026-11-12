@@ -386,7 +386,7 @@ export default function FullLyrics({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
       >
-        {Boolean(import.meta.env?.DEV) && lyricsData && (
+        {Boolean(typeof window !== 'undefined' && (window.__ISLAND_DEBUG_LYRICS__ || localStorage.getItem('island_debug_lyrics') === 'true')) && lyricsData && (
           <div className="lyric-sync-diagnostic" title="Lyric Sync Dev Diagnostic">
             <span className="lsd__item">{lyricsData.provider || 'LRCLIB'}</span>
             <span className="lsd__dot">•</span>
@@ -479,8 +479,8 @@ export default function FullLyrics({
             </div>
           </div>
         </div>
-      ) : lyricsLayout === LYRICS_LAYOUTS.FLOATING ? (
-        /* Cinematic Floating Lyrics Mode (Default) */
+      ) : (lyricsLayout === LYRICS_LAYOUTS.FLOATING && isSynced) ? (
+        /* Cinematic Floating Lyrics Mode (Default for synced lyrics) */
         <div className={`full-lyrics__body full-lyrics__body--floating${!showLyrics ? ' is-lyrics-hidden' : ''}`}>
           <FloatingLyricsStage
             lines={lines}
@@ -758,8 +758,12 @@ export default function FullLyrics({
                                 : { '--word-idx': wIdx };
 
                               return (
-                                <span key={wIdx} className={wordClass} style={wordStyle}>
-                                  {w.text}{' '}
+                                <span key={wIdx}>
+                                  <span className={wordClass} style={wordStyle}>
+                                    <span className="k-word__base">{w.text}</span>
+                                    <span className="k-word__fill" aria-hidden="true">{w.text}</span>
+                                  </span>
+                                  {' '}
                                 </span>
                               );
                             })}
