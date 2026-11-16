@@ -22,6 +22,7 @@ export default function MiniLyrics({
   onClick,
   lyricsStyle = 'classic',
   trackSeed = '',
+  activeLineOffset,
 }) {
   if (loading) {
     return (
@@ -70,9 +71,10 @@ export default function MiniLyrics({
 
   // Center active line in the vertical viewport (or preview line 0 during intro)
   const effectiveVpH = viewportH > 0 ? viewportH : VIEWPORT_HEIGHT;
+  const centerOffset = activeLineOffset != null ? activeLineOffset : (effectiveVpH / 2 - LINE_HEIGHT / 2);
   const targetY = hasActiveLine
-    ? -safeActiveIndex * LINE_HEIGHT + (effectiveVpH / 2 - LINE_HEIGHT / 2)
-    : (effectiveVpH / 2 - LINE_HEIGHT / 2);
+    ? -safeActiveIndex * LINE_HEIGHT + centerOffset
+    : centerOffset;
 
   return (
     <div

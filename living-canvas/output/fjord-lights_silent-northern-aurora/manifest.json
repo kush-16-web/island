@@ -4,7 +4,7 @@
     "title": "Silent Northern Aurora",
     "artist": "Fjord Lights"
   },
-  "createdAt": "2026-11-16T06:34:18.467Z",
+  "createdAt": "2026-11-16T11:23:36.929Z",
   "status": "workflow_validated",
   "generator": {
     "status": "workflow_validated",
@@ -28,7 +28,7 @@
     "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
     "cpuCores": 8,
     "totalRamMB": 5965,
-    "freeRamMB": 517,
+    "freeRamMB": 432,
     "nodeVersion": "v22.12.0"
   }
 }

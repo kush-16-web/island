@@ -32,7 +32,7 @@ function calculatePopoverCoordinates(anchorEl, popoverEl, preferred = 'bottom') 
   let top;
 
   // Viewport-aware collision handling with priority on preferred placement
-  if (preferred === 'top' && spaceAbove >= pHeight + offset) {
+  if (preferred === 'top' && (spaceAbove >= 130 || spaceAbove >= spaceBelow)) {
     placement = 'top';
     top = rect.top - pHeight - offset;
   } else if (spaceBelow >= pHeight + offset) {
@@ -80,6 +80,8 @@ export default function LyricsSettingsPopover({
   onLayoutChange,
   style = 'classic',
   onStyleChange,
+  metaballsMode = 'dynamic',
+  onMetaballsModeChange,
   accentColor,
   preferredPlacement = 'bottom',
   placement: legacyPlacement,
@@ -167,7 +169,7 @@ export default function LyricsSettingsPopover({
       data-hit
       className={`lyrics-settings-popover np__lyrics-popover lyrics-settings-popover--${currentPlacement} lyrics-settings-popover--portal`}
       role="dialog"
-      aria-label="Lyrics settings"
+      aria-label="Player settings"
       initial={{ opacity: 0, scale: 0.18, y: currentPlacement === 'top' ? 12 : -12 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.18, y: currentPlacement === 'top' ? 10 : -10 }}
@@ -186,6 +188,15 @@ export default function LyricsSettingsPopover({
         '--popover-accent': accentColor || 'var(--music-accent, #ffffff)',
       }}
     >
+      {/* React Bits optical refraction filter definition */}
+      <svg className="lsp__glass-filter-def" style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
+        <filter id="lsp-liquid-refraction">
+          <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="5" xChannelSelector="R" yChannelSelector="G" result="refracted" />
+          <feGaussianBlur in="refracted" stdDeviation="0.3" />
+        </filter>
+      </svg>
+
       <motion.div
         className="lsp__content"
         initial={{ opacity: 0 }}
@@ -242,6 +253,36 @@ export default function LyricsSettingsPopover({
                 {layout === opt.id && (
                   <motion.div
                     layoutId="lsp-active-layout-glider"
+                    className="lsp__pill-glider"
+                    transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <span className="lsp__pill-label">{opt.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Liquid Metaballs Backdrop Selector */}
+        <div className="lsp__group">
+          <span className="lsp__group-label" id="lsp-metaballs-label">Liquid aura</span>
+          <div className="lsp__pill-row" role="radiogroup" aria-labelledby="lsp-metaballs-label">
+            {[
+              { id: 'dynamic', label: 'Dynamic' },
+              { id: 'white', label: 'White' },
+              { id: 'off', label: 'Off' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={metaballsMode === opt.id}
+                className={`lsp__pill-btn lsp__seg-btn${metaballsMode === opt.id ? ' is-active' : ''}`}
+                onClick={() => onMetaballsModeChange?.(opt.id)}
+              >
+                {metaballsMode === opt.id && (
+                  <motion.div
+                    layoutId="lsp-active-metaballs-glider"
                     className="lsp__pill-glider"
                     transition={{ type: 'spring', stiffness: 450, damping: 32 }}
                   />

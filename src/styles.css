@@ -965,12 +965,12 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   position: absolute;
   width: 272px;
   --popover-tint: var(--popover-accent, var(--music-accent, rgba(255, 255, 255, 0.16)));
-  background: color-mix(in srgb, var(--popover-tint) 16%, rgba(26, 28, 36, 0.65));
+  background: color-mix(in srgb, var(--popover-tint) 8%, rgba(12, 13, 18, 0.88));
   backdrop-filter: blur(32px) saturate(200%);
   -webkit-backdrop-filter: blur(32px) saturate(200%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 20px;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45), inset 0 1px 0 0 rgba(255, 255, 255, 0.22);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 6px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 0 rgba(255, 255, 255, 0.22);
   padding: 13px 14px 14px 14px;
   z-index: 120;
   display: flex;
@@ -987,14 +987,13 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   margin: 0 !important;
   z-index: 99999 !important;
   width: 272px !important;
-  background-color: color-mix(in srgb, var(--popover-accent, var(--music-accent, rgba(255, 255, 255, 0.16))) 16%, rgba(26, 28, 36, 0.65)) !important;
-  background: color-mix(in srgb, var(--popover-accent, var(--music-accent, rgba(255, 255, 255, 0.16))) 16%, rgba(26, 28, 36, 0.65)) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
   color: #ffffff !important;
   backdrop-filter: blur(32px) saturate(200%) !important;
   -webkit-backdrop-filter: blur(32px) saturate(200%) !important;
   border: 1px solid rgba(255, 255, 255, 0.16) !important;
   border-radius: 20px !important;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45), inset 0 1px 0 0 rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42), 0 4px 12px rgba(0, 0, 0, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.22) !important;
   isolation: isolate !important;
   padding: 13px 14px 14px 14px !important;
   max-height: calc(100vh - 20px) !important;
@@ -1038,8 +1037,8 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 
 .lsp__pill-row {
   display: flex;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 12px;
   padding: 3px;
   gap: 2px;
@@ -1078,8 +1077,9 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   position: absolute;
   inset: 0;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.24);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.35);
   z-index: 1;
   pointer-events: none;
 }
@@ -1178,6 +1178,33 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   bottom: auto !important;
   right: auto !important;
   margin: 0 !important;
+}
+
+/* DirectComposition fallback safeguard for high-contrast or reduced-transparency */
+.lyrics-settings-popover--opaque {
+  background: color-mix(in srgb, var(--popover-accent, var(--music-accent, rgba(255, 255, 255, 0.16))) 22%, #101216) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* React Bits Inspired Dynamic Fluid Metaballs */
+.island-liquid-metaballs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.68;
+  filter: blur(6px) saturate(160%);
+  transition: opacity 0.4s ease;
+}
+
+.ilm__svg-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
 /* Subtle curved horizontal lyrics words */
@@ -7595,8 +7622,10 @@ button:hover .lucide-icon--bell {
   width: 100%;
   height: 4px;
   border-radius: 999px;
-  background: #252830;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
   overflow: visible;
   transition: height 160ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms ease;
 }
@@ -7605,6 +7634,7 @@ button:hover .lucide-icon--bell {
 .mvc.is-dragging .mvc__track,
 .mvc__track-hit:focus-visible .mvc__track {
   height: 7px;
+  background: rgba(255, 255, 255, 0.20);
 }
 
 .mvc__fill {
@@ -7786,16 +7816,19 @@ button:hover .lucide-icon--bell {
   width: 100%;
   height: 4px;
   border-radius: 999px;
-  background: #252830;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
   overflow: visible;
-  transition: height 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: height 160ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms ease;
 }
 
 .song-progress:hover .song-progress__track,
 .song-progress.is-dragging .song-progress__track,
 .song-progress__hit:focus-visible .song-progress__track {
   height: 6px;
+  background: rgba(255, 255, 255, 0.20);
 }
 
 .song-progress__fill {
@@ -7832,6 +7865,8 @@ button:hover .lucide-icon--bell {
   height: 100%;
   display: flex;
   flex-direction: column;
+  padding: 0 2px 4px 2px !important;
+  box-sizing: border-box;
 }
 
 .np--two-col .np__main {
@@ -7868,6 +7903,7 @@ button:hover .lucide-icon--bell {
   height: 100%;
   object-fit: cover;
   border-radius: 14px;
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .np--two-col .np__meta {
@@ -7971,7 +8007,7 @@ button:hover .lucide-icon--bell {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0;
   height: 100%;
 }
@@ -7982,32 +8018,68 @@ button:hover .lucide-icon--bell {
   justify-content: flex-end;
   height: 22px;
   margin-bottom: 2px;
+  flex-shrink: 0;
+}
+
+/* Legacy 3-line lyric view standard height constraint */
+.mini-lyrics {
+  height: 154px;
 }
 
 .np--two-col .np__right .mini-lyrics {
-  flex: 1;
-  min-height: 136px;
+  width: 100%;
+  height: 122px;
+  min-height: 122px;
   max-height: none;
+  flex: 0 0 122px;
   overflow: hidden;
   padding: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
 .np--two-col .np__right .mini-lyrics__viewport {
   width: 100%;
-  height: 154px;
+  height: 122px;
   position: relative;
   overflow: hidden;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 20%, black 80%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
 }
 
 .np--two-col .np__right .mini-lyrics__line {
   white-space: normal;
   word-break: break-word;
   line-height: 1.25;
+  font-size: 13.5px;
+  transition: opacity 0.28s ease, color 0.28s ease;
+}
+
+.np--two-col .np__right .mini-lyrics__line.is-active {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff !important;
+  opacity: 1;
+  filter: none;
+}
+
+.np--two-col .np__right .mini-lyrics__line.is-adjacent {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.48);
+  opacity: 0.5;
+  filter: none;
+}
+
+/* Hide distant upcoming/previous lines smoothly to maintain exactly 3 focused lines */
+.np--two-col .np__right .mini-lyrics__line.is-far {
+  font-size: 13.5px;
+  font-weight: 500;
+  opacity: 0 !important;
+  pointer-events: none;
+  filter: none;
 }
 
 .np__right-footer {
@@ -8015,10 +8087,12 @@ button:hover .lucide-icon--bell {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  height: 26px;
-  margin-top: 4px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  height: 36px;
+  min-height: 36px;
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: none;
+  flex-shrink: 0;
 }
 
 .np__volume-control {
@@ -8026,6 +8100,340 @@ button:hover .lucide-icon--bell {
   align-items: center;
   flex: 1;
   min-width: 0;
+}
+
+/* Direction 1 Compact Control Deck (Right Column Bottom) */
+.np__control-deck {
+  width: 100%;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-top: 0;
+  padding-bottom: 2px;
+}
+
+.np__progress--deck {
+  width: 100%;
+}
+
+.np__controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 8px;
+  position: relative;
+}
+
+.np__controls-row--centered {
+  justify-content: center;
+}
+
+.np__controls-cluster {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: auto;
+}
+
+.np__volume-inline-wrap {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: auto;
+  min-width: 20px;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.np__volume-inline {
+  width: auto;
+  gap: 6px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.np__volume-inline.mvc--expand-on-hover .mvc__track-hit {
+  max-width: 0;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transform: scaleX(0.85);
+  transform-origin: right center;
+  transition: max-width 0.38s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease, transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.np__volume-inline.mvc--expand-on-hover .mvc__pct {
+  max-width: 0;
+  width: auto;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  transition: max-width 0.38s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease;
+}
+
+.np__volume-inline.mvc--expand-on-hover:hover .mvc__track-hit,
+.np__volume-inline.mvc--expand-on-hover.is-dragging .mvc__track-hit,
+.np__volume-inline.mvc--expand-on-hover:focus-within .mvc__track-hit {
+  max-width: 76px;
+  min-width: 68px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: scaleX(1);
+}
+
+.np__volume-inline.mvc--expand-on-hover:hover .mvc__pct,
+.np__volume-inline.mvc--expand-on-hover.is-dragging .mvc__pct,
+.np__volume-inline.mvc--expand-on-hover:focus-within .mvc__pct {
+  max-width: 28px;
+  width: 26px;
+  font-size: 10px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.np__volume-inline .mvc__mute-btn {
+  width: 20px;
+  height: 20px;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.np__volume-inline .mvc__mute-btn:hover {
+  color: #ffffff;
+}
+
+.np__volume-inline .mvc__icon-box {
+  width: 16px;
+  height: 16px;
+}
+
+.np__volume-inline .mvc__track-hit {
+  min-width: 36px;
+  height: 16px;
+}
+
+.np__volume-inline .mvc__track {
+  height: 3.5px !important;
+  background: rgba(255, 255, 255, 0.14);
+  border: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.np__volume-inline:hover .mvc__track,
+.np__volume-inline.is-dragging .mvc__track,
+.np__volume-inline .mvc__track-hit:focus-visible .mvc__track {
+  height: 3.5px !important;
+  background: rgba(255, 255, 255, 0.20);
+}
+
+.np__volume-inline .mvc__fill {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.np__volume-inline .mvc__thumb {
+  width: 7px;
+  height: 7px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.np__volume-inline:hover .mvc__thumb,
+.np__volume-inline.is-dragging .mvc__thumb {
+  width: 8px;
+  height: 8px;
+}
+
+.np__volume-inline .mvc__pct {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.68);
+  width: 26px;
+  text-align: right;
+  letter-spacing: -0.01em;
+}
+
+.np__volume-popover-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.np__controls-row .np__controls--left-aligned,
+.np__controls-row .np__controls--center,
+.np__controls--deck {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: auto !important;
+}
+
+.np__lyrics-popover-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+}
+
+.np__tab-pill--volume {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.np__tab-pill--volume:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: scale(1.03);
+}
+
+.np__tab-pill--volume.is-active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.30);
+}
+
+.np__tab-pill-vol-text {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  font-weight: 600;
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.np__tab-pill--gear {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.np__tab-pill--gear:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: scale(1.05);
+}
+
+.np__tab-pill--gear.is-active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+/* Apple-style Liquid Glass Morphing Volume Popover */
+.volume-popover {
+  position: absolute;
+  width: 220px;
+  --vol-tint: var(--vol-popover-accent, var(--music-accent, rgba(255, 255, 255, 0.16)));
+  background: color-mix(in srgb, var(--vol-tint) 16%, rgba(26, 28, 36, 0.72));
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.50), inset 0 1px 0 0 rgba(255, 255, 255, 0.22);
+  padding: 12px 14px 13px 14px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  isolation: isolate;
+}
+
+.volume-popover--portal {
+  position: fixed !important;
+  bottom: auto !important;
+  right: auto !important;
+  margin: 0 !important;
+  z-index: 99999 !important;
+  width: 220px !important;
+  background-color: color-mix(in srgb, var(--vol-popover-accent, var(--music-accent, rgba(255, 255, 255, 0.16))) 16%, rgba(26, 28, 36, 0.72)) !important;
+  background: color-mix(in srgb, var(--vol-popover-accent, var(--music-accent, rgba(255, 255, 255, 0.16))) 16%, rgba(26, 28, 36, 0.72)) !important;
+  color: #ffffff !important;
+  backdrop-filter: blur(32px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(200%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.50), inset 0 1px 0 0 rgba(255, 255, 255, 0.22) !important;
+  isolation: isolate !important;
+  padding: 12px 14px 13px 14px !important;
+}
+
+.volume-popover__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.volume-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.volume-popover__title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.06em;
+}
+
+.volume-popover__badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+
+.volume-popover__slider-wrap {
+  width: 100%;
+}
+
+.volume-popover__slider-wrap .music-volume-control {
+  width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 /* ==========================================================================

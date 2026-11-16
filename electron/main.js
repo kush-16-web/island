@@ -1580,17 +1580,30 @@ if (!app.requestSingleInstanceLock()) {
       callback(false);
     });
 
+    let cachedDisplaySource = null;
+    (async () => {
+      try {
+        const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
+        cachedDisplaySource = sources[0] || null;
+      } catch {}
+    })();
+
     if (session.defaultSession.setDisplayMediaRequestHandler) {
       session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
         try {
+          if (cachedDisplaySource) {
+            callback({ video: cachedDisplaySource, audio: 'loopback' });
+            return;
+          }
           const sources = await desktopCapturer.getSources({
-            types: ['window', 'screen'],
-            thumbnailSize: { width: 120, height: 120 },
+            types: ['screen', 'window'],
+            thumbnailSize: { width: 1, height: 1 },
           });
-          const matched = findMediaSource(sources);
-          callback({ video: matched || sources[0] || null });
+          const matched = findMediaSource(sources) || sources[0] || null;
+          cachedDisplaySource = matched;
+          callback({ video: matched, audio: 'loopback' });
         } catch {
-          callback({ video: null });
+          callback({ video: null, audio: null });
         }
       });
     }

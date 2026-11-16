@@ -23,6 +23,7 @@ import MusicVolumeControl from './MusicVolumeControl';
 import PrecisionLyricLine from './PrecisionLyricLine';
 import Hub from './Hub';
 import { Icon } from './icons';
+import AmbientLiquidMetaballs from './AmbientLiquidMetaballs';
 import { useVideoAmbient, isVideoMedia } from '../hooks/useVideoAmbient';
 import { useRealtimeVoice } from '../hooks/useRealtimeVoice';
 import { getAssistantName } from '../lib/assistant';
@@ -640,7 +641,7 @@ export default function Island() {
   const { isHidden, isPeeking } = evaluateNotchVisibility({
     visibilityMode,
     notchState,
-    hasActiveMedia: Boolean(media.active),
+    hasActiveMedia: Boolean(media.active || media.title),
     hasActiveTimer: Boolean(nextTimer),
     hasActiveVoice: voice.status !== 'idle',
     hasUrgentAlert: Boolean(ring || toast),
@@ -692,8 +693,26 @@ export default function Island() {
     idlePrefs,
     measureTextFn: measureTextWidth,
   });
+
+  // Dynamic Liquid Metaballs user preference (dynamic/white/off)
+  const [metaballsMode, setMetaballsMode] = useState(() => {
+    try {
+      return localStorage.getItem('island_metaballs_mode') || 'dynamic';
+    } catch {
+      return 'dynamic';
+    }
+  });
+
+  useEffect(() => {
+    const handleMetaballsChange = (e) => {
+      if (e.detail) setMetaballsMode(e.detail);
+    };
+    window.addEventListener('island:metaballs-mode-changed', handleMetaballsChange);
+    return () => window.removeEventListener('island:metaballs-mode-changed', handleMetaballsChange);
+  }, []);
+
   const height = (notchState === NOTCH_STATES.EXPANDED || mode === 'hub') && mode !== 'ring' && mode !== 'toast'
-    ? (tab === 'playing' && !isLyricsFull && media.active ? calcHeight : calcHeight)
+    ? (tab === 'playing' && !isLyricsFull && media.active ? 252 : calcHeight)
     : calcHeight;
 
   const handleNotchPointerEnter = useCallback(() => {
@@ -922,7 +941,7 @@ export default function Island() {
   const { ambientColor: videoAmbientColor, stream: videoStream, streamActive: videoStreamActive, youtubeId } = useVideoAmbient(media, playing);
 
   const defaultThemeColor = 'rgba(226, 232, 240, 0.88)';
-  const fallbackMusicColor = media.active
+  const fallbackMusicColor = (media.active && !media.art)
     ? `hsl(${hueFrom(`${media.title}${media.artist}`)} 62% 68%)`
     : defaultThemeColor;
   const musicColor = !isDynamicMode
@@ -1136,6 +1155,15 @@ export default function Island() {
             <div className="island__ambient-art-overlay" />
           </div>
         ) : null}
+
+        {/* React Bits Beat-Reactive Liquid Metaballs (Option 1: Ambient Island Backdrop) */}
+        {media.active && (notchState === NOTCH_STATES.EXPANDED || mode === 'hub') && tab === 'playing' && (
+          <AmbientLiquidMetaballs
+            mode={metaballsMode}
+            accentColor={metaballsMode === 'dynamic' ? (dynamicColor || fallbackMusicColor || musicColor) : (musicColor || accent)}
+            isPlaying={playing}
+          />
+        )}
 
         <AnimatePresence mode="wait" initial={false}>
           <motion.div

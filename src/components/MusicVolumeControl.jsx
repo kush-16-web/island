@@ -14,6 +14,20 @@ import { Icon } from './icons';
  * - Click-to-set with smooth ~180ms visual animation while audio command is dispatched immediately
  * - Direct drag tracking with no lag
  */
+export function VolumeSpeakerIcon({ volume = 75, muted = false, size = 14 }) {
+  const effectiveVol = muted ? 0 : Math.max(0, Math.min(100, Number(volume) || 0));
+  if (muted || effectiveVol === 0) {
+    return <Icon.VolumeX width={size} height={size} />;
+  }
+  if (effectiveVol <= 33) {
+    return <Icon.VolumeLow width={size} height={size} />;
+  }
+  if (effectiveVol <= 66) {
+    return <Icon.VolumeMedium width={size} height={size} />;
+  }
+  return <Icon.VolumeHigh width={size} height={size} />;
+}
+
 export default function MusicVolumeControl({
   volume = 75,
   muted = false,

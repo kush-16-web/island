@@ -409,7 +409,112 @@ export function parseLrc(lrcText) {
 }
 
 /**
- * Universal lyric parser supporting LRC, ELRC, NetEase YRC, TTML XML, and plain text
+ * Parses LRCLIB / NetEase YAML lyrics file format with word timestamps:
+ * lines:
+ * - text: Line text
+ *   start_ms: 1234
+ *   end_ms: 4567
+ *   words:
+ *   - text: Word
+ *     start_ms: 1234
+ */
+export function parseYamlLyrics(yamlText) {
+  if (!yamlText || typeof yamlText !== 'string') return [];
+  const rawLines = yamlText.split(/\r?\n/);
+  const parsed = [];
+
+  let currentLine = null;
+  let currentWord = null;
+
+  const cleanVal = (val) => {
+    let v = val.trim();
+    if ((v.startsWith("'") && v.endsWith("'")) || (v.startsWith('"') && v.endsWith('"'))) {
+      v = v.slice(1, -1);
+    }
+    return v.replace(/''/g, "'");
+  };
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i];
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    // Line start: "- text: ..." at column 0 (root line item)
+    const lineTextMatch = raw.match(/^- text:\s*(.*)$/);
+    if (lineTextMatch) {
+      if (currentLine) {
+        if (currentWord && currentLine.words) {
+          currentLine.words.push(currentWord);
+          currentWord = null;
+        }
+        parsed.push(currentLine);
+      }
+      currentLine = {
+        id: `yaml-${parsed.length}`,
+        text: cleanVal(lineTextMatch[1]),
+        timeMs: 0,
+        endMs: 0,
+        words: [],
+      };
+      currentWord = null;
+      continue;
+    }
+
+    if (!currentLine) continue;
+
+    // Word start: "  - text: ..." indented inside words
+    const wordTextMatch = raw.match(/^\s{2,}-\s*text:\s*(.*)$/);
+    if (wordTextMatch) {
+      if (currentWord) {
+        currentLine.words.push(currentWord);
+      }
+      currentWord = {
+        text: cleanVal(wordTextMatch[1]),
+        startMs: 0,
+        endMs: 0,
+        durationMs: 0,
+      };
+      continue;
+    }
+
+    // start_ms: ...
+    const startMsMatch = trimmed.match(/^start_ms:\s*(\d+)/);
+    if (startMsMatch) {
+      const ms = parseInt(startMsMatch[1], 10);
+      if (currentWord) {
+        currentWord.startMs = ms;
+      } else {
+        currentLine.timeMs = ms;
+      }
+      continue;
+    }
+
+    // end_ms: ...
+    const endMsMatch = trimmed.match(/^end_ms:\s*(\d+)/);
+    if (endMsMatch) {
+      const ms = parseInt(endMsMatch[1], 10);
+      if (currentWord) {
+        currentWord.endMs = ms;
+        currentWord.durationMs = Math.max(50, currentWord.endMs - currentWord.startMs);
+      } else {
+        currentLine.endMs = ms;
+      }
+      continue;
+    }
+  }
+
+  if (currentLine) {
+    if (currentWord && currentLine.words) {
+      currentLine.words.push(currentWord);
+    }
+    parsed.push(currentLine);
+  }
+
+  return normalizeLyricLines(parsed);
+}
+
+/**
+ * Universal lyric parser supporting LRC, ELRC, NetEase YRC, TTML XML, YAML, and plain text
  */
 export function parseLyrics(text) {
   if (!text || typeof text !== 'string') return [];
@@ -420,6 +525,9 @@ export function parseLyrics(text) {
   }
   if (/^\[\d+,\d+\]/m.test(trimmed)) {
     return parseYrc(text);
+  }
+  if (trimmed.startsWith('version:') || (trimmed.includes('lines:') && trimmed.includes('start_ms:'))) {
+    return parseYamlLyrics(text);
   }
   if (/^\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]/m.test(trimmed)) {
     return parseLrc(text);
@@ -703,13 +811,18 @@ export async function fetchLyrics({ title, artist, album, durationSec }) {
       if (trimmed.startsWith('<tt') || trimmed.includes('<p begin=')) {
         lines = parseTtml(trimmed);
         detectedFormat = 'TTML';
+      } else if (trimmed.startsWith('version:') || (trimmed.includes('lines:') && trimmed.includes('start_ms:'))) {
+        lines = parseYamlLyrics(trimmed);
+        detectedFormat = 'YAML';
       } else {
         lines = parseLyrics(trimmed);
         detectedFormat = 'Lyricsfile';
       }
     }
 
-    if (lines.length === 0) {
+    // Verify whether parsed lyricsfile lines contain genuine numerical timestamps
+    const hasValidTimestamps = lines.some((l) => typeof l.timeMs === 'number' && !isNaN(l.timeMs));
+    if (lines.length === 0 || !hasValidTimestamps) {
       lines = hasSynced
         ? parseLrc(data.syncedLyrics)
         : parseLyrics(data.plainLyrics);
@@ -763,31 +876,47 @@ export async function fetchLyrics({ title, artist, album, durationSec }) {
 
 /**
  * Finds the active lyric line index for a given playback position in milliseconds.
- * Uses binary search for high performance.
+ * Uses binary search for high performance. Strictly returns -1 during intros or
+ * for unsynchronized tracks, and never clamps to the final line prematurely.
  */
 export function findActiveLyricIndex(lines, positionMs) {
-  if (!lines || lines.length === 0) return -1;
-  if (positionMs < lines[0].timeMs) return -1;
-  if (positionMs >= lines[lines.length - 1].timeMs) return lines.length - 1;
+  if (!lines || lines.length === 0 || typeof positionMs !== 'number' || isNaN(positionMs)) {
+    return -1;
+  }
 
-  let low = 0;
+  // Find the first line with a valid numerical timestamp
+  const firstTimedIdx = lines.findIndex((l) => typeof l.timeMs === 'number' && !isNaN(l.timeMs));
+  if (firstTimedIdx === -1) {
+    // Unsynchronized track -> never clamp to final line!
+    return -1;
+  }
+
+  const firstLine = lines[firstTimedIdx];
+  if (positionMs < firstLine.timeMs) {
+    // Instrumental intro before first lyric begins
+    return -1;
+  }
+
+  // Binary search for the latest line where line.timeMs <= positionMs
+  let low = firstTimedIdx;
   let high = lines.length - 1;
+  let activeIdx = -1;
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
-    const cur = lines[mid];
-    const next = lines[mid + 1];
+    const line = lines[mid];
 
-    if (cur.timeMs <= positionMs && (!next || positionMs < next.timeMs)) {
-      return mid;
-    }
-
-    if (positionMs < cur.timeMs) {
-      high = mid - 1;
+    if (typeof line.timeMs === 'number' && !isNaN(line.timeMs)) {
+      if (line.timeMs <= positionMs) {
+        activeIdx = mid;
+        low = mid + 1; // Look for a later line that also started
+      } else {
+        high = mid - 1;
+      }
     } else {
-      low = mid + 1;
+      high = mid - 1;
     }
   }
 
-  return low;
+  return activeIdx;
 }

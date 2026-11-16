@@ -63,11 +63,9 @@ export function useThemeMode() {
       extractCoverColor(media.art, (col) => {
         if (col) {
           setCoverAccent(col);
-        } else if (media.title || media.artist) {
-          const fallbackCol = `hsl(${hueFrom(`${media.title || ''}${media.artist || ''}`)} 75% 65%)`;
-          setCoverAccent(fallbackCol);
         } else {
-          setCoverAccent(null);
+          // Monochrome / black-and-white artwork: clean neutral graphite accent
+          setCoverAccent(NEUTRAL_GRAPHITE_ACCENT);
         }
       });
       return;
@@ -117,7 +115,7 @@ export function useThemeMode() {
   };
 
   // Determine active accent & surfaces
-  const isDynamic = appearanceMode === 'dynamic_frosted';
+  const isDynamic = appearanceMode === 'dynamic_frosted' || appearanceMode === 'dynamic-frosted';
   const hasAlbumColor = Boolean(isDynamic && coverAccent);
   const effectiveAccent = hasAlbumColor ? coverAccent : NEUTRAL_GRAPHITE_ACCENT;
   const albumColor = hasAlbumColor ? coverAccent : null;

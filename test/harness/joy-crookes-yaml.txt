@@ -1,0 +1,843 @@
+version: '1.0'
+metadata:
+  title: Feet Don't Fail Me Now
+  artist: Joy Crookes
+  album: Skin
+  duration_ms: 199000
+  instrumental: false
+  language: en
+lines:
+- text: I've been posing with red skies
+  start_ms: 8660
+  end_ms: 10979
+  words:
+  - text: 'I''ve '
+    start_ms: 8660
+  - text: 'been '
+    start_ms: 9373
+  - text: 'posing '
+    start_ms: 9588
+  - text: 'with '
+    start_ms: 10167
+  - text: 'red '
+    start_ms: 10411
+  - text: skies
+    start_ms: 10617
+- text: Retweeting picket signs
+  start_ms: 12150
+  end_ms: 13207
+  words:
+  - text: 'Retweeting '
+    start_ms: 12150
+  - text: 'picket '
+    start_ms: 12357
+  - text: signs
+    start_ms: 12838
+- text: Put my name on petitions, but I won't change my mind
+  start_ms: 13630
+  end_ms: 17179
+  words:
+  - text: 'Put '
+    start_ms: 13630
+  - text: 'my '
+    start_ms: 13851
+  - text: 'name '
+    start_ms: 14066
+  - text: 'on '
+    start_ms: 14389
+  - text: 'petitions, '
+    start_ms: 14580
+  - text: 'but '
+    start_ms: 15555
+  - text: 'I '
+    start_ms: 15833
+  - text: 'won''t '
+    start_ms: 16110
+  - text: 'change '
+    start_ms: 16401
+  - text: 'my '
+    start_ms: 16696
+  - text: mind
+    start_ms: 16913
+- text: I'm keeping up appearances
+  start_ms: 17350
+  end_ms: 20958
+  words:
+  - text: 'I''m '
+    start_ms: 17350
+  - text: 'keeping '
+    start_ms: 17841
+  - text: 'up '
+    start_ms: 18847
+  - text: appearances
+    start_ms: 19376
+- text: The dark side of my privilege
+  start_ms: 21600
+  end_ms: 24962
+  words:
+  - text: 'The '
+    start_ms: 21600
+  - text: 'dark '
+    start_ms: 22076
+  - text: 'side '
+    start_ms: 22549
+  - text: 'of '
+    start_ms: 23203
+  - text: 'my '
+    start_ms: 23600
+  - text: privilege
+    start_ms: 24061
+- text: Damn, thank God I've got my vice
+  start_ms: 25580
+  end_ms: 28003
+  words:
+  - text: 'Damn, '
+    start_ms: 25580
+  - text: 'thank '
+    start_ms: 26269
+  - text: 'God '
+    start_ms: 26628
+  - text: 'I''ve '
+    start_ms: 26946
+  - text: 'got '
+    start_ms: 27133
+  - text: 'my '
+    start_ms: 27390
+  - text: vice
+    start_ms: 27627
+- text: The dopamine tuition will keep me wrong from right
+  start_ms: 28540
+  end_ms: 32296
+  words:
+  - text: 'The '
+    start_ms: 28540
+  - text: 'dopamine '
+    start_ms: 29410
+  - text: 'tuition '
+    start_ms: 29562
+  - text: 'will '
+    start_ms: 30622
+  - text: 'keep '
+    start_ms: 30819
+  - text: 'me '
+    start_ms: 31203
+  - text: 'wrong '
+    start_ms: 31465
+  - text: 'from '
+    start_ms: 31748
+  - text: right
+    start_ms: 32092
+- text: But I don't like when my better side takes hold of me
+  start_ms: 32800
+  end_ms: 38284
+  words:
+  - text: 'But '
+    start_ms: 32800
+  - text: 'I '
+    start_ms: 33150
+  - text: 'don''t '
+    start_ms: 33348
+  - text: 'like '
+    start_ms: 33666
+  - text: 'when '
+    start_ms: 33927
+  - text: 'my '
+    start_ms: 34461
+  - text: 'better '
+    start_ms: 34948
+  - text: 'side '
+    start_ms: 36024
+  - text: 'takes '
+    start_ms: 36557
+  - text: 'hold '
+    start_ms: 37119
+  - text: 'of '
+    start_ms: 37633
+  - text: me
+    start_ms: 37733
+- text: I didn't want you to know
+  start_ms: 38330
+  end_ms: 40390
+  words:
+  - text: 'I '
+    start_ms: 38330
+  - text: 'didn''t '
+    start_ms: 38605
+  - text: 'want '
+    start_ms: 39068
+  - text: 'you '
+    start_ms: 39420
+  - text: 'to '
+    start_ms: 39592
+  - text: know
+    start_ms: 39816
+- text: Man, I guess I was scared
+  start_ms: 40980
+  end_ms: 43138
+  words:
+  - text: 'Man, '
+    start_ms: 40980
+  - text: 'I '
+    start_ms: 41334
+  - text: 'guess '
+    start_ms: 41507
+  - text: 'I '
+    start_ms: 41858
+  - text: 'was '
+    start_ms: 42051
+  - text: scared
+    start_ms: 42258
+- text: Feet, don't fail me now
+  start_ms: 44710
+  end_ms: 47375
+  words:
+  - text: 'Feet, '
+    start_ms: 44710
+  - text: 'don''t '
+    start_ms: 45282
+  - text: 'fail '
+    start_ms: 45735
+  - text: 'me '
+    start_ms: 46319
+  - text: now
+    start_ms: 46575
+- text: I got to stand my ground
+  start_ms: 48760
+  end_ms: 51642
+  words:
+  - text: 'I '
+    start_ms: 48760
+  - text: 'got '
+    start_ms: 48976
+  - text: 'to '
+    start_ms: 49495
+  - text: 'stand '
+    start_ms: 49871
+  - text: 'my '
+    start_ms: 50529
+  - text: ground
+    start_ms: 50774
+- text: And though I'm down for trying, I am better in denial
+  start_ms: 52950
+  end_ms: 56801
+  words:
+  - text: 'And '
+    start_ms: 52950
+  - text: 'though '
+    start_ms: 53214
+  - text: 'I''m '
+    start_ms: 53552
+  - text: 'down '
+    start_ms: 53783
+  - text: 'for '
+    start_ms: 54090
+  - text: 'trying, '
+    start_ms: 54296
+  - text: 'I '
+    start_ms: 54948
+  - text: 'am '
+    start_ms: 55145
+  - text: 'better '
+    start_ms: 55376
+  - text: 'in '
+    start_ms: 55921
+  - text: denial
+    start_ms: 56170
+- text: So I hush, don't make a sound
+  start_ms: 56960
+  end_ms: 60387
+  words:
+  - text: 'So '
+    start_ms: 56960
+  - text: 'I '
+    start_ms: 57298
+  - text: 'hush, '
+    start_ms: 57498
+  - text: 'don''t '
+    start_ms: 58025
+  - text: 'make '
+    start_ms: 58458
+  - text: 'a '
+    start_ms: 59032
+  - text: sound
+    start_ms: 59203
+- text: Feet, don't fail me now
+  start_ms: 61620
+  end_ms: 64336
+  words:
+  - text: 'Feet, '
+    start_ms: 61620
+  - text: 'don''t '
+    start_ms: 62180
+  - text: 'fail '
+    start_ms: 62686
+  - text: 'me '
+    start_ms: 63228
+  - text: now
+    start_ms: 63497
+- text: I got to stand my ground
+  start_ms: 65750
+  end_ms: 68512
+  words:
+  - text: 'I '
+    start_ms: 65750
+  - text: 'got '
+    start_ms: 66043
+  - text: 'to '
+    start_ms: 66557
+  - text: 'stand '
+    start_ms: 66900
+  - text: 'my '
+    start_ms: 67592
+  - text: ground
+    start_ms: 67853
+- text: And though I'm down for trying, I am better in denial
+  start_ms: 69940
+  end_ms: 74790
+  words:
+  - text: 'And '
+    start_ms: 69940
+  - text: 'though '
+    start_ms: 70212
+  - text: 'I''m '
+    start_ms: 70567
+  - text: 'down '
+    start_ms: 70789
+  - text: 'for '
+    start_ms: 71118
+  - text: 'trying, '
+    start_ms: 71343
+  - text: 'I '
+    start_ms: 71902
+  - text: 'am '
+    start_ms: 72087
+  - text: 'better '
+    start_ms: 72354
+  - text: 'in '
+    start_ms: 72744
+  - text: denial
+    start_ms: 73385
+- text: I, I cry like crocodile
+  start_ms: 76620
+  end_ms: 79073
+  words:
+  - text: 'I, '
+    start_ms: 76620
+  - text: 'I '
+    start_ms: 77417
+  - text: 'cry '
+    start_ms: 77608
+  - text: 'like '
+    start_ms: 77928
+  - text: crocodile
+    start_ms: 78240
+- text: Then drink opinions out
+  start_ms: 79540
+  end_ms: 81242
+  words:
+  - text: 'Then '
+    start_ms: 79540
+  - text: 'drink '
+    start_ms: 79787
+  - text: 'opinions '
+    start_ms: 80181
+  - text: out
+    start_ms: 80942
+- text: I've always got an answer, thе sun shines out my mouth
+  start_ms: 81600
+  end_ms: 84987
+  words:
+  - text: 'I''ve '
+    start_ms: 81600
+  - text: 'always '
+    start_ms: 81906
+  - text: 'got '
+    start_ms: 82341
+  - text: 'an '
+    start_ms: 82657
+  - text: 'answer, '
+    start_ms: 82827
+  - text: 'thе '
+    start_ms: 83480
+  - text: 'sun '
+    start_ms: 83680
+  - text: 'shines '
+    start_ms: 83976
+  - text: 'out '
+    start_ms: 84340
+  - text: 'my '
+    start_ms: 84517
+  - text: mouth
+    start_ms: 84736
+- text: There ain't a rulе I'd wanna break (There ain't a rule I'd wanna break)
+  start_ms: 85300
+  end_ms: 89201
+  words:
+  - text: 'There '
+    start_ms: 85300
+  - text: 'ain''t '
+    start_ms: 85622
+  - text: 'a '
+    start_ms: 85874
+  - text: 'rulе '
+    start_ms: 86018
+  - text: 'I''d '
+    start_ms: 86320
+  - text: 'wanna '
+    start_ms: 86547
+  - text: 'break '
+    start_ms: 86998
+  - text: '(There '
+    start_ms: 87463
+  - text: 'ain''t '
+    start_ms: 87696
+  - text: 'a '
+    start_ms: 87954
+  - text: 'rule '
+    start_ms: 88311
+  - text: 'I''d '
+    start_ms: 88487
+  - text: 'wanna '
+    start_ms: 88707
+  - text: break)
+    start_ms: 89130
+- text: I'd rather kill than show my face
+  start_ms: 89610
+  end_ms: 91810
+  words:
+  - text: 'I''d '
+    start_ms: 89610
+  - text: 'rather '
+    start_ms: 89906
+  - text: 'kill '
+    start_ms: 90321
+  - text: 'than '
+    start_ms: 90646
+  - text: 'show '
+    start_ms: 90827
+  - text: 'my '
+    start_ms: 91099
+  - text: face
+    start_ms: 91323
+- text: Man, I guess I was scared
+  start_ms: 92020
+  end_ms: 94121
+  words:
+  - text: 'Man, '
+    start_ms: 92020
+  - text: 'I '
+    start_ms: 92324
+  - text: 'guess '
+    start_ms: 92488
+  - text: 'I '
+    start_ms: 92833
+  - text: 'was '
+    start_ms: 93050
+  - text: scared
+    start_ms: 93263
+- text: Feet, don't fail me now
+  start_ms: 95630
+  end_ms: 98315
+  words:
+  - text: 'Feet, '
+    start_ms: 95630
+  - text: 'don''t '
+    start_ms: 96190
+  - text: 'fail '
+    start_ms: 96680
+  - text: 'me '
+    start_ms: 97262
+  - text: now
+    start_ms: 97500
+- text: I got to stand my ground
+  start_ms: 99790
+  end_ms: 102658
+  words:
+  - text: 'I '
+    start_ms: 99790
+  - text: 'got '
+    start_ms: 100019
+  - text: 'to '
+    start_ms: 100478
+  - text: 'stand '
+    start_ms: 100836
+  - text: 'my '
+    start_ms: 101501
+  - text: ground
+    start_ms: 101786
+- text: And though I'm down for trying, I am better in denial
+  start_ms: 103980
+  end_ms: 107768
+  words:
+  - text: 'And '
+    start_ms: 103980
+  - text: 'though '
+    start_ms: 104249
+  - text: 'I''m '
+    start_ms: 104557
+  - text: 'down '
+    start_ms: 104766
+  - text: 'for '
+    start_ms: 105019
+  - text: 'trying, '
+    start_ms: 105248
+  - text: 'I '
+    start_ms: 105853
+  - text: 'am '
+    start_ms: 106045
+  - text: 'better '
+    start_ms: 106283
+  - text: 'in '
+    start_ms: 106697
+  - text: denial
+    start_ms: 107066
+- text: So I hush, don't make a sound
+  start_ms: 107870
+  end_ms: 111357
+  words:
+  - text: 'So '
+    start_ms: 107870
+  - text: 'I '
+    start_ms: 108212
+  - text: 'hush, '
+    start_ms: 108406
+  - text: 'don''t '
+    start_ms: 108891
+  - text: 'make '
+    start_ms: 109381
+  - text: 'a '
+    start_ms: 109985
+  - text: sound
+    start_ms: 110113
+- text: Feet, don't fail me now (feet, don't fail me now)
+  start_ms: 112650
+  end_ms: 116700
+  words:
+  - text: 'Feet, '
+    start_ms: 112650
+  - text: 'don''t '
+    start_ms: 113225
+  - text: 'fail '
+    start_ms: 113733
+  - text: 'me '
+    start_ms: 114280
+  - text: 'now '
+    start_ms: 114562
+  - text: '(feet, '
+    start_ms: 115524
+  - text: 'don''t '
+    start_ms: 115701
+  - text: 'fail '
+    start_ms: 115864
+  - text: 'me '
+    start_ms: 116195
+  - text: now)
+    start_ms: 116603
+- text: I got to stand my ground (gotta stand my ground)
+  start_ms: 116700
+  end_ms: 120570
+  words:
+  - text: 'I '
+    start_ms: 116700
+  - text: 'got '
+    start_ms: 116901
+  - text: 'to '
+    start_ms: 117387
+  - text: 'stand '
+    start_ms: 117728
+  - text: 'my '
+    start_ms: 118373
+  - text: 'ground '
+    start_ms: 118675
+  - text: '(gotta '
+    start_ms: 119455
+  - text: 'stand '
+    start_ms: 119566
+  - text: 'my '
+    start_ms: 119921
+  - text: ground)
+    start_ms: 120480
+- text: And though I was down for trying
+  start_ms: 120930
+  end_ms: 125676
+  words:
+  - text: 'And '
+    start_ms: 120930
+  - text: 'though '
+    start_ms: 121236
+  - text: 'I '
+    start_ms: 122253
+  - text: 'was '
+    start_ms: 122591
+  - text: 'down '
+    start_ms: 123229
+  - text: 'for '
+    start_ms: 123911
+  - text: trying
+    start_ms: 124239
+- text: I was scared
+  start_ms: 126740
+  end_ms: 128184
+  words:
+  - text: 'I '
+    start_ms: 126740
+  - text: 'was '
+    start_ms: 127040
+  - text: scared
+    start_ms: 127347
+- text: But no blame's worth buying
+  start_ms: 129160
+  end_ms: 131377
+  words:
+  - text: 'But '
+    start_ms: 129160
+  - text: 'no '
+    start_ms: 129309
+  - text: 'blame''s '
+    start_ms: 130027
+  - text: 'worth '
+    start_ms: 130161
+  - text: buying
+    start_ms: 130707
+- text: Am I better hiding?
+  start_ms: 133390
+  end_ms: 135890
+  words:
+  - text: 'Am '
+    start_ms: 133390
+  - text: 'I '
+    start_ms: 133594
+  - text: 'better '
+    start_ms: 133893
+  - text: hiding?
+    start_ms: 134900
+- text: Why? Oh, why?
+  start_ms: 136080
+  end_ms: 139294
+  words:
+  - text: 'Why? '
+    start_ms: 136080
+  - text: 'Oh, '
+    start_ms: 137614
+  - text: why?
+    start_ms: 138147
+- text: Didn't I try?
+  start_ms: 139800
+  end_ms: 142520
+  words:
+  - text: 'Didn''t '
+    start_ms: 139800
+  - text: 'I '
+    start_ms: 140252
+  - text: try?
+    start_ms: 140593
+- text: I was scared
+  start_ms: 143790
+  end_ms: 145227
+  words:
+  - text: 'I '
+    start_ms: 143790
+  - text: 'was '
+    start_ms: 144081
+  - text: scared
+    start_ms: 144336
+- text: Feet, don't fail me now
+  start_ms: 146670
+  end_ms: 149781
+  words:
+  - text: 'Feet, '
+    start_ms: 146670
+  - text: 'don''t '
+    start_ms: 147197
+  - text: 'fail '
+    start_ms: 147676
+  - text: 'me '
+    start_ms: 148230
+  - text: now
+    start_ms: 148520
+- text: I got to stand my ground (gotta stand my ground)
+  start_ms: 150640
+  end_ms: 154288
+  words:
+  - text: 'I '
+    start_ms: 150640
+  - text: 'got '
+    start_ms: 150842
+  - text: 'to '
+    start_ms: 151407
+  - text: 'stand '
+    start_ms: 151763
+  - text: 'my '
+    start_ms: 152350
+  - text: 'ground '
+    start_ms: 152610
+  - text: '(gotta '
+    start_ms: 153513
+  - text: 'stand '
+    start_ms: 153712
+  - text: 'my '
+    start_ms: 153987
+  - text: ground)
+    start_ms: 154187
+- text: And though I'm down for trying, I am better in denial
+  start_ms: 155000
+  end_ms: 158816
+  words:
+  - text: 'And '
+    start_ms: 155000
+  - text: 'though '
+    start_ms: 155224
+  - text: 'I''m '
+    start_ms: 155545
+  - text: 'down '
+    start_ms: 155786
+  - text: 'for '
+    start_ms: 156092
+  - text: 'trying, '
+    start_ms: 156307
+  - text: 'I '
+    start_ms: 156898
+  - text: 'am '
+    start_ms: 157084
+  - text: 'better '
+    start_ms: 157331
+  - text: 'in '
+    start_ms: 157904
+  - text: denial
+    start_ms: 158134
+- text: So I hush, don't make a sound
+  start_ms: 158890
+  end_ms: 162340
+  words:
+  - text: 'So '
+    start_ms: 158890
+  - text: 'I '
+    start_ms: 159238
+  - text: 'hush, '
+    start_ms: 159406
+  - text: 'don''t '
+    start_ms: 159927
+  - text: 'make '
+    start_ms: 160347
+  - text: 'a '
+    start_ms: 160997
+  - text: sound
+    start_ms: 161174
+- text: Feet, don't fail me now
+  start_ms: 163630
+  end_ms: 166362
+  words:
+  - text: 'Feet, '
+    start_ms: 163630
+  - text: 'don''t '
+    start_ms: 164184
+  - text: 'fail '
+    start_ms: 164702
+  - text: 'me '
+    start_ms: 165268
+  - text: now
+    start_ms: 165532
+- text: I got to stand my ground, my ground
+  start_ms: 167600
+  end_ms: 171521
+  words:
+  - text: 'I '
+    start_ms: 167600
+  - text: 'got '
+    start_ms: 167887
+  - text: 'to '
+    start_ms: 168414
+  - text: 'stand '
+    start_ms: 168900
+  - text: 'my '
+    start_ms: 169465
+  - text: 'ground, '
+    start_ms: 169714
+  - text: 'my '
+    start_ms: 170519
+  - text: ground
+    start_ms: 170770
+- text: And though I'm down for trying
+  start_ms: 171960
+  end_ms: 177288
+  words:
+  - text: 'And '
+    start_ms: 171960
+  - text: 'though '
+    start_ms: 172249
+  - text: 'I''m '
+    start_ms: 173227
+  - text: 'down '
+    start_ms: 173957
+  - text: 'for '
+    start_ms: 174927
+  - text: trying
+    start_ms: 175338
+- text: My feet, don't fail me now
+  start_ms: 194190
+  end_ms: 195270
+  words:
+  - text: 'My '
+    start_ms: 194190
+  - text: 'feet, '
+    start_ms: 194415
+  - text: 'don''t '
+    start_ms: 194674
+  - text: 'fail '
+    start_ms: 194803
+  - text: 'me '
+    start_ms: 194916
+  - text: now
+    start_ms: 195066
+plain: |-
+  I've been posing with red skies
+  Retweeting picket signs
+  Put my name on petitions, but I won't change my mind
+  I'm keeping up appearances
+  The dark side of my privilege
+
+  Damn, thank God I've got my vice
+  The dopamine tuition will keep me wrong from right
+  But I don't like when my better side takes hold of me
+  I didn't want you to know
+
+  Man, I guess I was scared
+  Feet, don't fail me now
+  I got to stand my ground
+  And though I'm down for trying, I am better in denial
+  So I hush, don't make a sound
+  Feet, don't fail me now
+  I got to stand my ground
+  And though I'm down for trying, I am better in denial
+
+  I, I cry like crocodile
+  Then drink opinions out
+  I've always got an answer, thе sun shines out my mouth
+  There ain't a rulе I'd wanna break (There ain't a rule I'd wanna break)
+  I'd rather kill than show my face
+
+  Man, I guess I was scared
+  Feet, don't fail me now
+  I got to stand my ground
+  And though I'm down for trying, I am better in denial
+  So I hush, don't make a sound
+  Feet, don't fail me now (feet, don't fail me now)
+  I got to stand my ground (gotta stand my ground)
+  And though I was down for trying
+
+  I was scared
+  But no blame's worth buying
+  Am I better hiding?
+  Why? Oh, why?
+  Didn't I try?
+
+  I was scared
+  Feet, don't fail me now
+  I got to stand my ground (gotta stand my ground)
+  And though I'm down for trying, I am better in denial
+  So I hush, don't make a sound
+  Feet, don't fail me now
+  I got to stand my ground, my ground
+  And though I'm down for trying
+
+  My feet, don't fail me now

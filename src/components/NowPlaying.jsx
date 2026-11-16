@@ -8,13 +8,14 @@ import { Icon } from './icons';
 import { island } from '../lib/bridge';
 import MarqueeText from './MarqueeText';
 import MiniLyrics from './MiniLyrics';
-import MusicVolumeControl from './MusicVolumeControl';
+import MusicVolumeControl, { VolumeSpeakerIcon } from './MusicVolumeControl';
 import SongProgressBar from './SongProgressBar';
 import CompanionEyes from './CompanionEyes';
 import FullLyrics, { sharedLyricsTransition } from './FullLyrics';
 import VideoPiP from './VideoPiP';
 import FavoritesMenu from './FavoritesMenu';
 import LyricsSettingsPopover from './LyricsSettingsPopover';
+import VolumePopover from './VolumePopover';
 import { isTrackFavorite, addFavorite, removeFavorite, healFavoriteWithExactId } from '../lib/favorites';
 import { playFavoriteTrack, getFriendlyProviderName } from '../lib/music-actions';
 import {
@@ -193,6 +194,21 @@ export default function NowPlaying({
   const [lyricsStyle, setLyricsStyleState] = useState(getLyricsStyle);
   const [lyricsLayout, setLyricsLayoutState] = useState(getLyricsLayout);
   const [showLyricsStylePopover, setShowLyricsStylePopover] = useState(false);
+  const [metaballsMode, setMetaballsModeState] = useState(() => {
+    try {
+      return localStorage.getItem('island_metaballs_mode') || 'dynamic';
+    } catch {
+      return 'dynamic';
+    }
+  });
+
+  const handleSelectMetaballsMode = (newMode) => {
+    setMetaballsModeState(newMode);
+    try {
+      localStorage.setItem('island_metaballs_mode', newMode);
+      window.dispatchEvent(new CustomEvent('island:metaballs-mode-changed', { detail: newMode }));
+    } catch {}
+  };
 
   useEffect(() => {
     if (!showLyricsStylePopover) return;
@@ -655,7 +671,7 @@ export default function NowPlaying({
                   </div>
                 )}
                 <div className="np__main">
-                  {/* LEFT COLUMN: Large Square Cover -> Title -> Artist -> Progress -> Controls */}
+                  {/* LEFT COLUMN: Large Square Cover -> Title -> Artist (Clean, compact, no bottom sprawl) */}
                   <div className="np__left">
                     <motion.div
                       ref={playerCoverRef}
@@ -705,50 +721,9 @@ export default function NowPlaying({
                         centerWhenFits
                       />
                     </motion.div>
-
-                    <motion.div
-                      layoutId="island-progress-wrap"
-                      className="np__progress np__progress--left"
-                      transition={sharedLyricsTransition}
-                    >
-                      <SongProgressBar
-                        positionMs={displayPosition}
-                        durationMs={effectiveDurationMs}
-                        playing={playing}
-                        reportedAt={reportedAtMs}
-                        accentColor={accentColor}
-                        onSeek={(posSec) => {
-                          setOptimisticSeek({ posMs: posSec * 1000, timestamp: Date.now() });
-                          island?.media?.seek?.(posSec);
-                        }}
-                        canSeek={media.canSeek !== false}
-                      />
-                    </motion.div>
-
-                    <div className="np__controls np__controls--left-aligned">
-                      <button type="button" className="icon-btn" aria-label="Previous track" onClick={() => onControl('previous')} title="Previous">
-                        <Icon.Prev width={16} height={16} />
-                      </button>
-                      {hasDuration && media.canSeek !== false && (
-                        <button type="button" className="icon-btn icon-btn--skip" aria-label="Back 5 seconds" onClick={() => handleSkip(-5)} title="Back 5s">
-                          <Icon.Replay5 width={16} height={16} />
-                        </button>
-                      )}
-                      <button type="button" className="play-btn play-btn--compact" aria-label={playing ? 'Pause' : 'Play'} onClick={() => onControl('playpause')}>
-                        {playing ? <Icon.Pause width={16} height={16} /> : <Icon.Play width={16} height={16} />}
-                      </button>
-                      {hasDuration && media.canSeek !== false && (
-                        <button type="button" className="icon-btn icon-btn--skip" aria-label="Forward 5 seconds" onClick={() => handleSkip(5)} title="Forward 5s">
-                          <Icon.Forward5 width={16} height={16} />
-                        </button>
-                      )}
-                      <button type="button" className="icon-btn" aria-label="Next track" onClick={() => onControl('next')} title="Next">
-                        <Icon.Next width={16} height={16} />
-                      </button>
-                    </div>
                   </div>
 
-                  {/* RIGHT COLUMN: Top-Right Companion Eyes -> Lyrics -> Bottom Volume & Single Lyric Settings */}
+                  {/* RIGHT COLUMN: Top Companion Eyes -> 3-Line Synchronized Lyrics -> Unified Bottom Control Deck */}
                   <div className="np__right np__right--two-col">
                     <div className="np__right-top">
                       <button
@@ -775,55 +750,102 @@ export default function NowPlaying({
                       onClick={openFullLyricsWithGlide}
                       lyricsStyle={lyricsStyle}
                       trackSeed={seed}
+                      activeLineOffset={44}
                     />
 
-                    <div className="np__right-footer">
-                      <div className="np__volume-control">
-                        <MusicVolumeControl
-                          compact
-                          volume={volume}
-                          muted={muted}
-                          supported={volumeSupported}
-                          unavailableReason={volumeUnavailableReason}
-                          onVolumeChange={onVolumeChange}
-                          onToggleMute={onToggleMute}
+                    {/* Compact Control Deck: Full-width scrubber + Playback controls + Dynamic volume & lyrics pills */}
+                    <div className="np__control-deck np__right-footer">
+                      <motion.div
+                        layoutId="island-progress-wrap"
+                        className="np__progress np__progress--deck"
+                        transition={sharedLyricsTransition}
+                      >
+                        <SongProgressBar
+                          positionMs={displayPosition}
+                          durationMs={effectiveDurationMs}
+                          playing={playing}
+                          reportedAt={reportedAtMs}
+                          accentColor={accentColor}
+                          onSeek={(posSec) => {
+                            setOptimisticSeek({ posMs: posSec * 1000, timestamp: Date.now() });
+                            island?.media?.seek?.(posSec);
+                          }}
+                          canSeek={media.canSeek !== false}
                         />
-                      </div>
+                      </motion.div>
 
-                      <div className="np__lyrics-popover-anchor" ref={popoverRef} style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        <button
-                          type="button"
-                          className={`np__tab-pill np__tab-pill--gear${showLyricsStylePopover ? ' is-active is-expanded' : ''}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowLyricsStylePopover((prev) => !prev);
-                          }}
-                          title="Lyrics Appearance Settings"
-                          aria-label="Lyrics appearance settings"
-                          style={{
-                            opacity: showLyricsStylePopover ? 0 : 1,
-                            transform: showLyricsStylePopover ? 'scale(0.8)' : 'scale(1)',
-                            pointerEvents: showLyricsStylePopover ? 'none' : 'auto',
-                            transition: 'opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                          }}
-                        >
-                          <Icon.Sliders width={12} height={12} />
-                        </button>
-                        <AnimatePresence>
-                          {showLyricsStylePopover && (
-                            <LyricsSettingsPopover
-                              anchorRef={popoverRef}
-                              isOpen={showLyricsStylePopover}
-                              onClose={() => setShowLyricsStylePopover(false)}
-                              layout={lyricsLayout}
-                              onLayoutChange={handleSelectLyricsLayout}
-                              style={lyricsStyle}
-                              onStyleChange={handleSelectLyricsStyle}
-                              accentColor={accentColor}
-                              preferredPlacement="top"
+                      <div className="np__controls-row np__controls-row--centered">
+                        {/* UNIFIED CENTERED CLUSTER: Volume glider + Playback controls + Settings gear */}
+                        <div className="np__controls-cluster">
+                          {/* Volume icon docked directly to the left of Prev; glides left on hover */}
+                          <div className="np__volume-inline-wrap">
+                            <MusicVolumeControl
+                              compact
+                              volume={volume}
+                              muted={muted}
+                              supported={volumeSupported}
+                              unavailableReason={volumeUnavailableReason}
+                              onVolumeChange={onVolumeChange}
+                              onToggleMute={onToggleMute}
+                              className="np__volume-inline mvc--expand-on-hover"
                             />
-                          )}
-                        </AnimatePresence>
+                          </div>
+
+                          <div className="np__controls np__controls--left-aligned">
+                            <button type="button" className="icon-btn" aria-label="Previous track" onClick={() => onControl('previous')} title="Previous">
+                              <Icon.Prev width={16} height={16} />
+                            </button>
+                            {hasDuration && media.canSeek !== false && (
+                              <button type="button" className="icon-btn icon-btn--skip" aria-label="Back 5 seconds" onClick={() => handleSkip(-5)} title="Back 5s">
+                                <Icon.Replay5 width={16} height={16} />
+                              </button>
+                            )}
+                            <button type="button" className="play-btn play-btn--compact" aria-label={playing ? 'Pause' : 'Play'} onClick={() => onControl('playpause')}>
+                              {playing ? <Icon.Pause width={16} height={16} /> : <Icon.Play width={16} height={16} />}
+                            </button>
+                            {hasDuration && media.canSeek !== false && (
+                              <button type="button" className="icon-btn icon-btn--skip" aria-label="Forward 5 seconds" onClick={() => handleSkip(5)} title="Forward 5s">
+                                <Icon.Forward5 width={16} height={16} />
+                              </button>
+                            )}
+                            <button type="button" className="icon-btn" aria-label="Next track" onClick={() => onControl('next')} title="Next">
+                              <Icon.Next width={16} height={16} />
+                            </button>
+                          </div>
+
+                          {/* Player Settings Button (Anchored immediately next to Next track) */}
+                          <div className="np__lyrics-popover-anchor" ref={popoverRef}>
+                            <button
+                              type="button"
+                              className={`np__tab-pill np__tab-pill--gear${showLyricsStylePopover ? ' is-active is-expanded' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowLyricsStylePopover((prev) => !prev);
+                              }}
+                              title="Player Settings"
+                              aria-label="Player settings"
+                            >
+                              <Icon.Sliders width={12} height={12} />
+                            </button>
+                            <AnimatePresence>
+                              {showLyricsStylePopover && (
+                                <LyricsSettingsPopover
+                                  anchorRef={popoverRef}
+                                  isOpen={showLyricsStylePopover}
+                                  onClose={() => setShowLyricsStylePopover(false)}
+                                  layout={lyricsLayout}
+                                  onLayoutChange={handleSelectLyricsLayout}
+                                  style={lyricsStyle}
+                                  onStyleChange={handleSelectLyricsStyle}
+                                  metaballsMode={metaballsMode}
+                                  onMetaballsModeChange={handleSelectMetaballsMode}
+                                  accentColor={accentColor}
+                                  preferredPlacement="top"
+                                />
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

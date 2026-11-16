@@ -57,10 +57,18 @@ export function useLyrics(media, currentPositionMs, userOffsetMs) {
     setLoading(true);
 
     if (media.lyrics && (media.lyrics.found || (Array.isArray(media.lyrics.lines) && media.lyrics.lines.length > 0))) {
+      const lines = media.lyrics.lines || [];
+      const reliableWords = lines.filter((l) => l.syncType === 'word' && Array.isArray(l.words) && l.words.length > 0);
+      const hasWordSync = media.lyrics.hasWordSync ?? (reliableWords.length > 0);
+      const isSynced = media.lyrics.isSynced ?? (lines.some((l) => l.timeMs != null || l.startTimeMs != null));
+      const syncType = media.lyrics.syncType || (hasWordSync ? 'word' : (isSynced ? 'line' : 'unsynced'));
       setLyricsData({
         found: true,
-        isSynced: Boolean(media.lyrics.lines?.length),
-        lines: media.lyrics.lines || [],
+        instrumental: Boolean(media.lyrics.instrumental),
+        isSynced,
+        hasWordSync,
+        syncType,
+        lines,
         provider: media.lyrics.provider || 'LRCLIB',
       });
       setLoading(false);
