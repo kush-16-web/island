@@ -1,185 +1,583 @@
-import { AnimatePresence, motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { WheelPicker, WheelPickerWrapper } from '@ncdai/react-wheel-picker';
+import '@ncdai/react-wheel-picker/style.css';
 import { island } from '../../lib/bridge';
 import { DAY_LABELS, DAY_NAMES, describeDays, formatAlarmTime, formatRemaining, pad, untilText, uses12h } from '../../lib/format';
-import { useTyping } from '../../hooks/useTyping';
-import { Ring, Switch } from '../bits';
+import { MOTION, getMotionTransition } from '../../lib/motion';
+import { Switch } from '../bits';
 import { Icon } from '../icons';
 
-const QUICK_MINUTES = [1, 5, 10, 15, 25, 45];
+const PRESET_TIMERS = [
+  { label: '1m', minutes: 1 },
+  { label: '5m', minutes: 5 },
+  { label: '10m', minutes: 10 },
+  { label: '25m', minutes: 25 },
+];
 
-function Spin({ value, label, onUp, onDown, hint }) {
-  const onWheel = (e) => (e.deltaY < 0 ? onUp(true) : onDown(true));
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => {
+  const str = pad(i);
+  return { value: str, label: str };
+});
+
+const MIN_SEC_OPTIONS = Array.from({ length: 60 }, (_, i) => {
+  const str = pad(i);
+  return { value: str, label: str };
+});
+
+/**
+ * RollingDigit: Single animated digit that rolls smoothly on value change
+ */
+function RollingDigit({ char }) {
+  const prefersReducedMotion = useReducedMotion();
+  if (char === ':' || char === ' ') {
+    return <span className="rolling-digit-sep">{char}</span>;
+  }
+
+  if (prefersReducedMotion) {
+    return <span className="rolling-digit-val">{char}</span>;
+  }
+
   return (
-    <div className="spin" onWheel={onWheel} title={hint}>
-      <button type="button" className="spin__btn" aria-label={`Increase ${label}`} onClick={() => onUp(false)}>
-        <Icon.Chevron width={14} height={14} />
+    <div className="rolling-digit-box">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={char}
+          className="rolling-digit-val"
+          initial={{ y: -14, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 14, opacity: 0 }}
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {char}
+        </motion.span>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/**
+ * RollingTimeDisplay: Monospaced animated remaining time counter
+ */
+function RollingTimeDisplay({ timeStr }) {
+  return (
+    <div className="rolling-time-display" aria-label={`Remaining time: ${timeStr}`}>
+      {timeStr.split('').map((char, i) => (
+        <RollingDigit key={i} char={char} />
+      ))}
+    </div>
+  );
+}
+
+export function DigitSpinner({ value, min = 0, max = 59, onChange, label }) {
+  const dragStartY = useRef(null);
+  const dragStartVal = useRef(value);
+
+  const handleWheel = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.deltaY < 0) {
+      onChange(value + 1 > max ? min : value + 1);
+    } else {
+      onChange(value - 1 < min ? max : value - 1);
+    }
+  };
+
+  const handlePointerDown = (e) => {
+    dragStartY.current = e.clientY;
+    dragStartVal.current = value;
+    if (e.currentTarget.setPointerCapture) {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
+  const handlePointerMove = (e) => {
+    if (dragStartY.current === null) return;
+    const dy = dragStartY.current - e.clientY;
+    const step = Math.trunc(dy / 12);
+    if (step !== 0) {
+      let next = dragStartVal.current + step;
+      const range = max - min + 1;
+      next = (((next - min) % range) + range) % range + min;
+      onChange(next);
+    }
+  };
+
+  const handlePointerUp = (e) => {
+    dragStartY.current = null;
+    if (e.currentTarget.releasePointerCapture) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      onChange(value + 1 > max ? min : value + 1);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      onChange(value - 1 < min ? max : value - 1);
+    }
+  };
+
+  return (
+    <div
+      className="digit-spin"
+      onWheel={handleWheel}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      role="spinbutton"
+      aria-label={label}
+      aria-valuenow={value}
+      aria-valuemin={min}
+      aria-valuemax={max}
+    >
+      <button
+        type="button"
+        className="digit-spin__btn"
+        onClick={() => onChange(value + 1 > max ? min : value + 1)}
+        tabIndex={-1}
+        aria-label={`Increase ${label}`}
+      >
+        <Icon.Chevron width={11} height={11} style={{ transform: 'rotate(180deg)' }} />
       </button>
-      <div className="spin__val">{value}</div>
-      <button type="button" className="spin__btn spin__btn--down" aria-label={`Decrease ${label}`} onClick={() => onDown(false)}>
-        <Icon.Chevron width={14} height={14} />
+
+      <span className="digit-spin__num">{String(value).padStart(2, '0')}</span>
+
+      <button
+        type="button"
+        className="digit-spin__btn"
+        onClick={() => onChange(value - 1 < min ? max : value - 1)}
+        tabIndex={-1}
+        aria-label={`Decrease ${label}`}
+      >
+        <Icon.Chevron width={11} height={11} />
       </button>
     </div>
   );
 }
 
-function TimerRow({ item, now }) {
-  const remaining = item.fireAt - now;
-  return (
-    <motion.li className="row" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 24 }} transition={{ duration: 0.2 }}>
-      <Ring fraction={remaining / item.durationMs} size={30} stroke={3} color="var(--c-timer)" />
-      <div className="row__main">
-        <div className="row__big">{formatRemaining(remaining)}</div>
-        <div className="row__sub">{item.label || 'Timer'}</div>
-      </div>
-      <button type="button" className="icon-btn icon-btn--sm" aria-label="Cancel timer" onClick={() => island.scheduler.remove(item.id)}>
-        <Icon.Close width={14} height={14} />
-      </button>
-    </motion.li>
-  );
-}
+export default function ClockPanel({ schedule = [], now = Date.now(), onBack }) {
+  const [subMode, setSubMode] = useState('countdown'); // 'countdown' | 'alarms'
+  const prefersReducedMotion = useReducedMotion();
+  const contentTransition = getMotionTransition(MOTION.content, prefersReducedMotion);
 
-function AlarmRow({ item, now }) {
-  const sub = [item.label, describeDays(item.days), item.enabled && item.fireAt ? untilText(item.fireAt - now) : 'Off']
-    .filter(Boolean)
-    .join(' · ');
-  return (
-    <motion.li className={`row${item.enabled ? '' : ' is-off'}`} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 24 }} transition={{ duration: 0.2 }}>
-      <span className="row__bell">
-        <Icon.Bell width={16} height={16} />
-      </span>
-      <div className="row__main">
-        <div className="row__big">{formatAlarmTime(item.time)}</div>
-        <div className="row__sub">{sub}</div>
-      </div>
-      <Switch checked={item.enabled} label={`Alarm at ${formatAlarmTime(item.time)}`} onChange={(on) => island.scheduler.setEnabled(item.id, on)} />
-      <button type="button" className="icon-btn icon-btn--sm" aria-label="Delete alarm" onClick={() => island.scheduler.remove(item.id)}>
-        <Icon.Close width={14} height={14} />
-      </button>
-    </motion.li>
-  );
-}
+  // Timer Picker State
+  const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(5);
+  const [seconds, setSeconds] = useState(0);
+  const [pausedTimerState, setPausedTimerState] = useState(null); // { remainingMs, label }
 
-export default function ClockPanel({ schedule, now, setTyping }) {
-  const typing = useTyping(setTyping);
-  const [hour, setHour] = useState(() => (new Date().getHours() + 1) % 24);
-  const [minute, setMinute] = useState(0);
-  const [days, setDays] = useState([]);
-  const [label, setLabel] = useState('');
-  const [custom, setCustom] = useState('');
-  const [error, setError] = useState('');
+  // Alarm Editor State
+  const [isAddingAlarm, setIsAddingAlarm] = useState(false);
+  const [alarmHour, setAlarmHour] = useState(() => (new Date().getHours() + 1) % 24);
+  const [alarmMinute, setAlarmMinute] = useState(0);
+  const [alarmDays, setAlarmDays] = useState([]);
+  const [alarmLabel, setAlarmLabel] = useState('');
+  const [feedbackError, setFeedbackError] = useState('');
 
-  const showHour = uses12h ? hour % 12 || 12 : pad(hour);
-  const period = hour < 12 ? 'AM' : 'PM';
+  // Find active running timer from schedule
+  const activeTimers = schedule
+    .filter((i) => i.kind === 'timer')
+    .sort((a, b) => a.fireAt - b.fireAt);
+  const runningTimer = activeTimers[0] || null;
 
-  const run = async (promise) => {
-    const res = await promise;
-    setError(res && res.ok === false ? res.error : '');
-    return res;
-  };
-
-  const startTimer = (minutes) => run(island.scheduler.addTimer({ durationMs: minutes * 60000 }));
-
-  const startCustom = async () => {
-    const minutes = Number.parseInt(custom, 10);
-    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 999) {
-      setError('Enter a number of minutes between 1 and 999');
-      return;
+  // Clear paused state if a real timer has started
+  useEffect(() => {
+    if (runningTimer && pausedTimerState) {
+      setPausedTimerState(null);
     }
-    const res = await startTimer(minutes);
-    if (res.ok) setCustom('');
+  }, [runningTimer, pausedTimerState]);
+
+  // Start timer action
+  const handleStartTimer = () => {
+    const totalMs = (hours * 3600 + minutes * 60 + seconds) * 1000;
+    if (totalMs < 1000) return;
+    setFeedbackError('');
+    island.scheduler.addTimer({ durationMs: totalMs, label: 'Timer' }).catch((err) => {
+      setFeedbackError(err.message || 'Could not start timer');
+    });
   };
 
-  const addAlarm = async () => {
-    const res = await run(island.scheduler.addAlarm({ time: `${pad(hour)}:${pad(minute)}`, days, label: label.trim() }));
-    if (res.ok) setLabel('');
+  const handleApplyPreset = (mins) => {
+    setHours(0);
+    setMinutes(mins);
+    setSeconds(0);
   };
 
-  const toggleDay = (d) => setDays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort()));
-  const onEnter = (fn) => (e) => {
-    if (e.key === 'Enter') {
-      fn();
-      e.currentTarget.blur();
+  const handlePauseTimer = () => {
+    if (!runningTimer) return;
+    const remainingMs = Math.max(0, runningTimer.fireAt - Date.now());
+    setPausedTimerState({ remainingMs, label: runningTimer.label || 'Timer' });
+    island.scheduler.remove(runningTimer.id);
+  };
+
+  const handleResumeTimer = () => {
+    if (!pausedTimerState) return;
+    const ms = Math.max(1000, pausedTimerState.remainingMs);
+    island.scheduler.addTimer({ durationMs: ms, label: pausedTimerState.label || 'Timer' });
+    setPausedTimerState(null);
+  };
+
+  const handleCancelTimer = () => {
+    if (runningTimer) {
+      island.scheduler.remove(runningTimer.id);
+    }
+    setPausedTimerState(null);
+  };
+
+  // Alarms actions
+  const alarmsList = schedule.filter((i) => i.kind === 'alarm');
+
+  const handleSaveAlarm = async () => {
+    try {
+      const timeStr = `${pad(alarmHour)}:${pad(alarmMinute)}`;
+      await island.scheduler.addAlarm({
+        time: timeStr,
+        days: alarmDays,
+        label: alarmLabel.trim() || 'Alarm',
+      });
+      setIsAddingAlarm(false);
+      setAlarmLabel('');
+      setFeedbackError('');
+    } catch (err) {
+      setFeedbackError(err.message || 'Could not save alarm');
     }
   };
 
+  const toggleAlarmDay = (d) => {
+    setAlarmDays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort()));
+  };
+
+  const showAlarmHour = uses12h ? alarmHour % 12 || 12 : pad(alarmHour);
+  const alarmPeriod = alarmHour < 12 ? 'AM' : 'PM';
+
+  const remainingFormatted = useMemo(() => {
+    if (pausedTimerState) {
+      return formatRemaining(pausedTimerState.remainingMs);
+    }
+    if (runningTimer) {
+      return formatRemaining(Math.max(0, runningTimer.fireAt - now));
+    }
+    return '00:00';
+  }, [pausedTimerState, runningTimer, now]);
+
   return (
-    <div className="clock">
-      <div className="chips">
-        {QUICK_MINUTES.map((m) => (
-          <button key={m} type="button" className="chip" onClick={() => startTimer(m)}>
-            {m}m
+    <div className="clock-experience">
+      {/* Top Segmented Mode Selector [ Countdown | Alarms ] */}
+      <div className="clock-segmented-row">
+        <div className="clock-segmented">
+          <button
+            type="button"
+            className={`clock-segmented__btn${subMode === 'countdown' ? ' is-active' : ''}`}
+            onClick={() => {
+              setSubMode('countdown');
+              setIsAddingAlarm(false);
+            }}
+          >
+            Countdown
           </button>
-        ))}
-        <input
-          className="field field--mini"
-          inputMode="numeric"
-          placeholder="min"
-          aria-label="Custom timer in minutes"
-          maxLength={3}
-          value={custom}
-          onChange={(e) => setCustom(e.target.value.replace(/\D/g, ''))}
-          onKeyDown={onEnter(startCustom)}
-          {...typing}
-        />
-        <button type="button" className="chip chip--go" aria-label="Start custom timer" onClick={startCustom}>
-          <Icon.Plus width={14} height={14} />
-        </button>
+          <button
+            type="button"
+            className={`clock-segmented__btn${subMode === 'alarms' ? ' is-active' : ''}`}
+            onClick={() => setSubMode('alarms')}
+          >
+            Alarms
+          </button>
+        </div>
+
+        {subMode === 'alarms' && !isAddingAlarm && (
+          <button
+            type="button"
+            className="clock-add-alarm-btn"
+            onClick={() => setIsAddingAlarm(true)}
+            title="Add Alarm"
+            aria-label="Add Alarm"
+          >
+            <Icon.Plus width={12} height={12} />
+            <span>New Alarm</span>
+          </button>
+        )}
       </div>
 
-      <div className="creator">
-        <div className="creator__time">
-          <Spin value={showHour} label="hour" hint="Scroll to change" onUp={() => setHour((h) => (h + 1) % 24)} onDown={() => setHour((h) => (h + 23) % 24)} />
-          <span className="creator__colon">:</span>
-          <Spin
-            value={pad(minute)}
-            label="minute"
-            hint="Click for 5 minutes, scroll for 1"
-            onUp={(wheel) => setMinute((m) => (m + (wheel ? 1 : 5)) % 60)}
-            onDown={(wheel) => setMinute((m) => (m + 60 - (wheel ? 1 : 5)) % 60)}
-          />
-          {uses12h && (
-            <button type="button" className="period" aria-label="Toggle AM or PM" onClick={() => setHour((h) => (h + 12) % 24)}>
-              {period}
-            </button>
-          )}
-        </div>
-        <div className="creator__side">
-          <div className="days" role="group" aria-label="Repeat on">
-            {DAY_LABELS.map((d, i) => (
-              <button key={i} type="button" className={`day${days.includes(i) ? ' is-on' : ''}`} aria-pressed={days.includes(i)} aria-label={DAY_NAMES[i]} onClick={() => toggleDay(i)}>
-                {d}
-              </button>
-            ))}
-          </div>
-          <div className="creator__row">
-            <input
-              className="field"
-              placeholder="Label (optional)"
-              aria-label="Alarm label"
-              maxLength={40}
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              onKeyDown={onEnter(addAlarm)}
-              {...typing}
-            />
-            <button type="button" className="btn btn--solid" onClick={addAlarm}>
-              Add alarm
-            </button>
-          </div>
-        </div>
-      </div>
+      {feedbackError && <div className="clock-feedback-error">{feedbackError}</div>}
 
-      {error && <div className="clock__error" role="alert">{error}</div>}
+      {/* Surface Subviews Animated Container */}
+      <div className="clock-content-wrap">
+        <AnimatePresence mode="wait" initial={false}>
+          {subMode === 'countdown' ? (
+            <motion.div
+              key="countdown-view"
+              className="countdown-view"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={contentTransition}
+            >
+              {runningTimer || pausedTimerState ? (
+                /* RUNNING / PAUSED COUNTDOWN VIEW WITH ROLLING DIGITS */
+                <div className="countdown-running">
+                  <div className="countdown-running__display">
+                    <RollingTimeDisplay timeStr={remainingFormatted} />
+                    <span className="countdown-running__status">
+                      {pausedTimerState ? 'Paused' : 'Counting down'}
+                    </span>
+                  </div>
 
-      <ul className="list scroll">
-        <AnimatePresence initial={false}>
-          {schedule.map((item) =>
-            item.kind === 'timer' ? <TimerRow key={item.id} item={item} now={now} /> : <AlarmRow key={item.id} item={item} now={now} />,
+                  {/* Action Buttons */}
+                  <div className="countdown-running__actions">
+                    {pausedTimerState ? (
+                      <button
+                        type="button"
+                        className="clock-btn clock-btn--primary"
+                        onClick={handleResumeTimer}
+                      >
+                        <Icon.Play width={13} height={13} />
+                        <span>Resume</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="clock-btn clock-btn--secondary"
+                        onClick={handlePauseTimer}
+                      >
+                        <Icon.Pause width={13} height={13} />
+                        <span>Pause</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="clock-btn clock-btn--cancel"
+                      onClick={handleCancelTimer}
+                    >
+                      <span>Cancel</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* PROPER IOS-LIKE WHEEL PICKER VIEW */
+                <div className="countdown-picker">
+                  <div className="timer-wheel-container">
+                    <WheelPickerWrapper className="timer-wheel-wrapper">
+                      <div className="timer-wheel-col">
+                        <WheelPicker
+                          value={pad(hours)}
+                          onValueChange={(val) => setHours(Number(val))}
+                          options={HOUR_OPTIONS}
+                          infinite
+                          optionItemHeight={30}
+                          visibleCount={16}
+                        />
+                        <span className="timer-wheel-label">hours</span>
+                      </div>
+
+                      <span className="timer-colon-sep">:</span>
+
+                      <div className="timer-wheel-col">
+                        <WheelPicker
+                          value={pad(minutes)}
+                          onValueChange={(val) => setMinutes(Number(val))}
+                          options={MIN_SEC_OPTIONS}
+                          infinite
+                          optionItemHeight={30}
+                          visibleCount={16}
+                        />
+                        <span className="timer-wheel-label">min</span>
+                      </div>
+
+                      <span className="timer-colon-sep">:</span>
+
+                      <div className="timer-wheel-col">
+                        <WheelPicker
+                          value={pad(seconds)}
+                          onValueChange={(val) => setSeconds(Number(val))}
+                          options={MIN_SEC_OPTIONS}
+                          infinite
+                          optionItemHeight={30}
+                          visibleCount={16}
+                        />
+                        <span className="timer-wheel-label">sec</span>
+                      </div>
+                    </WheelPickerWrapper>
+                  </div>
+
+                  {/* Compact Presets */}
+                  <div className="countdown-presets">
+                    {PRESET_TIMERS.map(({ label, minutes: m }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        className={`countdown-chip${minutes === m && hours === 0 && seconds === 0 ? ' is-selected' : ''}`}
+                        onClick={() => handleApplyPreset(m)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Start Button */}
+                  <button
+                    type="button"
+                    className="clock-btn clock-btn--primary clock-btn--start"
+                    onClick={handleStartTimer}
+                    disabled={hours === 0 && minutes === 0 && seconds === 0}
+                  >
+                    <span>Start Timer</span>
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="alarms-view"
+              className="alarms-view"
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              transition={contentTransition}
+            >
+              {isAddingAlarm ? (
+                /* DEDICATED ADD ALARM EDITOR */
+                <div className="alarm-editor">
+                  <div className="alarm-editor__time">
+                    <DigitSpinner
+                      value={showAlarmHour}
+                      min={uses12h ? 1 : 0}
+                      max={uses12h ? 12 : 23}
+                      onChange={(h) => {
+                        if (uses12h) {
+                          const isPm = alarmHour >= 12;
+                          const h24 = (h % 12) + (isPm ? 12 : 0);
+                          setAlarmHour(h24);
+                        } else {
+                          setAlarmHour(h);
+                        }
+                      }}
+                      label="Hour"
+                    />
+                    <span className="countdown-colon">:</span>
+                    <DigitSpinner
+                      value={alarmMinute}
+                      min={0}
+                      max={59}
+                      onChange={setAlarmMinute}
+                      label="Minute"
+                    />
+                    {uses12h && (
+                      <button
+                        type="button"
+                        className="alarm-period-toggle"
+                        onClick={() => setAlarmHour((h) => (h + 12) % 24)}
+                      >
+                        {alarmPeriod}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Repeat Days */}
+                  <div className="alarm-days-row" role="group" aria-label="Repeat days">
+                    {DAY_LABELS.map((d, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`alarm-day-pill${alarmDays.includes(i) ? ' is-on' : ''}`}
+                        onClick={() => toggleAlarmDay(i)}
+                        aria-pressed={alarmDays.includes(i)}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Optional Label */}
+                  <input
+                    type="text"
+                    className="alarm-label-input"
+                    placeholder="Alarm label (optional)"
+                    maxLength={40}
+                    value={alarmLabel}
+                    onChange={(e) => setAlarmLabel(e.target.value)}
+                  />
+
+                  {/* Editor Actions */}
+                  <div className="alarm-editor__actions">
+                    <button
+                      type="button"
+                      className="clock-btn clock-btn--secondary"
+                      onClick={() => setIsAddingAlarm(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="clock-btn clock-btn--primary"
+                      onClick={handleSaveAlarm}
+                    >
+                      Save Alarm
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* ALARMS LIST */
+                <div className="alarms-list-container">
+                  {alarmsList.length === 0 ? (
+                    <div className="alarms-empty">
+                      <Icon.Bell width={24} height={24} />
+                      <p>No alarms set</p>
+                      <button
+                        type="button"
+                        className="clock-btn clock-btn--primary"
+                        onClick={() => setIsAddingAlarm(true)}
+                      >
+                        Set an Alarm
+                      </button>
+                    </div>
+                  ) : (
+                    <ul className="alarms-list">
+                      {alarmsList.map((item) => (
+                        <li key={item.id} className={`alarm-row${item.enabled ? '' : ' is-off'}`}>
+                          <div className="alarm-row__info">
+                            <span className="alarm-row__time">{formatAlarmTime(item.time)}</span>
+                            <span className="alarm-row__sub">
+                              {item.label} · {describeDays(item.days)}
+                              {item.enabled && item.fireAt ? ` · ${untilText(item.fireAt - now)}` : ''}
+                            </span>
+                          </div>
+                          <div className="alarm-row__actions">
+                            <Switch
+                              checked={item.enabled}
+                              label={`Toggle alarm at ${formatAlarmTime(item.time)}`}
+                              onChange={(on) => island.scheduler.setEnabled(item.id, on)}
+                            />
+                            <button
+                              type="button"
+                              className="alarm-delete-btn"
+                              onClick={() => island.scheduler.remove(item.id)}
+                              title="Delete alarm"
+                              aria-label="Delete alarm"
+                            >
+                              <Icon.Trash width={13} height={13} />
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </motion.div>
           )}
         </AnimatePresence>
-        {schedule.length === 0 && <li className="list__empty">No timers or alarms yet. Tap a timer above or set an alarm.</li>}
-      </ul>
+      </div>
     </div>
   );
 }

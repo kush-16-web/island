@@ -19,11 +19,11 @@ function calculatePopoverCoordinates(anchorEl, popoverEl, preferred = 'bottom') 
   const winW = window.innerWidth || 720;
   const winH = window.innerHeight || 500;
 
-  const pWidth = popoverEl ? popoverEl.offsetWidth : 268;
+  const pWidth = popoverEl ? popoverEl.offsetWidth : 272;
   const pHeight = popoverEl ? popoverEl.offsetHeight : 124;
 
   const margin = 10;
-  const offset = 6;
+  const offset = 8;
 
   const spaceAbove = rect.top - margin;
   const spaceBelow = winH - rect.bottom - margin;
@@ -31,14 +31,17 @@ function calculatePopoverCoordinates(anchorEl, popoverEl, preferred = 'bottom') 
   let placement;
   let top;
 
-  // If the anchor is near the top edge or space above is insufficient, flip downwards
-  if (spaceAbove < pHeight + offset) {
-    placement = 'bottom';
-    top = rect.bottom + offset;
-  } else if (spaceBelow < pHeight + offset) {
+  // Viewport-aware collision handling with priority on preferred placement
+  if (preferred === 'top' && spaceAbove >= pHeight + offset) {
     placement = 'top';
     top = rect.top - pHeight - offset;
-  } else if (preferred === 'top') {
+  } else if (spaceBelow >= pHeight + offset) {
+    placement = 'bottom';
+    top = rect.bottom + offset;
+  } else if (spaceAbove >= pHeight + offset) {
+    placement = 'top';
+    top = rect.top - pHeight - offset;
+  } else if (spaceAbove >= spaceBelow) {
     placement = 'top';
     top = rect.top - pHeight - offset;
   } else {
@@ -165,10 +168,10 @@ export default function LyricsSettingsPopover({
       className={`lyrics-settings-popover np__lyrics-popover lyrics-settings-popover--${currentPlacement} lyrics-settings-popover--portal`}
       role="dialog"
       aria-label="Lyrics settings"
-      initial={{ y: currentPlacement === 'top' ? 4 : -4 }}
-      animate={{ y: 0 }}
-      exit={{ y: currentPlacement === 'top' ? 4 : -4 }}
-      transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0, scale: 0.18, y: currentPlacement === 'top' ? 12 : -12 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.18, y: currentPlacement === 'top' ? 10 : -10 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 28, mass: 0.8 }}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       style={{
@@ -178,68 +181,77 @@ export default function LyricsSettingsPopover({
         bottom: 'auto',
         right: 'auto',
         margin: 0,
+        transformOrigin: currentPlacement === 'top' ? 'bottom right' : 'top right',
         maxHeight: `${coords?.maxHeight ?? 460}px`,
-        '--popover-accent': accentColor || 'var(--music-accent, #8f9cff)',
+        '--popover-accent': accentColor || 'var(--music-accent, #ffffff)',
       }}
     >
-      {/* 1. Lyrics Style Horizontal Selector */}
-      <div className="lsp__group">
-        <span className="lsp__group-label" id="lsp-style-label">Lyrics style</span>
-        <div className="lsp__pill-row" role="radiogroup" aria-labelledby="lsp-style-label">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={style === 'classic'}
-            className={`lsp__pill-btn np__lyrics-popover-option${style === 'classic' ? ' is-active' : ''}`}
-            onClick={() => onStyleChange?.('classic')}
-          >
-            <span>Classic</span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={style === 'kinetic'}
-            className={`lsp__pill-btn np__lyrics-popover-option${style === 'kinetic' ? ' is-active' : ''}`}
-            onClick={() => onStyleChange?.('kinetic')}
-          >
-            <span>Kinetic</span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={style === 'ghost-wave'}
-            className={`lsp__pill-btn np__lyrics-popover-option${style === 'ghost-wave' ? ' is-active' : ''}`}
-            onClick={() => onStyleChange?.('ghost-wave')}
-          >
-            <span>Ghost + Wave</span>
-          </button>
+      <motion.div
+        className="lsp__content"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.16 }}
+      >
+        {/* 1. Lyrics Style Horizontal Selector */}
+        <div className="lsp__group">
+          <span className="lsp__group-label" id="lsp-style-label">Lyrics style</span>
+          <div className="lsp__pill-row" role="radiogroup" aria-labelledby="lsp-style-label">
+            {[
+              { id: 'classic', label: 'Classic' },
+              { id: 'kinetic', label: 'Kinetic' },
+              { id: 'ghost-wave', label: 'Ghost + Wave' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={style === opt.id}
+                className={`lsp__pill-btn np__lyrics-popover-option${style === opt.id ? ' is-active' : ''}`}
+                onClick={() => onStyleChange?.(opt.id)}
+              >
+                {style === opt.id && (
+                  <motion.div
+                    layoutId="lsp-active-style-glider"
+                    className="lsp__pill-glider"
+                    transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <span className="lsp__pill-label">{opt.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* 2. Layout Compact Selector */}
-      <div className="lsp__group">
-        <span className="lsp__group-label" id="lsp-layout-label">Layout</span>
-        <div className="lsp__pill-row" role="radiogroup" aria-labelledby="lsp-layout-label">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={layout === 'floating'}
-            className={`lsp__pill-btn lsp__seg-btn${layout === 'floating' ? ' is-active' : ''}`}
-            onClick={() => onLayoutChange?.('floating')}
-          >
-            <span>Floating</span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={layout === 'normal'}
-            className={`lsp__pill-btn lsp__seg-btn${layout === 'normal' ? ' is-active' : ''}`}
-            onClick={() => onLayoutChange?.('normal')}
-          >
-            <span>Normal</span>
-          </button>
+        {/* 2. Layout Compact Selector */}
+        <div className="lsp__group">
+          <span className="lsp__group-label" id="lsp-layout-label">Layout</span>
+          <div className="lsp__pill-row" role="radiogroup" aria-labelledby="lsp-layout-label">
+            {[
+              { id: 'floating', label: 'Floating' },
+              { id: 'normal', label: 'Normal' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={layout === opt.id}
+                className={`lsp__pill-btn lsp__seg-btn${layout === opt.id ? ' is-active' : ''}`}
+                onClick={() => onLayoutChange?.(opt.id)}
+              >
+                {layout === opt.id && (
+                  <motion.div
+                    layoutId="lsp-active-layout-glider"
+                    className="lsp__pill-glider"
+                    transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <span className="lsp__pill-label">{opt.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 

@@ -218,7 +218,10 @@ export function createMockIsland() {
     media: {
       control(action) {
         if (!media.active) return;
-        if (action === 'playpause') {
+        let act = String(action || '').toLowerCase().trim();
+        if (act === 'prev') act = 'previous';
+        if (act === 'play-pause' || act === 'play_pause') act = 'playpause';
+        if (act === 'playpause') {
           const now = Date.now();
           const elapsed = media.status === 'playing' ? now - media.reportedAt : 0;
           media = {
@@ -228,8 +231,8 @@ export function createMockIsland() {
             reportedAt: now,
           };
           emit('media', media);
-        } else if (action === 'next') setTrack(trackIndex + 1);
-        else if (action === 'previous') setTrack(trackIndex - 1);
+        } else if (act === 'next') setTrack(trackIndex + 1);
+        else if (act === 'previous') setTrack(trackIndex - 1);
       },
       seek(posSec) {
         if (!media.active) return;

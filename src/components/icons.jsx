@@ -264,16 +264,37 @@ export const Icon = {
   ),
   Volume2: ({ className = '', ...p }) => (
     <svg {...base} className={`lucide-icon ${className}`} {...p}>
-      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      <polygon points="10 5 6 9 2 9 2 15 6 15 10 19 10 5" />
+      <path d="M14.5 9a4.5 4.5 0 0 1 0 6" />
+      <path d="M18 6.5a8 8 0 0 1 0 11" />
     </svg>
   ),
   VolumeX: ({ className = '', ...p }) => (
     <svg {...base} className={`lucide-icon ${className}`} {...p}>
-      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-      <line x1="23" y1="9" x2="17" y2="15" />
-      <line x1="17" y1="9" x2="23" y2="15" />
+      <polygon points="10 5 6 9 2 9 2 15 6 15 10 19 10 5" />
+      <line x1="20.5" y1="9.5" x2="15.5" y2="14.5" />
+      <line x1="15.5" y1="9.5" x2="20.5" y2="14.5" />
+    </svg>
+  ),
+  VolumeLow: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon ${className}`} {...p}>
+      <polygon points="10 5 6 9 2 9 2 15 6 15 10 19 10 5" />
+      <path d="M14.5 9a4.5 4.5 0 0 1 0 6" />
+    </svg>
+  ),
+  VolumeMedium: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon ${className}`} {...p}>
+      <polygon points="10 5 6 9 2 9 2 15 6 15 10 19 10 5" />
+      <path d="M14 9a4 4 0 0 1 0 6" />
+      <path d="M17.5 6.5a7.5 7.5 0 0 1 0 11" />
+    </svg>
+  ),
+  VolumeHigh: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon ${className}`} {...p}>
+      <polygon points="10 5 6 9 2 9 2 15 6 15 10 19 10 5" />
+      <path d="M13.5 9.5a3.5 3.5 0 0 1 0 5" />
+      <path d="M16.5 7.5a6.5 6.5 0 0 1 0 9" />
+      <path d="M19.5 5.5a9.5 9.5 0 0 1 0 13" />
     </svg>
   ),
   Hourglass: ({ className = '', ...p }) => (
@@ -395,6 +416,13 @@ export const Icon = {
   Flame: ({ className = '', ...p }) => (
     <svg {...base} className={`lucide-icon lucide-icon--flame ${className}`} {...p}>
       <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    </svg>
+  ),
+  Trash: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--trash ${className}`} {...p}>
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
     </svg>
   ),
 };

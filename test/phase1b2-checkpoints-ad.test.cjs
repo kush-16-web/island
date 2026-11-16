@@ -44,13 +44,13 @@ test('Phase 1B.2 Checkpoints A–D Suite', async (t) => {
     assert.equal(flags.companionAnimations, true);
   });
 
-  await t.test('3. Dimensions: idle black notch, hover music (444x96), expanded two-column music (616x316)', () => {
+  await t.test('3. Dimensions: idle black notch, hover music (488x96), expanded two-column music (572x304)', () => {
     const idleDim = computeNotchDimensions({ notchState: NOTCH_STATES.COMPACT, mode: 'idle' });
     assert.ok(idleDim.width >= 190 && idleDim.width <= 220);
     assert.equal(idleDim.height, 36);
 
     const hoverMediaDim = computeNotchDimensions({ notchState: NOTCH_STATES.HOVER_PREVIEW, mode: 'media' });
-    assert.equal(hoverMediaDim.width, 444);
+    assert.equal(hoverMediaDim.width, 488);
     assert.equal(hoverMediaDim.height, 96);
 
     const expMediaDim = computeNotchDimensions({
@@ -59,8 +59,8 @@ test('Phase 1B.2 Checkpoints A–D Suite', async (t) => {
       tab: 'playing',
       hasActiveMedia: true,
     });
-    assert.equal(expMediaDim.width, 616);
-    assert.equal(expMediaDim.height, 316);
+    assert.equal(expMediaDim.width, 572);
+    assert.equal(expMediaDim.height, 304);
   });
 
   await t.test('4. Pitch-black idle & centered eyes CSS invariants', () => {

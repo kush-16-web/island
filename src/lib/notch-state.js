@@ -142,8 +142,8 @@ export function computeNotchDimensions({
     let hubH = 280;
     switch (tab) {
       case 'launcher':
-        hubW = 448;
-        hubH = 316;
+        hubW = 520;
+        hubH = hasActiveMedia ? 276 : 240;
         break;
       case 'voice':
         hubH = 330;
@@ -162,13 +162,14 @@ export function computeNotchDimensions({
           hubW = 468;
           hubH = 236;
         } else {
-          // Approved Two-Column Expanded Music Layout (600-640px wide, 300-340px tall)
-          hubW = 616;
-          hubH = 316;
+          // Approved Two-Column Expanded Music Layout (Gate A.1: 572x304)
+          hubW = 572;
+          hubH = 304;
         }
         break;
       case 'clock':
-        hubH = scheduleCount === 0 ? 214 : Math.min(384, 214 + scheduleCount * 56);
+        hubW = 520;
+        hubH = 280;
         break;
       case 'inbox':
         hubH = inboxCount === 0 ? 175 : Math.min(340, 105 + inboxCount * 58);
@@ -188,8 +189,8 @@ export function computeNotchDimensions({
   // Hover Preview state: restrained contextual card
   if (notchState === NOTCH_STATES.HOVER_PREVIEW) {
     if (mode === 'media' || mode === 'both') {
-      // Approved Hover Music Layout (compact horizontal)
-      return { width: 444, height: 96, bottomRadius: 22 };
+      // Approved Hover Music Layout (Gate A: 488x96, expanded for longer lyrics)
+      return { width: 488, height: 96, bottomRadius: 22 };
     }
     if (mode === 'voice') {
       return { width: 312, height: 84, bottomRadius: 22 };

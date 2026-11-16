@@ -19,7 +19,10 @@ export function formatRemaining(ms) {
 export function formatTrackTime(ms) {
   if (!Number.isFinite(ms)) return '0:00';
   const total = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(total / 60)}:${pad(total % 60)}`;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 export function formatClock(ms) {

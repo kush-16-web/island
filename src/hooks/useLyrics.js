@@ -56,6 +56,17 @@ export function useLyrics(media, currentPositionMs, userOffsetMs) {
     let cancelled = false;
     setLoading(true);
 
+    if (media.lyrics && (media.lyrics.found || (Array.isArray(media.lyrics.lines) && media.lyrics.lines.length > 0))) {
+      setLyricsData({
+        found: true,
+        isSynced: Boolean(media.lyrics.lines?.length),
+        lines: media.lyrics.lines || [],
+        provider: media.lyrics.provider || 'LRCLIB',
+      });
+      setLoading(false);
+      return;
+    }
+
     const durationSec = media.durationMs ? media.durationMs / 1000 : 0;
     fetchLyrics({
       title: media.title,

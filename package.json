@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.0",
+    "@ncdai/react-wheel-picker": "^1.2.3",
     "framer-motion": "^14.4.0",
     "kokoro-js": "^1.2.1",
     "react": "^19.3.1",

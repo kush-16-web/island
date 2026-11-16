@@ -1,15 +1,18 @@
 import { useCallback, useRef, useState } from 'react';
+import { useReducedMotion } from 'framer-motion';
 import { Icon } from './icons';
 
 /**
  * MusicVolumeControl — Shared Pill Volume Slider (Hover & Expanded Music)
  *
- * - Full-width horizontal pill-shaped track with dark neutral unfilled portion
+ * - Full-width horizontal pill-shaped track with dark graphite unfilled portion (#252830)
  * - Solid WHITE filled portion in BOTH Dynamic Frosted and Dark Frosted
- * - Thin 4px pill track at rest, smoothly expanding to 10px on hover, focus, or drag
- * - Small white circular thumb, zero glow/shadow/gradients
- * - Monochrome speaker icon on left (clickable mute/unmute)
- * - Tabular percentage on right
+ * - Track thickness at rest: ~4px, expands symmetrically to ~7px on hover/focus/drag (160ms)
+ * - Thumb diameter: ~8px at rest, ~10px during interaction
+ * - Centered thumb at the fill endpoint with no extra bulge
+ * - Dynamic Windows speaker icon with 4 volume states (Muted, Low, Medium, High)
+ * - Click-to-set with smooth ~180ms visual animation while audio command is dispatched immediately
+ * - Direct drag tracking with no lag
  */
 export default function MusicVolumeControl({
   volume = 75,
@@ -24,6 +27,11 @@ export default function MusicVolumeControl({
   const trackRef = useRef(null);
   const draggingRef = useRef(false);
   const [dragging, setDragging] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
+
+  // Animating click-to-set state
+  const [animatingFill, setAnimatingFill] = useState(false);
+  const animTimerRef = useRef(null);
 
   const clampedVol = Math.max(0, Math.min(100, Math.round(Number.isFinite(Number(volume)) ? Number(volume) : 75)));
   const effectiveVol = muted ? 0 : clampedVol;
@@ -47,6 +55,16 @@ export default function MusicVolumeControl({
     }
     draggingRef.current = true;
     setDragging(true);
+
+    // Click-to-set animation only if not a rapid drag motion
+    if (!prefersReducedMotion) {
+      setAnimatingFill(true);
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+      animTimerRef.current = setTimeout(() => {
+        setAnimatingFill(false);
+      }, 180);
+    }
+
     const next = calcPercentFromClientX(e.clientX);
     onVolumeChange?.(next, { phase: 'start' });
   };
@@ -54,6 +72,11 @@ export default function MusicVolumeControl({
   const handlePointerMove = (e) => {
     if (isDisabled || !draggingRef.current) return;
     e.stopPropagation();
+    // During active pointer drag, disable smooth animation so thumb directly matches cursor
+    if (animatingFill) {
+      setAnimatingFill(false);
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+    }
     const next = calcPercentFromClientX(e.clientX);
     onVolumeChange?.(next, { phase: 'move' });
   };
@@ -63,6 +86,9 @@ export default function MusicVolumeControl({
     e.stopPropagation();
     draggingRef.current = false;
     setDragging(false);
+    if (animTimerRef.current) clearTimeout(animTimerRef.current);
+    setAnimatingFill(false);
+
     const el = trackRef.current;
     if (el && el.releasePointerCapture) {
       try { el.releasePointerCapture(e.pointerId); } catch {}
@@ -86,9 +112,32 @@ export default function MusicVolumeControl({
     if (next !== null) {
       e.preventDefault();
       e.stopPropagation();
+      if (!prefersReducedMotion) {
+        setAnimatingFill(true);
+        if (animTimerRef.current) clearTimeout(animTimerRef.current);
+        animTimerRef.current = setTimeout(() => setAnimatingFill(false), 180);
+      }
       onVolumeChange?.(next, { phase: 'end' });
     }
   };
+
+  // Choose speaker icon according to level
+  const renderSpeakerIcon = () => {
+    if (muted || effectiveVol === 0) {
+      return <Icon.VolumeX width={14} height={14} />;
+    }
+    if (effectiveVol <= 33) {
+      return <Icon.VolumeLow width={14} height={14} />;
+    }
+    if (effectiveVol <= 66) {
+      return <Icon.VolumeMedium width={14} height={14} />;
+    }
+    return <Icon.VolumeHigh width={14} height={14} />;
+  };
+
+  const transitionStyle = animatingFill && !prefersReducedMotion
+    ? 'width 180ms cubic-bezier(0.22, 1, 0.36, 1), left 180ms cubic-bezier(0.22, 1, 0.36, 1)'
+    : 'none';
 
   return (
     <div
@@ -108,11 +157,9 @@ export default function MusicVolumeControl({
         aria-label={muted || effectiveVol === 0 ? 'Unmute music' : 'Mute music'}
         title={isDisabled ? 'Unavailable' : (muted || effectiveVol === 0 ? 'Unmute' : 'Mute')}
       >
-        {muted || effectiveVol === 0 ? (
-          <Icon.VolumeX width={13} height={13} />
-        ) : (
-          <Icon.Volume2 width={13} height={13} />
-        )}
+        <span className="mvc__icon-box">
+          {renderSpeakerIcon()}
+        </span>
       </button>
 
       <div
@@ -137,11 +184,15 @@ export default function MusicVolumeControl({
             style={{
               width: `${effectiveVol}%`,
               backgroundColor: '#ffffff',
+              transition: transitionStyle,
             }}
           />
           <div
             className="mvc__thumb"
-            style={{ left: `${effectiveVol}%` }}
+            style={{
+              left: `${effectiveVol}%`,
+              transition: transitionStyle,
+            }}
           />
         </div>
       </div>

@@ -196,7 +196,7 @@ function HoverPreviewView({
   if (mode === 'media' || mode === 'both') {
     const lyricKey = activeLine ? `${activeLine.timeMs ?? activeLine.text}` : 'none';
     const lyricText = activeLine?.text || '';
-    const slotBudgetPx = 156;
+    const slotBudgetPx = 196;
     const measuredWidth = lyricText ? measureTextWidth(lyricText, '500 11.5px Geist, -apple-system, sans-serif') : 0;
     const lineDurationMs = activeLine && nextLine && Number.isFinite(nextLine.timeMs) && Number.isFinite(activeLine.timeMs)
       ? Math.max(0, nextLine.timeMs - activeLine.timeMs)
@@ -584,14 +584,14 @@ export default function Island() {
     };
   }, []);
 
-  const { schedule, inbox, media, toast, rings } = s;
+  const { schedule = [], inbox = [], media = { active: false }, toast, rings = [] } = s || {};
   const ring = rings[0] || null;
   const nextTimer = useMemo(
-    () => schedule.filter((i) => i.kind === 'timer').sort((a, b) => a.fireAt - b.fireAt)[0] || null,
+    () => (schedule || []).filter((i) => i.kind === 'timer').sort((a, b) => a.fireAt - b.fireAt)[0] || null,
     [schedule],
   );
   const playing = media.active && media.status === 'playing';
-  const unread = inbox.filter((n) => !n.read).length;
+  const unread = (inbox || []).filter((n) => !n.read).length;
 
   // Companion mood reactions to meaningful events
   const [musicArriving, setMusicArriving] = useState(false);
@@ -765,11 +765,6 @@ export default function Island() {
         window.island?.logLifecycle?.('window:blur:ignored_grace_period', {
           deltaMs: Date.now() - expandedAtRef.current,
         });
-        return;
-      }
-      // If the lyrics settings popover is open, ignore window:blur so interacting with the popover never dismisses the hub
-      if (typeof document !== 'undefined' && document.querySelector('.lyrics-settings-popover')) {
-        window.island?.logLifecycle?.('window:blur:ignored_popover_open');
         return;
       }
       window.island?.logLifecycle?.('window:blur:dismiss_hub');
@@ -972,6 +967,7 @@ export default function Island() {
 
   const idleFlags = resolveIdleDisplayFlags(idlePrefs);
   const isIdleBlack = mode === 'idle' && !media.active;
+  const isPitchBlack = !media.active;
 
   let cachedWeather = null;
   if (idleFlags.showWeather && typeof window !== 'undefined') {
@@ -999,7 +995,7 @@ export default function Island() {
           actions={actions}
           now={now}
           setTyping={setTyping}
-          accentColor={musicColor}
+          accentColor={media.active ? musicColor : null}
           onLyricsViewChange={setIsLyricsFull}
           videoStream={videoStream}
           videoStreamActive={videoStreamActive}
@@ -1094,18 +1090,19 @@ export default function Island() {
   return (
     <div className="stage" data-dock={dock.edge || 'top'} data-align={dock.align || 'center'} data-valign={dock.vAlign || 'top'}>
       <motion.div
-        className={`island island--notch${isHidden ? ' is-hidden' : ''}${isPeeking ? ' is-peeking' : ''}${isIdleBlack ? ' is-idle-black' : ''}`}
+        className={`island island--notch${isHidden ? ' is-hidden' : ''}${isPeeking ? ' is-peeking' : ''}${isPitchBlack ? ' is-pitch-black is-idle-black' : ''}`}
         data-hit={isHidden ? undefined : true}
         data-mode={mode}
         data-notch-state={notchState}
         data-appearance={appearanceMode}
-        data-idle-black={isIdleBlack ? 'true' : undefined}
+        data-idle-black={isPitchBlack ? 'true' : undefined}
+        data-pitch-black={isPitchBlack ? 'true' : undefined}
         data-dock={dock.edge || 'top'}
         data-align={dock.align || 'center'}
         data-valign={dock.vAlign || 'top'}
         style={{
-          '--accent': accent,
-          '--music-accent': musicColor,
+          '--accent': media.active ? accent : 'transparent',
+          '--music-accent': media.active ? musicColor : 'transparent',
           pointerEvents: isHidden ? 'none' : 'auto',
         }}
         initial={false}

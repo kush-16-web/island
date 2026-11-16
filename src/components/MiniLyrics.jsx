@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Icon } from './icons';
 import PrecisionLyricLine from './PrecisionLyricLine';
@@ -48,6 +48,17 @@ export default function MiniLyrics({
     );
   }
 
+  const viewportRef = useRef(null);
+  const [viewportH, setViewportH] = useState(VIEWPORT_HEIGHT);
+
+  useEffect(() => {
+    if (!viewportRef.current) return;
+    const h = viewportRef.current.clientHeight;
+    if (h > 0 && h !== viewportH) {
+      setViewportH(h);
+    }
+  }, [viewportH]);
+
   const lines = lyricsData.lines || [];
   const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lines.length;
   const safeActiveIndex = hasActiveLine ? activeLineIndex : 0;
@@ -58,9 +69,10 @@ export default function MiniLyrics({
   );
 
   // Center active line in the vertical viewport (or preview line 0 during intro)
+  const effectiveVpH = viewportH > 0 ? viewportH : VIEWPORT_HEIGHT;
   const targetY = hasActiveLine
-    ? -safeActiveIndex * LINE_HEIGHT + (VIEWPORT_HEIGHT / 2 - LINE_HEIGHT / 2)
-    : (VIEWPORT_HEIGHT / 2 - LINE_HEIGHT / 2);
+    ? -safeActiveIndex * LINE_HEIGHT + (effectiveVpH / 2 - LINE_HEIGHT / 2)
+    : (effectiveVpH / 2 - LINE_HEIGHT / 2);
 
   return (
     <div
@@ -70,7 +82,7 @@ export default function MiniLyrics({
       tabIndex={0}
       title="Click to view full lyrics"
     >
-      <div className="mini-lyrics__viewport">
+      <div className="mini-lyrics__viewport" ref={viewportRef}>
         <motion.div
           className="mini-lyrics__reel"
           animate={{ y: targetY }}
@@ -79,7 +91,9 @@ export default function MiniLyrics({
           {lines.map((line, idx) => {
             const isActive = hasActiveLine && idx === activeLineIndex;
             const distance = hasActiveLine ? Math.abs(idx - activeLineIndex) : idx + 1;
+            const isWordSynced = Boolean(line?.syncType === 'word' || (line?.words && line.words.length > 0));
             let lineClass = 'mini-lyrics__line';
+            if (isWordSynced) lineClass += ' is-word-synced';
             if (isActive) lineClass += ' is-active';
             else if (distance === 1) lineClass += ' is-adjacent';
             else lineClass += ' is-far';

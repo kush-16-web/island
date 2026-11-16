@@ -158,7 +158,7 @@ test('Phase 1B: Top-Attached Notch Foundation Suite', async (t) => {
     assert.ok(compactIdle.height >= 34 && compactIdle.height <= 40, `Compact height ${compactIdle.height} in 34-40`);
 
     const previewMedia = computeNotchDimensions({ notchState: NOTCH_STATES.HOVER_PREVIEW, mode: 'media' });
-    assert.ok(previewMedia.width > compactIdle.width && previewMedia.width < 468);
+    assert.ok(previewMedia.width > compactIdle.width && previewMedia.width <= 500);
     assert.ok(previewMedia.height > compactIdle.height && previewMedia.height < 140);
 
     const peekDim = computeNotchDimensions({ notchState: NOTCH_STATES.COMPACT, mode: 'idle', isPeeking: true });

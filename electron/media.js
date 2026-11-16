@@ -171,10 +171,13 @@ class MediaWatcher extends EventEmitter {
   }
 
   control(action) {
-    if (process.platform !== 'win32' || !ACTIONS.has(action) || !this.scriptFile) return;
+    let act = String(action || '').toLowerCase().trim();
+    if (act === 'prev') act = 'previous';
+    if (act === 'play-pause' || act === 'play_pause' || act === 'playpause') act = 'playpause';
+    if (process.platform !== 'win32' || !ACTIONS.has(act) || !this.scriptFile) return;
     const child = spawn(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', this.scriptFile, '-Mode', 'control', '-Action', action],
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', this.scriptFile, '-Mode', 'control', '-Action', act],
       { windowsHide: true, stdio: 'ignore' },
     );
     child.on('error', () => {});

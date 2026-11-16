@@ -33,7 +33,8 @@ test('Music Volume Visual & Functional Correction Suite', async (t) => {
     assert.ok(mvcJsx.includes('setPointerCapture'), 'Must support smooth pointer drag');
     assert.ok(mvcJsx.includes("backgroundColor: '#ffffff'"), 'Volume fill must be solid white');
     assert.ok(mvcJsx.includes('mvc__mute-btn') && mvcJsx.includes('Icon.VolumeX'), 'Must support mute/unmute via speaker icon');
-    assert.ok(css.includes('.mvc__track') && css.includes('height: 4px;') && css.includes('height: 10px;'), 'Track must be thin at rest and expand on interaction');
+    assert.ok(mvcJsx.includes('Icon.VolumeLow') && mvcJsx.includes('Icon.VolumeMedium') && mvcJsx.includes('Icon.VolumeHigh'), 'Must support 4-state speaker icon waves');
+    assert.ok(css.includes('.mvc__track') && css.includes('height: 4px;') && css.includes('height: 7px;'), 'Track must be thin (4px) at rest and expand to 7px on interaction');
     assert.ok(css.includes('.mvc__fill') && css.includes('.mvc__thumb'), 'Must render filled track and circular thumb');
   });
 

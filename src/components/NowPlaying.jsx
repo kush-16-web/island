@@ -9,6 +9,7 @@ import { island } from '../lib/bridge';
 import MarqueeText from './MarqueeText';
 import MiniLyrics from './MiniLyrics';
 import MusicVolumeControl from './MusicVolumeControl';
+import SongProgressBar from './SongProgressBar';
 import CompanionEyes from './CompanionEyes';
 import FullLyrics, { sharedLyricsTransition } from './FullLyrics';
 import VideoPiP from './VideoPiP';
@@ -684,7 +685,7 @@ export default function NowPlaying({
                           transition={sharedLyricsTransition}
                         />
                       ) : (
-                        <Art src={null} seed={seed} size={144} radius={14} />
+                        <Art src={null} seed={seed} size={164} radius={14} />
                       )}
                     </motion.div>
 
@@ -693,8 +694,16 @@ export default function NowPlaying({
                       className="np__meta np__meta--two-col"
                       transition={sharedLyricsTransition}
                     >
-                      <div className="np__title np__title--expanded" title={media.title}>{media.title || 'Now Playing'}</div>
-                      <div className="np__artist np__artist--expanded" title={media.artist}>{media.artist || 'Unknown artist'}</div>
+                      <MarqueeText
+                        text={media.title || 'Now Playing'}
+                        className="np__title np__title--expanded"
+                        centerWhenFits
+                      />
+                      <MarqueeText
+                        text={media.artist || 'Unknown artist'}
+                        className="np__artist np__artist--expanded"
+                        centerWhenFits
+                      />
                     </motion.div>
 
                     <motion.div
@@ -702,33 +711,18 @@ export default function NowPlaying({
                       className="np__progress np__progress--left"
                       transition={sharedLyricsTransition}
                     >
-                      <span className="np__time-text">{formatTrackTime(displayPosition)}</span>
-                      <div
-                        ref={barRef}
-                        className={`np__bar${isScrubbing ? ' is-scrubbing' : ''}`}
-                        onPointerDown={handlePointerDown}
-                        role="slider"
-                        aria-label="Seek track position"
-                        aria-valuemin={0}
-                        aria-valuemax={effectiveDurationMs || 100}
-                        aria-valuenow={displayPosition}
-                        tabIndex={0}
-                      >
-                        {hasDuration && (
-                          <div
-                            className="np__fill"
-                            style={{
-                              width: `${pct}%`,
-                              background: accentColor || 'var(--accent)',
-                            }}
-                          >
-                            <div className="np__thumb" />
-                          </div>
-                        )}
-                      </div>
-                      <span className="np__time-text">
-                        {hasDuration ? formatTrackTime(effectiveDurationMs) : 'Live'}
-                      </span>
+                      <SongProgressBar
+                        positionMs={displayPosition}
+                        durationMs={effectiveDurationMs}
+                        playing={playing}
+                        reportedAt={reportedAtMs}
+                        accentColor={accentColor}
+                        onSeek={(posSec) => {
+                          setOptimisticSeek({ posMs: posSec * 1000, timestamp: Date.now() });
+                          island?.media?.seek?.(posSec);
+                        }}
+                        canSeek={media.canSeek !== false}
+                      />
                     </motion.div>
 
                     <div className="np__controls np__controls--left-aligned">
@@ -799,13 +793,19 @@ export default function NowPlaying({
                       <div className="np__lyrics-popover-anchor" ref={popoverRef} style={{ display: 'inline-flex', alignItems: 'center' }}>
                         <button
                           type="button"
-                          className={`np__tab-pill np__tab-pill--gear${showLyricsStylePopover ? ' is-active' : ''}`}
+                          className={`np__tab-pill np__tab-pill--gear${showLyricsStylePopover ? ' is-active is-expanded' : ''}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             setShowLyricsStylePopover((prev) => !prev);
                           }}
                           title="Lyrics Appearance Settings"
                           aria-label="Lyrics appearance settings"
+                          style={{
+                            opacity: showLyricsStylePopover ? 0 : 1,
+                            transform: showLyricsStylePopover ? 'scale(0.8)' : 'scale(1)',
+                            pointerEvents: showLyricsStylePopover ? 'none' : 'auto',
+                            transition: 'opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                          }}
                         >
                           <Icon.Sliders width={12} height={12} />
                         </button>
@@ -820,7 +820,7 @@ export default function NowPlaying({
                               style={lyricsStyle}
                               onStyleChange={handleSelectLyricsStyle}
                               accentColor={accentColor}
-                              preferredPlacement="bottom"
+                              preferredPlacement="top"
                             />
                           )}
                         </AnimatePresence>
