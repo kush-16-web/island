@@ -174,6 +174,7 @@ export default function MetaBalls({
   enableTransparency = true,
   paused = false,
   beatPulse = 0,
+  bloomPulse = 0,
   className = '',
   style = {},
 }) {
@@ -227,6 +228,9 @@ export default function MetaBalls({
 
   const beatPulseRef = useRef(beatPulse);
   beatPulseRef.current = beatPulse;
+
+  const bloomPulseRef = useRef(bloomPulse);
+  bloomPulseRef.current = bloomPulse;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -295,6 +299,7 @@ export default function MetaBalls({
     for (let i = 0; i < MAX_BALLS; i++) {
       const h1 = hash31(i + 1);
       const h2 = hash33([i + 1, (i + 1) * 2, (i + 1) * 3]);
+      const isSatellite = i >= 8;
       balls.push({
         x: (h1[0] - 0.5) * 16,
         y: (h1[1] - 0.5) * 16,
@@ -308,6 +313,10 @@ export default function MetaBalls({
         q22: 1,
         qw: 0,
         cluster: i % 3,
+        isSatellite,
+        satelliteProgress: isSatellite ? ((i - 8) / 6) : 0,
+        satelliteAngle: (h2[2] - 0.5) * Math.PI * 0.85,
+        satelliteSpeed: 0.25 + h1[1] * 0.35,
       });
     }
 
@@ -338,7 +347,15 @@ export default function MetaBalls({
 
       for (let i = 0; i < count; i++) {
         const b = balls[i];
-        const r = b.radius * (1 + beat * 0.18);
+        let r;
+        if (b.isSatellite) {
+          // Satellite calving droplet: bridges, pinches off, and evaporates as it drifts into the void
+          const fade = Math.max(0, 1.0 - Math.pow(b.satelliteProgress, 1.4));
+          r = b.radius * 0.72 * fade * (1 + beat * 0.18);
+        } else {
+          // Mother core swells smoothly on beat
+          r = b.radius * (1 + beat * 0.18);
+        }
         ballData[i * 4] = b.x;
         ballData[i * 4 + 1] = b.y;
         ballData[i * 4 + 2] = r * r;
@@ -346,16 +363,32 @@ export default function MetaBalls({
         shapeOf(b, shapeData, i * 4);
       }
 
+      // Buoyant living aquatic float (gently wanders ±2% X and ±3.5% Y to feel alive and floating)
+      const driftX = Math.sin(clock * 0.32) * 0.02;
+      const driftY = Math.cos(clock * 0.24) * 0.035;
+      const originX = (s.originX ?? 0.72) + driftX;
+      const originY = (s.originY ?? 0.50) + driftY;
+
+      // Soft, warm ambient luminescence: only fires on heavy musical accents, easy on the eyes
+      const baseRgb = rgb(s.color);
+      const bloom = clamp(bloomPulseRef.current || 0, 0, 1);
+      // Soft, warm golden ember lift: never harsh white strobe
+      const bloomedColor = [
+        Math.min(1.0, baseRgb[0] * (1 + bloom * 0.18) + bloom * 0.07),
+        Math.min(1.0, baseRgb[1] * (1 + bloom * 0.14) + bloom * 0.04),
+        Math.min(1.0, baseRgb[2] * (1 + bloom * 0.08) + bloom * 0.015),
+      ];
+
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(loc.resolution, canvas.width, canvas.height);
-      gl.uniform2f(loc.origin, s.originX ?? 0.72, s.originY ?? 0.50);
+      gl.uniform2f(loc.origin, originX, originY);
       gl.uniform1f(loc.scale, s.animationSize / Math.max(1, canvas.height));
       gl.uniform4fv(loc.balls, ballData);
       gl.uniform4fv(loc.shapes, shapeData);
       gl.uniform1i(loc.count, count);
       gl.uniform1f(loc.gamma, gamma);
       gl.uniform1f(loc.threshold, threshold);
-      gl.uniform3fv(loc.color, rgb(s.color));
+      gl.uniform3fv(loc.color, bloomedColor);
       gl.uniform3fv(loc.cursorColor, rgb(s.cursorBallColor));
       gl.uniform1i(loc.variant, VARIANTS[s.variant] ?? 0);
       gl.uniform1f(loc.line, Math.max(0.25, s.lineWidth));
@@ -370,35 +403,59 @@ export default function MetaBalls({
 
     const step = (dt, s, count) => {
       const beat = beatPulseRef.current || 0;
-      const spd = s.speed * 8 * (1 + beat * 0.15);
+      const spd = s.speed * 8 * (1 + beat * 0.20);
       const clump = s.clumpFactor * 0.12;
 
       for (let i = 0; i < count; i++) {
         const b = balls[i];
-        // Organic orbital wandering
-        b.phase += dt * b.freq * spd * 0.5;
-        const targetX = Math.cos(b.phase + b.cluster * 2.1) * (7 + b.cluster * 3);
-        const targetY = Math.sin(b.phase * 1.2 + b.cluster) * (5 + b.cluster * 2);
 
-        b.vx += (targetX - b.x) * clump * dt * 8;
-        b.vy += (targetY - b.y) * clump * dt * 8;
+        if (b.isSatellite) {
+          // Satellite calving droplet: pinches off from mother core, drifts away, shrinks & dissolves
+          b.satelliteProgress += dt * b.satelliteSpeed * spd * 0.22 * (1 + beat * 0.4);
+          if (b.satelliteProgress >= 1.0) {
+            b.satelliteProgress = 0;
+            // Float outward into the spacious right and upper/lower right void (-75deg to +75deg), keeping lyrics clear
+            b.satelliteAngle = (Math.random() - 0.5) * Math.PI * 0.85;
+            b.satelliteSpeed = 0.25 + Math.random() * 0.35;
+          }
 
-        b.vx *= 0.94;
-        b.vy *= 0.94;
+          // Gentle outward curved floating trajectory
+          const dist = b.satelliteProgress * 14;
+          b.x = Math.cos(b.satelliteAngle) * dist + Math.sin(clock * 0.8 + i) * 1.5;
+          b.y = Math.sin(b.satelliteAngle) * dist + Math.cos(clock * 0.6 + i) * 1.5;
 
-        b.x += b.vx * dt * spd;
-        b.y += b.vy * dt * spd;
+          // Droplet surface tension stretch along trajectory
+          const angle = b.satelliteAngle;
+          const stretchAmount = clamp(0.15 + beat * 0.2, 0, 0.4);
+          b.q11 = 1 + stretchAmount * Math.cos(angle) * Math.cos(angle);
+          b.q12 = stretchAmount * Math.cos(angle) * Math.sin(angle);
+          b.q22 = 1 + stretchAmount * Math.sin(angle) * Math.sin(angle);
+        } else {
+          // Mother core: organic orbital wandering around center
+          b.phase += dt * b.freq * spd * 0.5;
+          const targetX = Math.cos(b.phase + b.cluster * 2.1) * (6 + b.cluster * 2.5);
+          const targetY = Math.sin(b.phase * 1.2 + b.cluster) * (4.5 + b.cluster * 2);
 
-        // Fluid liquid deform / stretch
-        const vLen = Math.hypot(b.vx, b.vy);
-        const stretchAmount = clamp(vLen * s.stretch * 0.2 + beat * 0.22, 0, 0.55);
-        const angle = Math.atan2(b.vy, b.vx);
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
+          b.vx += (targetX - b.x) * clump * dt * 8;
+          b.vy += (targetY - b.y) * clump * dt * 8;
 
-        b.q11 = 1 + stretchAmount * cos * cos;
-        b.q12 = stretchAmount * cos * sin;
-        b.q22 = 1 + stretchAmount * sin * sin;
+          b.vx *= 0.94;
+          b.vy *= 0.94;
+
+          b.x += b.vx * dt * spd;
+          b.y += b.vy * dt * spd;
+
+          // Fluid liquid deform / stretch
+          const vLen = Math.hypot(b.vx, b.vy);
+          const stretchAmount = clamp(vLen * s.stretch * 0.2 + beat * 0.25, 0, 0.55);
+          const angle = Math.atan2(b.vy, b.vx);
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+
+          b.q11 = 1 + stretchAmount * cos * cos;
+          b.q12 = stretchAmount * cos * sin;
+          b.q22 = 1 + stretchAmount * sin * sin;
+        }
       }
     };
 

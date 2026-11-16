@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { computeGazeOffset } from '../lib/companion-gaze';
 
@@ -8,13 +8,102 @@ const MAX_OFFSET_BY_SIZE = {
   lg: 3.8,
 };
 
+function EyeGlyph({ type, isLeft, dims }) {
+  if (type === 'happy') {
+    // Upward smiling curved arches ^ ^ (⌒ ⌒)
+    return (
+      <svg
+        width={dims.eyeW}
+        height={dims.eyeH}
+        viewBox="0 0 10 14"
+        overflow="visible"
+      >
+        <path
+          d="M 1,9.5 Q 5,2.5 9,9.5"
+          stroke="currentColor"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          fill="none"
+        />
+      </svg>
+    );
+  }
+
+  if (type === 'squint') {
+    // Focused thinking or energetic squint > <
+    const d = isLeft
+      ? 'M 2,2.8 L 8,7 L 2,11.2'
+      : 'M 8,2.8 L 2,7 L 8,11.2';
+    return (
+      <svg
+        width={dims.eyeW}
+        height={dims.eyeH}
+        viewBox="0 0 10 14"
+        overflow="visible"
+      >
+        <path
+          d={d}
+          stroke="currentColor"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      </svg>
+    );
+  }
+
+  if (type === 'sleep') {
+    // Relaxed horizontal slit - -
+    return (
+      <svg
+        width={dims.eyeW}
+        height={dims.eyeH}
+        viewBox="0 0 10 14"
+        overflow="visible"
+      >
+        <line
+          x1="1"
+          y1="7"
+          x2="9"
+          y2="7"
+          stroke="currentColor"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+
+  // Classic vertical capsule | | (cursor-tracking pupil)
+  return (
+    <svg
+      width={dims.eyeW}
+      height={dims.eyeH}
+      viewBox="0 0 10 14"
+      overflow="visible"
+    >
+      <rect
+        x="0"
+        y="0"
+        width="10"
+        height="14"
+        rx="5"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 /**
- * CompanionEyes — Expressive 2D Little Island Personality
+ * CompanionEyes — Expressive Morphing Little Island Personality
  *
- * - Subtle cursor-following pupils (in-window pointer tracking + safe Electron cursor context)
- * - Natural randomized blinking (3.8s – 6.4s) that never interrupts gaze direction permanently
- * - Gentle return to neutral on pointer exit or inactivity
- * - Respects companionAnimations preference and prefers-reduced-motion
+ * - Morphing emoji expressions:
+ *   - Music Vibing: Stably smiling happy arches ^ ^ (⌒ ⌒) nodding rhythmically to the song
+ *   - Thinking / Voice: Focused squint > <
+ *   - Paused / Idle: Classic vertical capsules | | with cursor-following pupils
+ * - Expressive head-bop bounce on beats (nodding down and bouncing up)
+ * - Natural randomized blinking (when in idle capsule mode)
  */
 export default function CompanionEyes({
   mood = 'idle',
@@ -28,13 +117,34 @@ export default function CompanionEyes({
   const rootRef = useRef(null);
   const [isBlinking, setIsBlinking] = useState(false);
   const [gaze, setGaze] = useState({ x: 0, y: 0 });
+  const [headBop, setHeadBop] = useState(0);
   const blinkTimerRef = useRef(null);
   const inactivityTimerRef = useRef(null);
   const lastCursorRef = useRef({ x: null, y: null, ts: 0 });
 
   const maxOffset = MAX_OFFSET_BY_SIZE[size] || MAX_OFFSET_BY_SIZE.md;
 
-  // Natural randomized blinking (independent of gaze direction)
+  // Music beat reactive head-bop nodding
+  useEffect(() => {
+    if (!canAnimate) return;
+    let bopTimer = null;
+    const handleBeat = (e) => {
+      const val = Math.min(1.0, (e.detail?.transient || 0.18) * 2.2);
+      setHeadBop(val);
+      if (bopTimer) clearTimeout(bopTimer);
+      bopTimer = setTimeout(() => {
+        setHeadBop(0);
+      }, 150);
+    };
+
+    window.addEventListener('island:music-beat', handleBeat);
+    return () => {
+      window.removeEventListener('island:music-beat', handleBeat);
+      if (bopTimer) clearTimeout(bopTimer);
+    };
+  }, [canAnimate]);
+
+  // Natural randomized blinking (only active during open capsule mode)
   useEffect(() => {
     if (!canAnimate) {
       setIsBlinking(false);
@@ -121,7 +231,6 @@ export default function CompanionEyes({
     if (typeof window !== 'undefined' && typeof window.island?.getCursorContext === 'function') {
       pollTimer = setInterval(async () => {
         if (unmounted || document.visibilityState === 'hidden') return;
-        // If in-window pointermove fired very recently (< 140ms), skip redundant IPC
         if (Date.now() - lastCursorRef.current.ts < 140) return;
         try {
           const ctx = await window.island.getCursorContext();
@@ -130,7 +239,6 @@ export default function CompanionEyes({
             return;
           }
           lastCursorRef.current = { x: ctx.cursorX, y: ctx.cursorY, ts: Date.now() };
-          // Electron screen.getCursorScreenPoint() and win.getBounds() are in DIPs matching CSS pixels
           const localX = ctx.cursorX - ctx.winX;
           const localY = ctx.cursorY - ctx.winY;
           updateGazeFromClientPoint(localX, localY, 560);
@@ -148,20 +256,36 @@ export default function CompanionEyes({
     };
   }, [canAnimate, maxOffset]);
 
-  // Combine cursor gaze with subtle contextual mood expression
+  // Determine active expression glyph:
+  // While playing music, STAY consistently in happy smiling arches ^ ^ (⌒ ⌒)! No rapid switching!
+  let eyeType = 'capsule';
+  if (mood === 'thinking' || mood === 'voice') {
+    eyeType = 'squint'; // > <
+  } else if (mood === 'timer_complete') {
+    eyeType = 'sleep'; // - -
+  } else if (mood === 'music' || mood === 'vibing') {
+    eyeType = 'happy'; // Stably happy smiling arches ^ ^ during music playback
+  }
+
+  // Combine cursor gaze with contextual mood expression
   let offsetX = canAnimate ? gaze.x : 0;
   let offsetY = canAnimate ? gaze.y : 0;
-  let eyeScaleY = isBlinking ? 0.08 : 1;
+  // Blinking only applies when eyes are open capsules (idle/paused), never flattens smiling arches!
+  let eyeScaleY = (eyeType === 'capsule' && isBlinking) ? 0.08 : 1;
+  let eyeScaleX = 1;
+  let eyeRotate = 0;
 
   if (canAnimate) {
-    if (mood === 'music_arriving' && offsetX === 0 && offsetY === 0) {
-      offsetX = -1.6;
+    if (mood === 'music' || mood === 'vibing') {
+      if (offsetX === 0 && offsetY === 0) {
+        offsetY = 1.0; // Sweet listening gaze tilted downward towards lyrics
+      }
+      eyeScaleY = 0.90 - headBop * 0.18; // Smooth head nod squash on beat
+      eyeScaleX = 1.0 + headBop * 0.08;
+      eyeRotate = Math.sin(Date.now() / 340) * (2.2 + headBop * 1.8); // Gentle rhythmic groove tilt
+      offsetY += headBop * 2.4; // Vertical head-bop bounce
     } else if (mood === 'notification') {
       eyeScaleY = isBlinking ? 0.08 : 1.12;
-    } else if (mood === 'voice' || mood === 'thinking') {
-      eyeScaleY = isBlinking ? 0.08 : 0.88;
-    } else if (mood === 'timer_complete') {
-      eyeScaleY = 0.42;
     }
   }
 
@@ -180,51 +304,51 @@ export default function CompanionEyes({
       ref={rootRef}
       className={`companion-eyes companion-eyes--${size} ${className}`.trim()}
       data-mood={mood}
+      data-expression={eyeType}
       aria-hidden="true"
     >
-      <svg
-        width={dims.w}
-        height={dims.h}
-        viewBox={`0 0 ${dims.w} ${dims.h}`}
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: dims.w,
+          height: dims.h,
+          position: 'relative',
+        }}
       >
         {/* Left Eye */}
-        <g
+        <div
           style={{
-            transform: `translate(${offsetX}px, ${offsetY}px) scaleY(${eyeScaleY})`,
-            transformOrigin: `${leftX + dims.eyeW / 2}px ${dims.h / 2}px`,
-            transition: canAnimate ? 'transform 115ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+            position: 'absolute',
+            left: leftX,
+            top: topY,
+            width: dims.eyeW,
+            height: dims.eyeH,
+            transform: `translate(${offsetX}px, ${offsetY}px) rotate(${eyeRotate}deg) scale(${eyeScaleX}, ${eyeScaleY})`,
+            transformOrigin: 'center center',
+            transition: canAnimate ? 'transform 110ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
           }}
         >
-          <rect
-            x={leftX}
-            y={topY}
-            width={dims.eyeW}
-            height={dims.eyeH}
-            rx={dims.rx}
-            fill="currentColor"
-          />
-        </g>
+          <EyeGlyph type={eyeType} isLeft={true} dims={dims} />
+        </div>
 
         {/* Right Eye */}
-        <g
+        <div
           style={{
-            transform: `translate(${offsetX}px, ${offsetY}px) scaleY(${eyeScaleY})`,
-            transformOrigin: `${rightX + dims.eyeW / 2}px ${dims.h / 2}px`,
-            transition: canAnimate ? 'transform 115ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+            position: 'absolute',
+            left: rightX,
+            top: topY,
+            width: dims.eyeW,
+            height: dims.eyeH,
+            transform: `translate(${offsetX}px, ${offsetY}px) rotate(${eyeRotate}deg) scale(${eyeScaleX}, ${eyeScaleY})`,
+            transformOrigin: 'center center',
+            transition: canAnimate ? 'transform 110ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
           }}
         >
-          <rect
-            x={rightX}
-            y={topY}
-            width={dims.eyeW}
-            height={dims.eyeH}
-            rx={dims.rx}
-            fill="currentColor"
-          />
-        </g>
-      </svg>
+          <EyeGlyph type={eyeType} isLeft={false} dims={dims} />
+        </div>
+      </div>
     </span>
   );
 }

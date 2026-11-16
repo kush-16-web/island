@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import MetaBalls from './animations/MetaBalls';
+import FluidAurora from './animations/FluidAurora';
+import AeroShards from './animations/AeroShards';
 
 /**
  * AmbientLiquidMetaballs — Official ReactBits WebGL2 Engine for Island.
@@ -22,7 +24,7 @@ let sharedAudioContext = null;
 let sharedAnalyser = null;
 let capturePromise = null;
 
-async function getLoopbackAnalyser() {
+export async function getLoopbackAnalyser() {
   if (sharedAnalyser && sharedAudioContext && sharedAudioContext.state !== 'closed') {
     if (sharedAudioContext.state === 'suspended') {
       await sharedAudioContext.resume().catch(() => {});
@@ -58,8 +60,8 @@ async function getLoopbackAnalyser() {
       const audioCtx = new AudioCtx();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.45;
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.15;
 
       // Note: Never connect analyser to audioCtx.destination! Zero feedback loop.
       source.connect(analyser);
@@ -87,22 +89,27 @@ export default function AmbientLiquidMetaballs({
   className = '',
 }) {
   const [pulse, setPulse] = useState(0);
+  const [bloom, setBloom] = useState(0);
   const animRef = useRef(null);
   const analyserRef = useRef(null);
 
   useEffect(() => {
     if (mode === 'off' || !isPlaying) {
       setPulse(0);
+      setBloom(0);
       return;
     }
 
     let active = true;
     let t = 0;
     let decay = 0;
+    let bloomDecay = 0;
+    let lastBloomTime = 0;
+    let prevSubBass = 0;
     let prevBass = 0;
     let prevMid = 0;
     let prevHigh = 0;
-    const freqData = new Uint8Array(128);
+    const freqData = new Uint8Array(512);
 
     getLoopbackAnalyser().then((analyser) => {
       if (active && analyser) {
@@ -117,64 +124,92 @@ export default function AmbientLiquidMetaballs({
       if (analyser) {
         analyser.getByteFrequencyData(freqData);
 
-        // Multi-Band Spectrum:
-        // 1. Low / Sub-bass / Kicks (~40Hz - 340Hz)
+        // High-Precision Multi-Band Spectrum (fftSize = 1024, ~46.9Hz per bin):
+        // 1. Sub-Bass & Deep Kicks (~47Hz - 141Hz, e.g. FE!N 808s, One More Hour floor toms)
+        let subSum = 0;
+        for (let i = 1; i <= 3; i++) subSum += freqData[i];
+        const currentSubBass = subSum / (3 * 255);
+
+        // 2. Punch & Bass Body (~141Hz - 328Hz)
         let bassSum = 0;
-        for (let i = 1; i <= 4; i++) bassSum += freqData[i];
+        for (let i = 4; i <= 7; i++) bassSum += freqData[i];
         const currentBass = bassSum / (4 * 255);
 
-        // 2. Mids / Claps / Snares / Guitars / Marimbas (~350Hz - 1900Hz)
+        // 3. Mids / Claps / Snares / Vocals (~375Hz - 1875Hz, e.g. Harleys In Hawaii rimshots)
         let midSum = 0;
-        for (let i = 5; i <= 22; i++) midSum += freqData[i];
-        const currentMid = midSum / (18 * 255);
+        for (let i = 8; i <= 40; i++) midSum += freqData[i];
+        const currentMid = midSum / (33 * 255);
 
-        // 3. Highs / Percussion / Hats / Shakers (~2000Hz - 5500Hz)
+        // 4. Highs / Crisp Percussion / Hi-hats (~1900Hz - 6000Hz)
         let highSum = 0;
-        for (let i = 23; i <= 64; i++) highSum += freqData[i];
-        const currentHigh = highSum / (42 * 255);
+        for (let i = 41; i <= 128; i++) highSum += freqData[i];
+        const currentHigh = highSum / (88 * 255);
 
-        // Positive Spectral Flux (instantaneous energy jump per band)
+        // Positive Spectral Flux (instantaneous energy rise per musical band)
+        const subFlux = Math.max(0, currentSubBass - prevSubBass);
         const bassFlux = Math.max(0, currentBass - prevBass);
         const midFlux = Math.max(0, currentMid - prevMid);
         const highFlux = Math.max(0, currentHigh - prevHigh);
 
+        prevSubBass = currentSubBass;
         prevBass = currentBass;
         prevMid = currentMid;
         prevHigh = currentHigh;
 
         // Weighted transient onset:
-        // Catches deep bass drops + snappy claps/snares with smooth, musical elasticity
+        // Deep sub-bass drops + sharp rimshots/claps get priority weighting
         const transient = Math.max(
+          subFlux * 3.2,
           bassFlux * 2.4,
           midFlux * 1.8,
-          highFlux * 1.2
+          highFlux * 1.3
         );
 
-        if (transient > 0.08) {
-          // Smooth additive pulse: no lockout, catches consecutive 8th/16th note beats
-          decay = Math.min(0.65, decay * 0.5 + transient * 0.7);
+        if (transient > 0.05) {
+          // Sharp punchy attack with fast recovery for consecutive trap beats & rolls
+          decay = Math.min(1.0, decay * 0.35 + transient * 0.95);
+          if (transient > 0.09 && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('island:music-beat', {
+              detail: { transient, subBass: currentSubBass }
+            }));
+          }
         } else {
-          // Natural bouncy fluid decay
-          decay = Math.max(0, decay * 0.86 - 0.012);
+          // Snappy, organic fluid decay
+          decay = Math.max(0, decay * 0.82 - 0.015);
         }
 
-        // Ambient groove breathing from overall music presence
-        const presence = (currentBass * 0.35 + currentMid * 0.32 + currentHigh * 0.24) * 0.26;
-        const totalPulse = Math.min(0.75, decay + presence);
+        // Accent Gating for Warm Light Bloom:
+        // Only fires on true heavy musical drops (transient > 0.28) with a 750ms phrasing cooldown
+        // Eliminates continuous strobe/disco flashing and keeps lighting warm and gentle on the eyes
+        const now = performance.now();
+        if (transient > 0.28 && (now - lastBloomTime > 750)) {
+          bloomDecay = Math.min(1.0, transient * 1.1);
+          lastBloomTime = now;
+        } else {
+          // Soft, gentle ember fade
+          bloomDecay = Math.max(0, bloomDecay * 0.91 - 0.015);
+        }
+
+        // Ambient groove presence from overall music energy
+        const presence = (currentSubBass * 0.40 + currentBass * 0.30 + currentMid * 0.20 + currentHigh * 0.10) * 0.28;
+        const totalPulse = Math.min(1.0, decay + presence);
 
         // If audio stream is silent/idle, smoothly blend with organic ambient wave
-        if (currentBass === 0 && currentMid === 0 && currentHigh === 0) {
+        if (currentSubBass === 0 && currentBass === 0 && currentMid === 0 && currentHigh === 0) {
           t += 0.035;
           const fallbackBeat = Math.pow(Math.sin(t * 1.8), 6) * 0.35 + Math.pow(Math.sin(t * 0.9), 2) * 0.12;
           setPulse(fallbackBeat);
+          setBloom(0);
         } else {
           setPulse(totalPulse);
+          setBloom(bloomDecay);
         }
       } else {
         // Fallback transient pulse wave
         t += 0.035;
         const beat = Math.pow(Math.sin(t * 1.8), 6) * 0.35 + Math.pow(Math.sin(t * 0.9), 2) * 0.12;
         setPulse(beat);
+        setBloom(0);
       }
 
       animRef.current = requestAnimationFrame(tick);
@@ -192,26 +227,47 @@ export default function AmbientLiquidMetaballs({
   const isWhite = mode === 'white';
   const color = isWhite ? '#ffffff' : (accentColor || '#ff3b69');
 
+  const isShards = mode === 'shards' || mode === 'aeroshards';
+
   return (
     <div
-      className={`island-liquid-metaballs ${className}`}
+      className={`island-liquid-metaballs${isShards ? ' island-liquid-metaballs--shards' : ''} ${className}`}
       aria-hidden="true"
     >
-      <MetaBalls
-        color={color}
-        speed={isPlaying ? 0.35 : 0}
-        ballCount={14}
-        clumpFactor={1.0}
-        gooeyness={0.55}
-        wobble={0.5}
-        stretch={0.55}
-        animationSize={24}
-        originX={0.72}
-        originY={0.50}
-        enableTransparency={true}
-        paused={!isPlaying}
-        beatPulse={pulse}
-      />
+      {mode === 'shards' || mode === 'aeroshards' ? (
+        <AeroShards
+          color={color}
+          speed={isPlaying ? 0.35 : 0}
+          paused={!isPlaying}
+          beatPulse={pulse}
+          bloomPulse={bloom}
+        />
+      ) : mode === 'aurora' || mode === 'fluid' ? (
+        <FluidAurora
+          color={color}
+          speed={isPlaying ? 0.35 : 0}
+          paused={!isPlaying}
+          beatPulse={pulse}
+          bloomPulse={bloom}
+        />
+      ) : (
+        <MetaBalls
+          color={color}
+          speed={isPlaying ? 0.35 : 0}
+          ballCount={14}
+          clumpFactor={1.0}
+          gooeyness={0.55}
+          wobble={0.5}
+          stretch={0.55}
+          animationSize={24}
+          originX={0.72}
+          originY={0.50}
+          enableTransparency={true}
+          paused={!isPlaying}
+          beatPulse={pulse}
+          bloomPulse={bloom}
+        />
+      )}
     </div>
   );
 }

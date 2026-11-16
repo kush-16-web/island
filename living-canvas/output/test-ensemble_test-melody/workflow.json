@@ -24,7 +24,7 @@
         ],
         "sampler_name": "euler_ancestral",
         "scheduler": "karras",
-        "seed": 461003791,
+        "seed": 126226764,
         "steps": 30
       }
     },

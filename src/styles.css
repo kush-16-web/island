@@ -515,10 +515,11 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 .eq.is-playing i:nth-child(2) { animation: eq-wave-2 0.8s cubic-bezier(0.4, 0, 0.2, 1) -0.22s infinite; }
 .eq.is-playing i:nth-child(3) { animation: eq-wave-3 1.3s cubic-bezier(0.4, 0, 0.2, 1) -0.45s infinite; }
 .eq.is-playing i:nth-child(4) { animation: eq-wave-4 0.95s cubic-bezier(0.4, 0, 0.2, 1) -0.32s infinite; }
+.eq.is-live i { animation: none !important; transition: transform 0.08s cubic-bezier(0.2, 0.8, 0.4, 1); }
 
 .eq.is-paused i {
-  transform: scaleY(0.2);
-  transition: transform 0.25s ease;
+  transform: scaleY(0.2) !important;
+  transition: transform 0.25s ease !important;
 }
 
 @keyframes eq-wave-1 {
@@ -1197,6 +1198,14 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   opacity: 0.68;
   filter: blur(6px) saturate(160%);
   transition: opacity 0.4s ease;
+}
+
+.island-liquid-metaballs--shards {
+  filter: none !important;
+  -webkit-filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  opacity: 1 !important;
 }
 
 .ilm__svg-stage {

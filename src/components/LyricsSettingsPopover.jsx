@@ -263,13 +263,14 @@ export default function LyricsSettingsPopover({
           </div>
         </div>
 
-        {/* 3. Liquid Metaballs Backdrop Selector */}
+        {/* 3. Liquid Metaballs, Aero Shards & Aurora Backdrop Selector */}
         <div className="lsp__group">
           <span className="lsp__group-label" id="lsp-metaballs-label">Liquid aura</span>
           <div className="lsp__pill-row" role="radiogroup" aria-labelledby="lsp-metaballs-label">
             {[
-              { id: 'dynamic', label: 'Dynamic' },
-              { id: 'white', label: 'White' },
+              { id: 'dynamic', label: 'Metaballs' },
+              { id: 'shards', label: 'Aero shards' },
+              { id: 'aurora', label: 'Aurora wave' },
               { id: 'off', label: 'Off' },
             ].map((opt) => (
               <button

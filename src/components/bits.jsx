@@ -1,5 +1,7 @@
+import React, { useEffect, useRef, useState } from 'react';
 import { hueFrom } from '../lib/format';
 import { Icon } from './icons';
+import { getLoopbackAnalyser } from './AmbientLiquidMetaballs';
 
 const KIND_COLOR = {
   info: 'var(--c-info)',
@@ -11,12 +13,95 @@ const KIND_COLOR = {
 export const kindColor = (kind) => KIND_COLOR[kind] || KIND_COLOR.info;
 
 export function Equalizer({ color = 'currentColor', playing = true }) {
+  const [bars, setBars] = useState([0.2, 0.2, 0.2, 0.2]);
+  const [isLive, setIsLive] = useState(false);
+  const rafRef = useRef(null);
+  const barsRef = useRef([0.2, 0.2, 0.2, 0.2]);
+
+  useEffect(() => {
+    if (!playing) {
+      setBars([0.2, 0.2, 0.2, 0.2]);
+      barsRef.current = [0.2, 0.2, 0.2, 0.2];
+      setIsLive(false);
+      return;
+    }
+
+    let active = true;
+    const freqData = new Uint8Array(256);
+
+    getLoopbackAnalyser().then((analyser) => {
+      if (!active || !analyser) return;
+      setIsLive(true);
+
+      const tick = () => {
+        if (!active) return;
+        analyser.getByteFrequencyData(freqData);
+
+        // Bar 1: Sub-Bass / Kicks (Bins 1-3, ~47-140Hz)
+        let b1 = 0;
+        for (let i = 1; i <= 3; i++) b1 += freqData[i];
+        const raw1 = (b1 / (3 * 255)) * 1.5;
+
+        // Bar 2: Low-Mids / Bassline (Bins 4-8, ~180-380Hz)
+        let b2 = 0;
+        for (let i = 4; i <= 8; i++) b2 += freqData[i];
+        const raw2 = (b2 / (5 * 255)) * 1.4;
+
+        // Bar 3: High-Mids / Vocals (Bins 9-28, ~400-1300Hz)
+        let b3 = 0;
+        for (let i = 9; i <= 28; i++) b3 += freqData[i];
+        const raw3 = (b3 / (20 * 255)) * 1.4;
+
+        // Bar 4: Treble / Cymbals / Hi-Hats (Bins 29-70, ~1400-3300Hz)
+        let b4 = 0;
+        for (let i = 29; i <= 70; i++) b4 += freqData[i];
+        const raw4 = (b4 / (42 * 255)) * 1.6;
+
+        const totalEnergy = b1 + b2 + b3 + b4;
+        const current = barsRef.current;
+
+        if (totalEnergy > 0) {
+          // Responsive attack (0.35) and smooth organic release
+          const target1 = Math.max(0.18, Math.min(1.0, raw1));
+          const target2 = Math.max(0.18, Math.min(1.0, raw2));
+          const target3 = Math.max(0.18, Math.min(1.0, raw3));
+          const target4 = Math.max(0.18, Math.min(1.0, raw4));
+
+          current[0] += (target1 - current[0]) * 0.35;
+          current[1] += (target2 - current[1]) * 0.35;
+          current[2] += (target3 - current[2]) * 0.35;
+          current[3] += (target4 - current[3]) * 0.35;
+        } else {
+          // Audio silence or paused track: smoothly glide down to rest level 0.2
+          current[0] += (0.2 - current[0]) * 0.22;
+          current[1] += (0.2 - current[1]) * 0.22;
+          current[2] += (0.2 - current[2]) * 0.22;
+          current[3] += (0.2 - current[3]) * 0.22;
+        }
+
+        setBars([current[0], current[1], current[2], current[3]]);
+        rafRef.current = requestAnimationFrame(tick);
+      };
+
+      rafRef.current = requestAnimationFrame(tick);
+    }).catch(() => {});
+
+    return () => {
+      active = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [playing]);
+
   return (
-    <span className={`eq${playing ? ' is-playing' : ' is-paused'}`} style={{ color }} aria-hidden="true">
-      <i />
-      <i />
-      <i />
-      <i />
+    <span
+      className={`eq${playing ? ' is-playing' : ' is-paused'}${isLive && playing ? ' is-live' : ''}`}
+      style={{ color }}
+      aria-hidden="true"
+    >
+      <i style={isLive && playing ? { transform: `scaleY(${bars[0]})` } : undefined} />
+      <i style={isLive && playing ? { transform: `scaleY(${bars[1]})` } : undefined} />
+      <i style={isLive && playing ? { transform: `scaleY(${bars[2]})` } : undefined} />
+      <i style={isLive && playing ? { transform: `scaleY(${bars[3]})` } : undefined} />
     </span>
   );
 }

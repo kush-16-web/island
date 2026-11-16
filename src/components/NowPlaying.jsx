@@ -736,7 +736,7 @@ export default function NowPlaying({
                         title="Open Utilities"
                         aria-label="Open Utilities"
                       >
-                        <CompanionEyes size="sm" mood={companionMood} animationsEnabled={companionAnimations} />
+                        <CompanionEyes size="sm" mood={playing ? 'music' : companionMood} animationsEnabled={companionAnimations} />
                       </button>
                     </div>
 
