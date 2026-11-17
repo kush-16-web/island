@@ -96,9 +96,11 @@ export default function AmbientLiquidMetaballs({
   className = '',
   originX = 0.52,
   originY = 0.58,
+  preset = 'spotlight',
 }) {
   const [pulse, setPulse] = useState(0);
   const [bloom, setBloom] = useState(0);
+  const [melody, setMelody] = useState(0);
   const animRef = useRef(null);
   const analyserRef = useRef(null);
 
@@ -266,9 +268,11 @@ export default function AmbientLiquidMetaballs({
           const fallbackBeat = Math.pow(Math.sin(t * 1.8), 6) * 0.35 + Math.pow(Math.sin(t * 0.9), 2) * 0.12;
           setPulse(fallbackBeat);
           setBloom(0);
+          setMelody(Math.pow(Math.sin(t * 1.2), 2) * 0.25);
         } else {
           setPulse(totalPulse);
           setBloom(bloomDecay);
+          setMelody(Math.min(1.0, currentMid * 1.8 + currentHigh * 1.2));
         }
       } else {
         // Fallback transient pulse wave
@@ -276,6 +280,7 @@ export default function AmbientLiquidMetaballs({
         const beat = Math.pow(Math.sin(t * 1.8), 6) * 0.35 + Math.pow(Math.sin(t * 0.9), 2) * 0.12;
         setPulse(beat);
         setBloom(0);
+        setMelody(Math.pow(Math.sin(t * 1.2), 2) * 0.25);
       }
 
       animRef.current = requestAnimationFrame(tick);
@@ -295,14 +300,16 @@ export default function AmbientLiquidMetaballs({
 
   const effectivePulse = isReactive ? pulse : 0;
   const effectiveBloom = isReactive ? bloom : 0;
+  const effectiveMelody = isReactive ? melody : 0;
   const effectiveSpeed = isPlaying ? 0.35 : 0;
 
   const isShards = mode === 'shards' || mode === 'aeroshards';
+  const isUnblurred = isShards || mode === 'light-rays';
 
   // Apply custom blur via inline style or CSS variable
   const containerStyle = {
-    filter: isShards ? 'none' : `blur(${customBlur}px) saturate(160%)`,
-    WebkitFilter: isShards ? 'none' : `blur(${customBlur}px) saturate(160%)`,
+    filter: isUnblurred ? 'none' : `blur(${customBlur}px) saturate(160%)`,
+    WebkitFilter: isUnblurred ? 'none' : `blur(${customBlur}px) saturate(160%)`,
   };
 
   return (
@@ -350,6 +357,8 @@ export default function AmbientLiquidMetaballs({
           paused={!isPlaying}
           beatPulse={effectivePulse}
           bloomPulse={effectiveBloom}
+          melodyPulse={effectiveMelody}
+          preset={preset}
         />
       ) : mode === 'aurora' || mode === 'fluid' ? (
         <FluidAurora

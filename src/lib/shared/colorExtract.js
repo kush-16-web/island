@@ -56,8 +56,33 @@ export function extractCoverColor(imageSrc, callback) {
       }
 
       if (buckets.length === 0) {
-        // Fallback: take average of non-black/white pixels
-        callback(null);
+        // Fallback for monochrome / black & white / silver albums (e.g. Sade Love Deluxe)
+        let totalR = 0;
+        let totalG = 0;
+        let totalB = 0;
+        let count = 0;
+        for (let i = 0; i < imgData.length; i += 4) {
+          const r = imgData[i];
+          const g = imgData[i + 1];
+          const b = imgData[i + 2];
+          const a = imgData[i + 3];
+          if (a < 128) continue;
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+          if (lum > 0.08 && lum < 0.95) {
+            totalR += r;
+            totalG += g;
+            totalB += b;
+            count++;
+          }
+        }
+        if (count > 0) {
+          const avgR = Math.round(totalR / count);
+          const avgG = Math.round(totalG / count);
+          const avgB = Math.round(totalB / count);
+          callback(`rgb(${avgR}, ${avgG}, ${avgB})`);
+          return;
+        }
+        callback('rgb(235, 238, 245)');
         return;
       }
 

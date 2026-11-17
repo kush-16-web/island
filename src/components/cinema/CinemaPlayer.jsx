@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import AmbientLiquidMetaballs from '../AmbientLiquidMetaballs';
 import SongProgressBar from '../SongProgressBar';
 import MusicVolumeControl from '../MusicVolumeControl';
@@ -19,6 +19,16 @@ const ATMOSPHERE_OPTIONS = [
   { id: 'ghost-fibers', name: 'Ghost Fibers' },
   { id: 'gradient-waves', name: 'Gradient Waves' },
   { id: 'light-rays', name: 'Light Rays' },
+];
+
+const LIGHT_RAY_PRESETS = [
+  { id: 'spotlight', name: 'Spotlight' },
+  { id: 'sunbeam', name: 'Sunbeam' },
+  { id: 'stage', name: 'Stage' },
+  { id: 'searchlight', name: 'Searchlight' },
+  { id: 'cathedral', name: 'Cathedral' },
+  { id: 'underwater', name: 'Underwater' },
+  { id: 'horizon', name: 'Horizon' },
 ];
 
 const CINEMA_LINE_HEIGHT = 84; // Vertical pitch for large cinematic lyrics
@@ -57,6 +67,14 @@ export default function CinemaPlayer() {
     }
   });
   const [showAtmosphereMenu, setShowAtmosphereMenu] = useState(false);
+  const [lightPreset, setLightPreset] = useState(() => {
+    try {
+      return localStorage.getItem('island_cinema_light_preset') || 'spotlight';
+    } catch {
+      return 'spotlight';
+    }
+  });
+  const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [isIdle, setIsIdle] = useState(false);
 
   const idleTimerRef = useRef(null);
@@ -113,6 +131,8 @@ export default function CinemaPlayer() {
     }
   }, [media?.positionMs, optimisticSeek]);
 
+  const pausedPositionRef = useRef(null);
+
   const basePosMs = Number.isFinite(media?.positionMs)
     ? media.positionMs
     : (Number(media?.positionSec) || Number(media?.position) || 0) * 1000;
@@ -127,7 +147,9 @@ export default function CinemaPlayer() {
   const rawPosition = Math.min(hasDuration ? effectiveDurationMs : Infinity, Math.max(0, basePosMs + elapsed));
 
   let displayPositionMs = rawPosition;
-  if (optimisticSeek && Date.now() - optimisticSeek.timestamp < 3000) {
+  if (!isPlaying && pausedPositionRef.current != null) {
+    displayPositionMs = pausedPositionRef.current;
+  } else if (optimisticSeek && Date.now() - optimisticSeek.timestamp < 3000) {
     const optElapsed = isPlaying ? Date.now() - optimisticSeek.timestamp : 0;
     displayPositionMs = Math.min(hasDuration ? effectiveDurationMs : Infinity, Math.max(0, optimisticSeek.posMs + optElapsed));
   }
@@ -182,6 +204,12 @@ export default function CinemaPlayer() {
         if (m) {
           setMedia(m);
           setIsPlaying(m.status === 'playing');
+          if (m.status !== 'playing' && pausedPositionRef.current != null) {
+            const diff = Math.abs((m.positionMs || 0) - pausedPositionRef.current);
+            if (diff < 2500) {
+              pausedPositionRef.current = null;
+            }
+          }
         }
       });
       const unsubAura = window.island.on('aura:settings-changed', (s) => {
@@ -267,6 +295,7 @@ export default function CinemaPlayer() {
     idleTimerRef.current = setTimeout(() => {
       setIsIdle(true);
       setShowAtmosphereMenu(false);
+      setShowPresetMenu(false);
     }, 3500);
   }, []);
 
@@ -304,7 +333,16 @@ export default function CinemaPlayer() {
 
   const handleControl = (action) => {
     if (action === 'playpause') {
-      setIsPlaying((p) => !p);
+      setIsPlaying((prev) => {
+        const next = !prev;
+        if (!next) {
+          // Freezing position at the exact current position so it doesn't jump backward
+          pausedPositionRef.current = displayPositionMs;
+        } else {
+          pausedPositionRef.current = null;
+        }
+        return next;
+      });
     }
     if (window.island?.media?.control) {
       window.island.media.control(action);
@@ -314,6 +352,9 @@ export default function CinemaPlayer() {
   const handleSeek = (posSec) => {
     const targetMs = Math.max(0, Math.min(hasDuration ? effectiveDurationMs : Infinity, posSec * 1000));
     setOptimisticSeek({ posMs: targetMs, timestamp: Date.now() });
+    if (!isPlaying) {
+      pausedPositionRef.current = targetMs;
+    }
     if (window.island?.media?.seek) {
       window.island.media.seek(posSec);
     }
@@ -322,6 +363,9 @@ export default function CinemaPlayer() {
   const handleSkip = (deltaSec) => {
     const targetMs = Math.max(0, Math.min(hasDuration ? effectiveDurationMs : Infinity, displayPositionMs + deltaSec * 1000));
     setOptimisticSeek({ posMs: targetMs, timestamp: Date.now() });
+    if (!isPlaying) {
+      pausedPositionRef.current = targetMs;
+    }
     if (window.island?.media?.seek) {
       window.island.media.seek(targetMs / 1000);
     }
@@ -344,27 +388,23 @@ export default function CinemaPlayer() {
   const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lines.length;
   const safeActiveIndex = hasActiveLine ? activeLineIndex : 0;
 
+  const CINEMA_LINE_HEIGHT = 68;
   const viewportRef = useRef(null);
-  const rowRefs = useRef([]);
-  const [reelY, setReelY] = useState(0);
+  const [viewportH, setViewportH] = useState(420);
 
-  // Measure and align active row to center of viewport with smooth spring physics
   useEffect(() => {
-    const measureAndCenter = () => {
-      if (!viewportRef.current) return;
-      const vpH = viewportRef.current.clientHeight || 420;
-      const activeEl = rowRefs.current[safeActiveIndex];
-      if (activeEl) {
-        const activeMid = activeEl.offsetTop + activeEl.offsetHeight / 2;
-        setReelY(vpH / 2 - activeMid);
-      } else {
-        setReelY(0);
-      }
+    if (!viewportRef.current) return;
+    const updateH = () => {
+      const h = viewportRef.current?.clientHeight;
+      if (h && h > 0) setViewportH(h);
     };
-    measureAndCenter();
-    window.addEventListener('resize', measureAndCenter);
-    return () => window.removeEventListener('resize', measureAndCenter);
-  }, [safeActiveIndex, lines.length]);
+    updateH();
+    window.addEventListener('resize', updateH);
+    return () => window.removeEventListener('resize', updateH);
+  }, []);
+
+  const centerOffset = viewportH / 2 - CINEMA_LINE_HEIGHT / 2;
+  const targetY = -safeActiveIndex * CINEMA_LINE_HEIGHT + centerOffset;
 
   return (
     <div
@@ -390,6 +430,7 @@ export default function CinemaPlayer() {
           isLoopbackDisabled={false}
           originX={0.69}
           originY={0.50}
+          preset={lightPreset}
         />
       </div>
       <div className="cinema-canvas-scrim" aria-hidden="true" />
@@ -436,32 +477,94 @@ export default function CinemaPlayer() {
             </p>
           </div>
 
-          {/* Atmosphere Visualizer Dropdown with Relevant Layers Icon */}
+          {/* Atmosphere Visualizer Dropdown & Preset Selector */}
           <div className="cinema-atmosphere-row">
-            <button
-              type="button"
-              className="cinema-atmosphere-btn"
-              onClick={() => setShowAtmosphereMenu((prev) => !prev)}
-            >
-              <Icon.Layers width={14} height={14} />
-              <span>
-                Atmosphere: {ATMOSPHERE_OPTIONS.find((a) => a.id === selectedEffect)?.name || 'Custom'}
-              </span>
-              <span style={{ fontSize: '10px', opacity: 0.7 }}>▾</span>
-            </button>
+            <div className="cinema-dropdown-wrapper">
+              <button
+                type="button"
+                className="cinema-atmosphere-btn"
+                onClick={() => {
+                  setShowAtmosphereMenu((prev) => !prev);
+                  setShowPresetMenu(false);
+                }}
+              >
+                <Icon.Layers width={14} height={14} />
+                <span>
+                  Atmosphere: {ATMOSPHERE_OPTIONS.find((a) => a.id === selectedEffect)?.name || 'Custom'}
+                </span>
+                <span style={{ fontSize: '10px', opacity: 0.7 }}>▾</span>
+              </button>
 
-            {showAtmosphereMenu && (
-              <div className="cinema-atmosphere-menu">
-                {ATMOSPHERE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    className={`cinema-atmosphere-item${selectedEffect === opt.id ? ' is-selected' : ''}`}
-                    onClick={() => handleSelectAtmosphere(opt.id)}
+              <AnimatePresence>
+                {showAtmosphereMenu && (
+                  <motion.div
+                    className="cinema-atmosphere-menu"
+                    initial={{ opacity: 0, scale: 0.92, y: 8 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.94, y: 6 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 26 }}
                   >
-                    <span>{opt.name}</span>
-                  </button>
-                ))}
+                    {ATMOSPHERE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        className={`cinema-atmosphere-item${selectedEffect === opt.id ? ' is-selected' : ''}`}
+                        onClick={() => handleSelectAtmosphere(opt.id)}
+                      >
+                        <span>{opt.name}</span>
+                        {selectedEffect === opt.id && <span className="cinema-atmosphere-check">✓</span>}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {selectedEffect === 'light-rays' && (
+              <div className="cinema-dropdown-wrapper">
+                <button
+                  type="button"
+                  className="cinema-atmosphere-btn cinema-preset-btn"
+                  onClick={() => {
+                    setShowPresetMenu((prev) => !prev);
+                    setShowAtmosphereMenu(false);
+                  }}
+                >
+                  <span>
+                    Preset: {LIGHT_RAY_PRESETS.find((p) => p.id === lightPreset)?.name || 'Spotlight'}
+                  </span>
+                  <span style={{ fontSize: '10px', opacity: 0.7 }}>▾</span>
+                </button>
+
+                <AnimatePresence>
+                  {showPresetMenu && (
+                    <motion.div
+                      className="cinema-atmosphere-menu cinema-preset-menu"
+                      initial={{ opacity: 0, scale: 0.92, y: 8 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.94, y: 6 }}
+                      transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+                    >
+                      {LIGHT_RAY_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`cinema-atmosphere-item${lightPreset === p.id ? ' is-selected' : ''}`}
+                          onClick={() => {
+                            setLightPreset(p.id);
+                            try {
+                              localStorage.setItem('island_cinema_light_preset', p.id);
+                            } catch {}
+                            setShowPresetMenu(false);
+                          }}
+                        >
+                          <span>{p.name}</span>
+                          {lightPreset === p.id && <span className="cinema-atmosphere-check">✓</span>}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
           </div>
@@ -550,12 +653,12 @@ export default function CinemaPlayer() {
             <div className="cinema-lyrics-reel" ref={viewportRef}>
               <motion.div
                 className="cinema-lyrics-reel__inner"
-                animate={{ y: reelY }}
-                transition={{ type: 'spring', stiffness: 220, damping: 28 }}
+                animate={{ y: targetY }}
+                transition={{ type: 'spring', stiffness: 240, damping: 26 }}
               >
                 {lines.map((line, idx) => {
                   const isActive = hasActiveLine && idx === activeLineIndex;
-                  const distance = hasActiveLine ? Math.abs(idx - activeLineIndex) : idx;
+                  const distance = hasActiveLine ? Math.abs(idx - activeLineIndex) : idx + 1;
                   const isWordSynced = Boolean(line?.syncType === 'word' || (line?.words && line.words.length > 0));
                   let lineClass = 'cinema-lyric-line';
                   if (isWordSynced) lineClass += ' is-word-synced';
@@ -566,8 +669,8 @@ export default function CinemaPlayer() {
                   return (
                     <div
                       key={line.id ?? line.timeMs ?? idx}
-                      ref={(el) => { rowRefs.current[idx] = el; }}
                       className={`cinema-lyric-row${isActive ? ' is-active' : distance === 1 ? ' is-adjacent' : ' is-far'}`}
+                      style={{ height: CINEMA_LINE_HEIGHT }}
                       onClick={() => {
                         if (!isActive && typeof line.timeMs === 'number') {
                           handleSeek(line.timeMs / 1000);
@@ -576,13 +679,14 @@ export default function CinemaPlayer() {
                     >
                       {isActive ? (
                         <PrecisionLyricLine
+                          key="active"
                           line={line}
                           currentPositionMs={displayPositionMs}
                           playing={isPlaying}
                           className={lineClass}
                         />
                       ) : (
-                        <div className={lineClass}>
+                        <div key="inactive" className={lineClass}>
                           {line.text || '...'}
                         </div>
                       )}

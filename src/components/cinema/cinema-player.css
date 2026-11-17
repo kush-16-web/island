@@ -212,6 +212,12 @@
   position: relative;
   display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+.cinema-dropdown-wrapper {
+  position: relative;
+  display: inline-flex;
 }
 
 .cinema-atmosphere-btn {
@@ -226,8 +232,9 @@
   font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
-  backdrop-filter: blur(16px);
-  transition: all 0.18s ease;
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  transition: all 0.18s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .cinema-atmosphere-btn:hover {
@@ -236,47 +243,88 @@
   color: #ffffff;
 }
 
+.cinema-atmosphere-btn:active {
+  transform: scale(0.96);
+}
+
+.cinema-preset-btn {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cinema-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
 .cinema-atmosphere-menu {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 10px);
   left: 0;
-  background: rgba(18, 20, 28, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 14px;
+  transform-origin: bottom left;
+  background: rgba(20, 22, 32, 0.72);
+  -webkit-backdrop-filter: blur(40px) saturate(190%) contrast(105%);
+  backdrop-filter: blur(40px) saturate(190%) contrast(105%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
   padding: 6px;
-  min-width: 180px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(28px);
+  min-width: 184px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 8px 16px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   z-index: 50;
+  overflow: hidden;
+}
+
+.cinema-preset-menu {
+  min-width: 154px;
 }
 
 .cinema-atmosphere-item {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.75);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: all 0.14s ease;
+  transition: background 0.14s ease, color 0.14s ease, transform 0.10s ease;
+  user-select: none;
 }
 
 .cinema-atmosphere-item:hover {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
 
+.cinema-atmosphere-item:active {
+  transform: scale(0.97);
+  background: rgba(255, 255, 255, 0.18);
+}
+
 .cinema-atmosphere-item.is-selected {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.20);
   color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.cinema-atmosphere-check {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  margin-left: 10px;
 }
 
 /* Big Controls & Scrubber Deck */
@@ -412,7 +460,7 @@
 .cinema-lyrics-reel {
   position: relative;
   width: 100%;
-  max-width: 780px;
+  max-width: 860px;
   height: 420px;
   overflow: hidden;
   mask-image: linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
@@ -428,7 +476,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
+  gap: 0;
   will-change: transform;
 }
 
@@ -437,10 +485,14 @@
   align-items: center;
   justify-content: center;
   width: 100%;
+  height: 68px;
+  min-height: 68px;
+  max-height: 68px;
   text-align: center;
   box-sizing: border-box;
-  padding: 4px 12px;
-  transition: opacity 0.3s cubic-bezier(0.2, 0, 0, 1), transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+  padding: 0 16px;
+  transition: opacity 0.28s ease;
+  overflow: visible;
 }
 
 .cinema-lyric-row.is-far {
@@ -455,7 +507,7 @@
 }
 
 .cinema-lyric-row.is-adjacent:hover {
-  opacity: 0.75;
+  opacity: 0.80;
 }
 
 .cinema-lyric-row.is-active {
@@ -463,60 +515,63 @@
 }
 
 .cinema-lyric-line {
-  font-size: 20px;
-  line-height: 1.45;
+  font-size: 21px;
+  line-height: 1.35;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.45);
-  transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease, font-size 0.25s ease;
+  transition: color 0.28s ease, opacity 0.28s ease;
   text-align: center;
   user-select: none;
   white-space: normal;
   word-break: break-word;
-  word-spacing: 0.34em;
+  word-spacing: 0.30em;
   letter-spacing: -0.005em;
-  max-width: 760px;
-  display: block;
+  max-width: 840px;
   width: 100%;
+  display: block;
+  margin: 0 auto;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }
 
 .cinema-lyric-line.is-adjacent {
-  font-size: 20px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.45);
-  opacity: 0.50;
-  word-spacing: 0.34em;
+  font-size: 21px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.75);
+  opacity: 1;
+  word-spacing: 0.30em;
 }
 
 .cinema-lyric-line.is-far {
+  font-size: 21px;
   opacity: 0 !important;
   pointer-events: none;
   visibility: hidden;
 }
 
 .cinema-lyric-line.is-active {
-  font-size: 29px;
+  font-size: 21px;
   font-weight: 700;
   color: #ffffff !important;
   opacity: 1 !important;
-  transform: scale(1.02);
-  word-spacing: 0.38em;
+  transform: none;
+  word-spacing: 0.30em;
   text-shadow: none;
   filter: none;
 }
 
-/* Precision lyric overrides inside Cinema Mode: lock dead center and allow natural line breaks */
+/* Precision lyric overrides inside Cinema Mode: lock dead center and smooth inline flow */
 .cinema-lyric-row .precision-lyric-container,
 .precision-lyric-container.cinema-lyric-line {
   width: 100% !important;
+  height: 100% !important;
   display: flex !important;
   justify-content: center !important;
   align-items: center !important;
   text-align: center !important;
   overflow: visible !important;
   white-space: normal !important;
-  word-spacing: 0.38em !important;
+  word-spacing: 0.30em !important;
   font: inherit;
 }
 
@@ -525,31 +580,30 @@
   text-align: center !important;
   white-space: normal !important;
   word-break: break-word !important;
-  word-spacing: 0.38em !important;
+  word-spacing: 0.30em !important;
   display: inline-block !important;
   width: auto !important;
   max-width: 100% !important;
   transform: none !important;
-  /* Allow centered natural wrapping rather than horizontal off-screen translate */
 }
 
 .cinema-lyric-row .karaoke-words,
 .precision-lyric-container.cinema-lyric-line .karaoke-words {
-  font: inherit;
-  text-align: center !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  gap: 0.30em !important;
   white-space: normal !important;
-  word-spacing: 0.38em !important;
-  display: inline !important;
 }
 
 .cinema-lyric-row .k-word,
 .precision-lyric-container.cinema-lyric-line .k-word {
   font: inherit;
-  font-size: 29px;
+  font-size: 21px;
   font-weight: 700;
-  white-space: normal !important;
+  white-space: nowrap !important;
   display: inline-block;
-  margin-right: 0.44em;
   font-synthesis: none;
 }
 
