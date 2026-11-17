@@ -75,10 +75,10 @@ function DevBar() {
 }
 
 export default function App() {
-  const hash = window.location.hash;
-  const isPetWin = hash === '#pet';
-  const isWorkspaceWin = hash === '#workspace';
-  const isSettingsWin = hash === '#settings';
+  const hash = window.location.hash || '';
+  const isPetWin = hash === '#pet' || hash.startsWith('#pet?');
+  const isWorkspaceWin = hash === '#workspace' || hash.startsWith('#workspace?');
+  const isSettingsWin = hash === '#settings' || hash.startsWith('#settings?');
 
   useEffect(() => {
     if (isMock && !isPetWin && !isWorkspaceWin && !isSettingsWin) {

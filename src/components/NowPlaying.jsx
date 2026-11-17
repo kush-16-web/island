@@ -196,7 +196,9 @@ export default function NowPlaying({
   const [showLyricsStylePopover, setShowLyricsStylePopover] = useState(false);
   const [metaballsMode, setMetaballsModeState] = useState(() => {
     try {
-      return localStorage.getItem('island_metaballs_mode') || 'dynamic';
+      const saved = localStorage.getItem('island_metaballs_mode');
+      if (saved === 'aurora') return 'classic';
+      return saved || 'dynamic';
     } catch {
       return 'dynamic';
     }
@@ -207,8 +209,29 @@ export default function NowPlaying({
     try {
       localStorage.setItem('island_metaballs_mode', newMode);
       window.dispatchEvent(new CustomEvent('island:metaballs-mode-changed', { detail: newMode }));
+      if (window.island?.setAuraSettings) {
+        window.island.setAuraSettings({ mode: newMode });
+      }
     } catch {}
   };
+
+  useEffect(() => {
+    const handleMetaballsChange = (e) => {
+      if (e.detail) setMetaballsModeState(e.detail);
+    };
+    window.addEventListener('island:metaballs-mode-changed', handleMetaballsChange);
+
+    let unsub;
+    if (window.island?.on) {
+      unsub = window.island.on('aura:settings-changed', (s) => {
+        if (s?.mode) setMetaballsModeState(s.mode);
+      });
+    }
+    return () => {
+      window.removeEventListener('island:metaballs-mode-changed', handleMetaballsChange);
+      unsub?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!showLyricsStylePopover) return;

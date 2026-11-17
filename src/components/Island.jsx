@@ -708,7 +708,17 @@ export default function Island() {
       if (e.detail) setMetaballsMode(e.detail);
     };
     window.addEventListener('island:metaballs-mode-changed', handleMetaballsChange);
-    return () => window.removeEventListener('island:metaballs-mode-changed', handleMetaballsChange);
+
+    let unsub;
+    if (window.island?.on) {
+      unsub = window.island.on('aura:settings-changed', (s) => {
+        if (s?.mode) setMetaballsMode(s.mode);
+      });
+    }
+    return () => {
+      window.removeEventListener('island:metaballs-mode-changed', handleMetaballsChange);
+      unsub?.();
+    };
   }, []);
 
   const height = (notchState === NOTCH_STATES.EXPANDED || mode === 'hub') && mode !== 'ring' && mode !== 'toast'

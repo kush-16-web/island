@@ -61,18 +61,18 @@ export function upgradeProviderArtUrl(url) {
   }
 
   // YouTube thumbnails in art URL: upgrade to maxresdefault
-  const ytMatch = url.match(/\/vi(?:_webp)?\/([a-zA-Z0-9_-]{11})\/(?:default|mqdefault|hqdefault|sddefault)\./);
+  const ytMatch = url.match(/\/vi(?:_webp)?\/([a-zA-Z0-9_-]{11})\/(?:default|mqdefault|hqdefault|sddefault|hq720)\./i);
   if (ytMatch) {
     return `https://i.ytimg.com/vi/${ytMatch[1]}/maxresdefault.jpg`;
   }
 
-  // Google / YouTube Music CDN: /...=w120-h120-l90-rj -> =w1200-h1200-l90-rj
+  // Google / YouTube Music CDN: /...=w120-h120-l90-rj or =s544-p-l90-rj -> =w1200-h1200
   if (url.includes('googleusercontent.com') || url.includes('ggpht.com')) {
     if (/=w\d+-h\d+/.test(url)) {
       return url.replace(/=w\d+-h\d+/, '=w1200-h1200');
     }
-    if (/=s\d+(-c)?/.test(url)) {
-      return url.replace(/=s\d+(-c)?/, '=s1200');
+    if (/=s\d+/.test(url)) {
+      return url.replace(/=s\d+/, '=s1200');
     }
   }
 

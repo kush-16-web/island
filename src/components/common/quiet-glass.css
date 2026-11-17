@@ -1,12 +1,12 @@
 /* QUIET GLASS: Premium Graphite Design System (Phase 1A.3) */
 
 :root {
-  /* Surfaces: Balanced translucency allowing Windows DWM Acrylic to genuinely diffuse desktop */
-  --qg-bg-solid: #0e1017;
-  --qg-bg-frosted: rgba(14, 16, 22, 0.58);
-  --qg-surface: rgba(22, 25, 34, 0.52);
+  /* Surfaces: Balanced opacity letting native Windows DWM Acrylic genuinely diffuse desktop */
+  --qg-bg-solid: #0d0f17;
+  --qg-bg-frosted: rgba(16, 18, 26, 0.65);
+  --qg-surface: rgba(22, 25, 34, 0.60);
   --qg-surface-solid: #13161f;
-  --qg-surface-elevated: rgba(28, 32, 44, 0.68);
+  --qg-surface-elevated: rgba(28, 32, 44, 0.75);
   --qg-surface-subtle: rgba(255, 255, 255, 0.04);
   --qg-surface-hover: rgba(255, 255, 255, 0.07);
   --qg-surface-active: rgba(255, 255, 255, 0.11);
@@ -43,16 +43,16 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: var(--qg-bg-frosted);
+  background: rgba(16, 18, 25, 0.65);
   color: var(--qg-text-primary);
   font-family: var(--qg-font);
   overflow: hidden;
   box-sizing: border-box;
   border-radius: 12px;
-  border: 1px solid var(--qg-border);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(28px) saturate(135%);
-  -webkit-backdrop-filter: blur(28px) saturate(135%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
   user-select: none;
   animation: qgWindowEnter 0.16s cubic-bezier(0.16, 1, 0.3, 1) both;
   transition: border-radius 0.22s cubic-bezier(0.16, 1, 0.3, 1), background 0.35s ease, border-color 0.22s ease, box-shadow 0.22s ease;
@@ -65,8 +65,9 @@
 }
 
 .quiet-glass-window.is-dynamic {
-  background: var(--qg-bg-frosted);
-  border-color: var(--qg-border);
+  background: linear-gradient(140deg,
+      rgba(12, 14, 20, 0.72) 100%);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 @keyframes qgWindowEnter {
@@ -74,6 +75,7 @@
     opacity: 0.88;
     transform: scale(0.99);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -90,6 +92,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .quiet-glass-window,
   .qg-titlebar,
   .qg-titlebar__btn--close {
@@ -103,13 +106,16 @@
   width: 4px;
   height: 4px;
 }
+
 .quiet-glass-window *::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .quiet-glass-window *::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.14);
   border-radius: 4px;
 }
+
 .quiet-glass-window *::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.28);
 }

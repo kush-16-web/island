@@ -1100,6 +1100,48 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   font-weight: 600;
 }
 
+/* Aura Studio Deep-Link in Popover */
+.lsp__footer-row {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lsp__studio-link-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.lsp__studio-link-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.lsp__studio-arrow {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.50);
+  transition: transform 0.15s ease;
+}
+
+.lsp__studio-link-btn:hover .lsp__studio-arrow {
+  transform: translate(2px, -2px);
+  color: #ffffff;
+}
+
 .np__lyrics-popover-anchor {
   position: relative;
   display: inline-flex;
@@ -1195,8 +1237,8 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   overflow: hidden;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.68;
-  filter: blur(6px) saturate(160%);
+  opacity: 0.72;
+  filter: blur(var(--aura-blur, 2.5px)) saturate(160%);
   transition: opacity 0.4s ease;
 }
 
@@ -7889,12 +7931,14 @@ button:hover .lucide-icon--bell {
 
 .np--two-col .np__left {
   width: 164px;
+  max-width: 164px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
   gap: 0;
+  overflow: hidden;
 }
 
 .np--two-col .np__cover-wrap {
@@ -7916,12 +7960,14 @@ button:hover .lucide-icon--bell {
 }
 
 .np--two-col .np__meta {
-  width: 100%;
+  width: 164px;
+  max-width: 164px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 1.5px;
   margin-bottom: 8px;
+  overflow: hidden;
 }
 
 .np__title--expanded {
@@ -7959,7 +8005,7 @@ button:hover .lucide-icon--bell {
 .np__controls--left-aligned .icon-btn {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8150,85 +8196,117 @@ button:hover .lucide-icon--bell {
 }
 
 .np__volume-inline-wrap {
-  position: absolute;
-  right: calc(100% + 8px);
-  top: 50%;
-  transform: translateY(-50%);
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  width: auto;
-  min-width: 20px;
+  justify-content: center;
   pointer-events: auto;
-  z-index: 10;
+  z-index: 20;
 }
 
 .np__volume-inline {
-  width: auto;
-  gap: 6px;
   position: relative;
   display: flex;
   align-items: center;
-}
-
-.np__volume-inline.mvc--expand-on-hover .mvc__track-hit {
-  max-width: 0;
-  min-width: 0;
-  opacity: 0;
-  pointer-events: none;
-  overflow: hidden;
-  transform: scaleX(0.85);
-  transform-origin: right center;
-  transition: max-width 0.38s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease, transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.np__volume-inline.mvc--expand-on-hover .mvc__pct {
-  max-width: 0;
-  width: auto;
-  opacity: 0;
-  pointer-events: none;
-  overflow: hidden;
-  transition: max-width 0.38s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.24s ease;
-}
-
-.np__volume-inline.mvc--expand-on-hover:hover .mvc__track-hit,
-.np__volume-inline.mvc--expand-on-hover.is-dragging .mvc__track-hit,
-.np__volume-inline.mvc--expand-on-hover:focus-within .mvc__track-hit {
-  max-width: 76px;
-  min-width: 68px;
-  opacity: 1;
-  pointer-events: auto;
-  transform: scaleX(1);
-}
-
-.np__volume-inline.mvc--expand-on-hover:hover .mvc__pct,
-.np__volume-inline.mvc--expand-on-hover.is-dragging .mvc__pct,
-.np__volume-inline.mvc--expand-on-hover:focus-within .mvc__pct {
-  max-width: 28px;
-  width: 26px;
-  font-size: 10px;
-  opacity: 1;
-  pointer-events: auto;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
 }
 
 .np__volume-inline .mvc__mute-btn {
-  width: 20px;
-  height: 20px;
-  color: rgba(255, 255, 255, 0.76);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.np__volume-inline .mvc__mute-btn:hover {
+.np__volume-inline .mvc__mute-btn:hover,
+.np__volume-inline:hover .mvc__mute-btn,
+.np__volume-inline.is-dragging .mvc__mute-btn,
+.np__volume-inline:focus-within .mvc__mute-btn {
   color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: scale(1.05);
 }
 
 .np__volume-inline .mvc__icon-box {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Upward Floating Volume Capsule — Anchored securely above the volume button without encroaching leftward */
+.mvc__flyout {
+  display: contents;
+}
+
+.np__volume-inline .mvc__flyout {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  transform: translateX(-50%) translateY(5px) scale(0.95);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 126px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgba(22, 24, 32, 0.88);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.50), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+  padding: 0 10px;
+  box-sizing: border-box;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 9999;
+}
+
+/* Invisible bridge so mouse hover glides continuously from button into flyout */
+.np__volume-inline .mvc__flyout::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: transparent;
+}
+
+.np__volume-inline:hover .mvc__flyout,
+.np__volume-inline.is-dragging .mvc__flyout,
+.np__volume-inline:focus-within .mvc__flyout {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .np__volume-inline .mvc__track-hit {
-  min-width: 36px;
+  flex: 1;
   height: 16px;
+  min-width: 60px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
 }
 
 .np__volume-inline .mvc__track {
@@ -8264,12 +8342,14 @@ button:hover .lucide-icon--bell {
 }
 
 .np__volume-inline .mvc__pct {
-  font-size: 10px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.68);
-  width: 26px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  min-width: 26px;
   text-align: right;
   letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .np__volume-popover-anchor {

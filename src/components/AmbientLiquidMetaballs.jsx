@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import MetaBalls from './animations/MetaBalls';
 import FluidAurora from './animations/FluidAurora';
 import AeroShards from './animations/AeroShards';
+import Galaxy from './animations/Galaxy';
+import GhostFibers from './animations/GhostFibers';
+import GradientWaves from './animations/GradientWaves';
+import LightRays from './animations/LightRays';
 
 /**
  * AmbientLiquidMetaballs — Official ReactBits WebGL2 Engine for Island.
@@ -86,6 +90,9 @@ export default function AmbientLiquidMetaballs({
   mode = 'dynamic',
   accentColor = '#ff3b69',
   isPlaying = false,
+  blurPx,
+  reactive,
+  isLoopbackDisabled = false,
   className = '',
 }) {
   const [pulse, setPulse] = useState(0);
@@ -93,8 +100,63 @@ export default function AmbientLiquidMetaballs({
   const animRef = useRef(null);
   const analyserRef = useRef(null);
 
+  // User customizable blur and audio reactivity state
+  const [customBlur, setCustomBlur] = useState(() => {
+    if (typeof blurPx === 'number') return blurPx;
+    try {
+      const saved = localStorage.getItem('island_aura_blur');
+      return saved !== null ? (Number(saved) / 100) * 10 : 2.5;
+    } catch {
+      return 2.5;
+    }
+  });
+
+  const [isReactive, setIsReactive] = useState(() => {
+    if (typeof reactive === 'boolean') return reactive;
+    try {
+      return localStorage.getItem('island_aura_reactive') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
   useEffect(() => {
-    if (mode === 'off' || !isPlaying) {
+    if (typeof blurPx === 'number') setCustomBlur(blurPx);
+  }, [blurPx]);
+
+  useEffect(() => {
+    if (typeof reactive === 'boolean') setIsReactive(reactive);
+  }, [reactive]);
+
+  useEffect(() => {
+    const handleAuraChange = (e) => {
+      if (e.detail?.blur !== undefined && typeof blurPx !== 'number') {
+        setCustomBlur((Number(e.detail.blur) / 100) * 10);
+      }
+      if (e.detail?.reactive !== undefined && typeof reactive !== 'boolean') {
+        setIsReactive(Boolean(e.detail.reactive));
+      }
+    };
+    window.addEventListener('island:aura-settings-changed', handleAuraChange);
+    let unsub;
+    if (window.island?.on) {
+      unsub = window.island.on('aura:settings-changed', (s) => {
+        if (s?.blur !== undefined && typeof blurPx !== 'number') {
+          setCustomBlur((Number(s.blur) / 100) * 10);
+        }
+        if (s?.reactive !== undefined && typeof reactive !== 'boolean') {
+          setIsReactive(Boolean(s.reactive));
+        }
+      });
+    }
+    return () => {
+      window.removeEventListener('island:aura-settings-changed', handleAuraChange);
+      unsub?.();
+    };
+  }, [blurPx, reactive]);
+
+  useEffect(() => {
+    if (mode === 'off' || mode === 'classic' || mode === 'none' || !isPlaying) {
       setPulse(0);
       setBloom(0);
       return;
@@ -111,11 +173,13 @@ export default function AmbientLiquidMetaballs({
     let prevHigh = 0;
     const freqData = new Uint8Array(512);
 
-    getLoopbackAnalyser().then((analyser) => {
-      if (active && analyser) {
-        analyserRef.current = analyser;
-      }
-    });
+    if (!isLoopbackDisabled) {
+      getLoopbackAnalyser().then((analyser) => {
+        if (active && analyser) {
+          analyserRef.current = analyser;
+        }
+      });
+    }
 
     const tick = () => {
       if (!active) return;
@@ -222,50 +286,93 @@ export default function AmbientLiquidMetaballs({
     };
   }, [mode, isPlaying]);
 
-  if (mode === 'off') return null;
+  if (mode === 'off' || mode === 'classic' || mode === 'none') return null;
 
   const isWhite = mode === 'white';
   const color = isWhite ? '#ffffff' : (accentColor || '#ff3b69');
 
+  const effectivePulse = isReactive ? pulse : 0;
+  const effectiveBloom = isReactive ? bloom : 0;
+  const effectiveSpeed = isPlaying ? 0.35 : 0;
+
   const isShards = mode === 'shards' || mode === 'aeroshards';
+
+  // Apply custom blur via inline style or CSS variable
+  const containerStyle = {
+    filter: isShards ? 'none' : `blur(${customBlur}px) saturate(160%)`,
+    WebkitFilter: isShards ? 'none' : `blur(${customBlur}px) saturate(160%)`,
+  };
 
   return (
     <div
       className={`island-liquid-metaballs${isShards ? ' island-liquid-metaballs--shards' : ''} ${className}`}
+      style={containerStyle}
       aria-hidden="true"
     >
       {mode === 'shards' || mode === 'aeroshards' ? (
         <AeroShards
           color={color}
-          speed={isPlaying ? 0.35 : 0}
+          speed={effectiveSpeed}
           paused={!isPlaying}
-          beatPulse={pulse}
-          bloomPulse={bloom}
+          beatPulse={effectivePulse}
+          bloomPulse={effectiveBloom}
+        />
+      ) : mode === 'galaxy' ? (
+        <Galaxy
+          color={color}
+          speed={effectiveSpeed}
+          paused={!isPlaying}
+          beatPulse={effectivePulse}
+          bloomPulse={effectiveBloom}
+        />
+      ) : mode === 'ghost-fibers' ? (
+        <GhostFibers
+          color={color}
+          speed={effectiveSpeed}
+          paused={!isPlaying}
+          beatPulse={effectivePulse}
+          bloomPulse={effectiveBloom}
+        />
+      ) : mode === 'gradient-waves' ? (
+        <GradientWaves
+          color={color}
+          speed={effectiveSpeed}
+          paused={!isPlaying}
+          beatPulse={effectivePulse}
+          bloomPulse={effectiveBloom}
+        />
+      ) : mode === 'light-rays' ? (
+        <LightRays
+          color={color}
+          speed={effectiveSpeed}
+          paused={!isPlaying}
+          beatPulse={effectivePulse}
+          bloomPulse={effectiveBloom}
         />
       ) : mode === 'aurora' || mode === 'fluid' ? (
         <FluidAurora
           color={color}
-          speed={isPlaying ? 0.35 : 0}
+          speed={effectiveSpeed}
           paused={!isPlaying}
-          beatPulse={pulse}
-          bloomPulse={bloom}
+          beatPulse={effectivePulse}
+          bloomPulse={effectiveBloom}
         />
       ) : (
         <MetaBalls
           color={color}
-          speed={isPlaying ? 0.35 : 0}
+          speed={effectiveSpeed}
           ballCount={14}
           clumpFactor={1.0}
-          gooeyness={0.55}
+          gooeyness={0.58}
           wobble={0.5}
           stretch={0.55}
           animationSize={24}
-          originX={0.72}
-          originY={0.50}
+          originX={0.52 /* Centered lava lamp; legacy originX={0.72} */}
+          originY={0.58 /* Lifted upward behind lyrics and artwork */}
           enableTransparency={true}
           paused={!isPlaying}
-          beatPulse={pulse}
-          bloomPulse={bloom}
+          beatPulse={effectivePulse}
+          bloomPulse={effectiveBloom}
         />
       )}
     </div>

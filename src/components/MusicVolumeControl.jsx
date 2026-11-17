@@ -176,44 +176,46 @@ export default function MusicVolumeControl({
         </span>
       </button>
 
-      <div
-        ref={trackRef}
-        className="mvc__track-hit"
-        role="slider"
-        tabIndex={isDisabled ? -1 : 0}
-        aria-label="Music volume"
-        aria-disabled={isDisabled}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={effectiveVol}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onKeyDown={handleKeyDown}
-      >
-        <div className="mvc__track">
-          <div
-            className="mvc__fill"
-            style={{
-              width: `${effectiveVol}%`,
-              backgroundColor: '#ffffff',
-              transition: transitionStyle,
-            }}
-          />
-          <div
-            className="mvc__thumb"
-            style={{
-              left: `${effectiveVol}%`,
-              transition: transitionStyle,
-            }}
-          />
+      <div className="mvc__flyout">
+        <div
+          ref={trackRef}
+          className="mvc__track-hit"
+          role="slider"
+          tabIndex={isDisabled ? -1 : 0}
+          aria-label="Music volume"
+          aria-disabled={isDisabled}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={effectiveVol}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onKeyDown={handleKeyDown}
+        >
+          <div className="mvc__track">
+            <div
+              className="mvc__fill"
+              style={{
+                width: `${effectiveVol}%`,
+                backgroundColor: '#ffffff',
+                transition: transitionStyle,
+              }}
+            />
+            <div
+              className="mvc__thumb"
+              style={{
+                left: `${effectiveVol}%`,
+                transition: transitionStyle,
+              }}
+            />
+          </div>
         </div>
-      </div>
 
-      <span className="mvc__pct">
-        {isDisabled ? '—' : `${effectiveVol}%`}
-      </span>
+        <span className="mvc__pct">
+          {isDisabled ? '—' : `${effectiveVol}%`}
+        </span>
+      </div>
     </div>
   );
 }

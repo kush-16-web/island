@@ -1264,6 +1264,31 @@ function wireIpc() {
     return true;
   });
 
+  // Aura Studio visualizer & atmosphere settings
+  handle('aura:get-settings', () => {
+    if (!store) {
+      return {
+        mode: 'dynamic',
+        blur: 25,
+        reactive: true,
+      };
+    }
+    return {
+      mode: store.get('aura_mode', 'dynamic'),
+      blur: store.get('aura_blur', 25),
+      reactive: store.get('aura_reactive', true),
+    };
+  });
+  listen('aura:set-settings', (settings) => {
+    if (!settings || typeof settings !== 'object') return;
+    if (store) {
+      if (settings.mode !== undefined) store.set('aura_mode', settings.mode);
+      if (settings.blur !== undefined) store.set('aura_blur', settings.blur);
+      if (settings.reactive !== undefined) store.set('aura_reactive', Boolean(settings.reactive));
+    }
+    send('aura:settings-changed', settings);
+  });
+
   // Dedicated Pet Window IPC
   listen('pet:move-by', ({ dx, dy }) => {
     if (!petWin || petWin.isDestroyed()) return;

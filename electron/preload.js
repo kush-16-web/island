@@ -31,6 +31,7 @@ const CHANNELS = new Set([
   'notch:visibility-changed',
   'notch:reveal',
   'media:volume-changed',
+  'aura:settings-changed',
 ]);
 
 contextBridge.exposeInMainWorld('island', {
@@ -68,6 +69,8 @@ contextBridge.exposeInMainWorld('island', {
   setNotchVisibilityMode: (mode) => ipcRenderer.invoke('notch:set-visibility-mode', mode),
   getNotchDisplays: () => ipcRenderer.invoke('notch:get-displays'),
   setNotchDisplay: (displayId) => ipcRenderer.invoke('notch:set-display', displayId),
+  getAuraSettings: () => ipcRenderer.invoke('aura:get-settings'),
+  setAuraSettings: (settings) => ipcRenderer.send('aura:set-settings', settings),
 
   // Standalone Desktop Pet Window
   movePetBy: (dx, dy) => ipcRenderer.send('pet:move-by', { dx, dy }),

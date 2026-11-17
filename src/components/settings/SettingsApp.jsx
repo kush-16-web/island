@@ -4,6 +4,7 @@ import { useThemeMode } from '../common/useThemeMode';
 import { useWindowState } from '../common/useWindowState';
 import { getIdleNotchPrefs, setIdleNotchPrefs, IDLE_PRESETS } from '../../lib/idle-prefs';
 import { Icon } from '../icons';
+import AuraStudio from './AuraStudio';
 import '../common/quiet-glass.css';
 import './settings-window.css';
 
@@ -11,6 +12,7 @@ const CATEGORIES = [
   { id: 'general', label: 'General', icon: Icon.Home },
   { id: 'appearance', label: 'Appearance', icon: Icon.Sun },
   { id: 'notch', label: 'Notch & Visibility', icon: Icon.Sliders },
+  { id: 'aura', label: 'Aura Studio', icon: Icon.Sparkles, badge: 'New' },
   { id: 'windows', label: 'Windows', icon: Icon.Layers },
   { id: 'ai', label: 'AI & Models', icon: Icon.Sparkles, badge: 'In Hub' },
   { id: 'voice', label: 'Voice & Audio', icon: Icon.Mic, badge: 'In Hub' },
@@ -31,7 +33,18 @@ const CATEGORIES = [
  * - Monochrome icons, no nested card clutter, high contrast
  */
 export default function SettingsApp() {
-  const [activeCategory, setActiveCategory] = useState(null);
+  const [activeCategory, setActiveCategory] = useState(() => {
+    try {
+      const hash = window.location.hash || '';
+      const queryStr = hash.includes('?') ? hash.split('?')[1] : '';
+      const params = new URLSearchParams(queryStr);
+      const initialTab = params.get('tab') || params.get('category');
+      if (initialTab && CATEGORIES.some((c) => c.id === initialTab)) {
+        return initialTab;
+      }
+    } catch {}
+    return 'general';
+  });
   const [petVisible, setPetVisible] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [copiedDiag, setCopiedDiag] = useState(false);
@@ -168,63 +181,49 @@ export default function SettingsApp() {
         onToggleMaximize={toggleMaximize}
       />
 
-      <div className="settings-body">
-        {/* Category List View (Top Level) */}
-        {!activeCategory && (
-          <div className="settings-catalog">
-            <div className="settings-catalog__list">
-              {CATEGORIES.map((cat) => {
-                const Glyph = cat.icon;
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    className="settings-catalog__item"
-                    onClick={() => setActiveCategory(cat.id)}
-                  >
-                    <span className="settings-catalog__icon">
-                      <Glyph width={15} height={15} />
-                    </span>
-                    <span className="settings-catalog__label">{cat.label}</span>
-                    {cat.badge && (
-                      <span className="settings-catalog__badge">{cat.badge}</span>
-                    )}
-                    <span className="settings-catalog__chevron" aria-hidden="true">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+      <div className="settings-body settings-body--split">
+        {/* Left Sidebar */}
+        <aside className="settings-sidebar">
+          <div className="settings-sidebar__list">
+            {CATEGORIES.map((cat) => {
+              const Glyph = cat.icon;
+              const isActive = activeCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`settings-sidebar__item${isActive ? ' is-active' : ''}${cat.id === 'aura' ? ' is-featured' : ''}`}
+                  onClick={() => setActiveCategory(cat.id)}
+                >
+                  <span className="settings-sidebar__icon">
+                    <Glyph width={15} height={15} />
+                  </span>
+                  <span className="settings-sidebar__label">{cat.label}</span>
+                  {cat.badge && (
+                    <span className={`settings-sidebar__badge${cat.id === 'aura' ? ' is-featured-badge' : ''}`}>{cat.badge}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </aside>
 
-        {/* Selected Category Detail View */}
-        {activeCategory && (
-          <div className="settings-detail">
-            <div className="settings-detail__nav">
-              <button
-                type="button"
-                className="settings-back-btn"
-                onClick={() => setActiveCategory(null)}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-                <span>Settings</span>
-              </button>
-              {savedNotice && (
-                <span className="settings-toast-tag">
-                  <Icon.Check width={12} height={12} /> Saved
-                </span>
-              )}
+        {/* Right Stage */}
+        <main className="settings-stage">
+          {savedNotice && (
+            <div className="settings-stage__toast">
+              <Icon.Check width={12} height={12} /> Saved
             </div>
+          )}
 
-            <div className="settings-detail__content">
-              {/* 1. GENERAL */}
-              {activeCategory === 'general' && (
+          <div className="settings-stage__content">
+            {/* 0. AURA STUDIO */}
+            {activeCategory === 'aura' && (
+              <AuraStudio accentColor={accentColor} />
+            )}
+
+            {/* 1. GENERAL */}
+            {activeCategory === 'general' && (
                 <div className="settings-pane-inner">
                   <h2 className="settings-pane__title">General</h2>
                   <p className="settings-pane__desc">
@@ -645,9 +644,8 @@ export default function SettingsApp() {
                 </div>
               )}
             </div>
-          </div>
-        )}
+          </main>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }

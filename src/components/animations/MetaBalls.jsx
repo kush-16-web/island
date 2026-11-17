@@ -366,8 +366,8 @@ export default function MetaBalls({
       // Buoyant living aquatic float (gently wanders ±2% X and ±3.5% Y to feel alive and floating)
       const driftX = Math.sin(clock * 0.32) * 0.02;
       const driftY = Math.cos(clock * 0.24) * 0.035;
-      const originX = (s.originX ?? 0.72) + driftX;
-      const originY = (s.originY ?? 0.50) + driftY;
+      const originX = (s.originX ?? 0.52) + driftX;
+      const originY = (s.originY ?? 0.58) + driftY;
 
       // Soft, warm ambient luminescence: only fires on heavy musical accents, easy on the eyes
       const baseRgb = rgb(s.color);

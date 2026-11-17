@@ -67,46 +67,16 @@ export function useHighResArt(media) {
         return;
       }
 
-      // Immediately display raw art to prevent blank layout jumping
+      // Immediately display authentic raw art to prevent blank layout jumping
       setDisplayArt(rawArt);
 
       const upgradedUrl = upgradeProviderArtUrl(rawArt);
       if (!upgradedUrl || upgradedUrl === rawArt) {
-        // If rawArt is a local SMTC thumbnail, data: URL, or un-upgraded URL,
-        // concurrently query online enrichment (iTunes API) for official 1000x1000 HD artwork
-        if (title) {
-          setIsLoading(true);
-          enrichTrackMetadata(title, artist)
-            .then((res) => {
-              if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
-              if (res?.artwork) {
-                preloadImage(res.artwork).then((ok) => {
-                  if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
-                  if (ok) {
-                    setDisplayArt(res.artwork);
-                    setIsUpgraded(true);
-                    highResCache.set(rawArt, res.artwork);
-                    highResCache.set(trackKey, res.artwork);
-                  }
-                  setIsLoading(false);
-                });
-              } else {
-                highResCache.set(rawArt, rawArt);
-                highResCache.set(trackKey, rawArt);
-                setIsLoading(false);
-              }
-            })
-            .catch(() => {
-              if (seq === reqSequenceRef.current && activeTrackRef.current === trackKey) {
-                setIsLoading(false);
-              }
-            });
-        } else {
-          highResCache.set(rawArt, rawArt);
-          highResCache.set(trackKey, rawArt);
-          setIsUpgraded(false);
-          setIsLoading(false);
-        }
+        // Authentic provider artwork is kept directly without overwriting from external search APIs
+        highResCache.set(rawArt, rawArt);
+        highResCache.set(trackKey, rawArt);
+        setIsUpgraded(false);
+        setIsLoading(false);
         return;
       }
 

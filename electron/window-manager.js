@@ -104,7 +104,7 @@ class WindowManager {
       if (w && !w.isDestroyed() && w.webContents && !w.webContents.isDestroyed()) {
         try {
           w.webContents.send(channel, payload);
-        } catch {}
+        } catch { }
       }
     }
   }
@@ -177,7 +177,7 @@ class WindowManager {
         if (this.lastMediaState) {
           try {
             this.workspaceWin.webContents.send('media', this.lastMediaState);
-          } catch {}
+          } catch { }
         }
       }
     });
@@ -196,7 +196,7 @@ class WindowManager {
       try {
         const b = this.workspaceWin.getBounds();
         this.store?.set('workspace_bounds', b);
-      } catch {}
+      } catch { }
     }, 400);
 
     this.workspaceWin.on('resize', saveBounds);
@@ -233,25 +233,25 @@ class WindowManager {
       return this.settingsWin;
     }
 
-    const defaultBounds = { width: 540, height: 520, minWidth: 500, minHeight: 460 };
+    // Two-Pane Split Layout bounds (migrated from legacy width: 540, height: 520)
+    const defaultBounds = { width: 780, height: 560, minWidth: 700, minHeight: 480 };
     const saved = this.store ? this.store.get('settings_bounds', null) : null;
-    // Migrate away from legacy oversized Phase 1A defaults (760x560)
-    const effectiveSaved = (saved && (saved.width >= 700 || saved.height >= 550)) ? null : saved;
-    const bounds = clampBoundsToWorkArea(effectiveSaved, defaultBounds);
+    const bounds = clampBoundsToWorkArea(saved, defaultBounds);
 
     this.settingsWin = new BrowserWindow({
       x: bounds.x,
       y: bounds.y,
       width: bounds.width,
       height: bounds.height,
-      minWidth: 500,
-      minHeight: 460,
+      minWidth: 700,
+      minHeight: 480,
       show: false,
-      frame: false,
-      transparent: true,
+      titleBarStyle: 'hidden',
+      titleBarOverlay: false,
+      transparent: false,
       backgroundColor: '#00000000',
       backgroundMaterial: 'acrylic',
-      hasShadow: false,
+      roundedCorners: true,
       skipTaskbar: false,
       focusable: true,
       alwaysOnTop: false,
@@ -284,7 +284,7 @@ class WindowManager {
         if (this.lastMediaState) {
           try {
             this.settingsWin.webContents.send('media', this.lastMediaState);
-          } catch {}
+          } catch { }
         }
         if (initialTab) {
           this.settingsWin.webContents.send('settings:tab-change', { tab: initialTab });
@@ -304,7 +304,7 @@ class WindowManager {
       try {
         const b = this.settingsWin.getBounds();
         this.store?.set('settings_bounds', b);
-      } catch {}
+      } catch { }
     }, 400);
 
     this.settingsWin.on('resize', saveBounds);
@@ -347,7 +347,7 @@ class WindowManager {
         // Fully destroy window to stop Three.js WebGL rendering loop and free VRAM/RAM
         try {
           this.petWin.destroy();
-        } catch {}
+        } catch { }
         this.petWin = null;
       }
     }

@@ -104,8 +104,15 @@
 }
 
 @keyframes qgDetailEnter {
-  from { opacity: 0; transform: translateX(6px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .settings-detail__nav {
@@ -178,7 +185,9 @@
   flex-direction: column;
   border-radius: var(--qg-radius-lg);
   border: 1px solid var(--qg-border);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
 }
 
@@ -444,9 +453,567 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .settings-catalog__list,
   .settings-detail {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* Modern Two-Pane Split Layout (Sidebar + Stage) */
+.settings-body--split {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.settings-sidebar {
+  width: 210px;
+  min-width: 210px;
+  max-width: 210px;
+  background: rgba(10, 12, 18, 0.40);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 8px 6px;
+  box-sizing: border-box;
+}
+
+.settings-sidebar__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.settings-sidebar__item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+.settings-sidebar__item.is-active {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.settings-sidebar__item.is-featured.is-active {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.settings-sidebar__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.80;
+}
+
+.settings-sidebar__label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-sidebar__badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.settings-sidebar__badge.is-featured-badge {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+/* Right Stage */
+.settings-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 22px 28px 36px;
+  box-sizing: border-box;
+  position: relative;
+  background: rgba(12, 14, 21, 0.22);
+}
+
+.settings-stage__toast {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(98, 230, 176, 0.16);
+  border: 1px solid rgba(98, 230, 176, 0.35);
+  color: #62e6b0;
+  font-size: 11.5px;
+  font-weight: 600;
+  z-index: 10;
+  animation: qgToastEnter 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.settings-stage__content {
+  width: 100%;
+  margin: 0;
+}
+
+/* Aura Studio Styles (Quiet Luxury / Minimalist) */
+.aura-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.aura-studio__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aura-studio__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.aura-studio__icon-box {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  flex-shrink: 0;
+}
+
+.aura-studio__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.aura-studio__desc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.50);
+  line-height: 1.4;
+}
+
+/* 1. Cinematic Live Visualizer Viewport */
+.aura-stage-viewport {
+  position: relative;
+  width: 100%;
+  height: 185px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: #090a0f;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+.aura-stage-viewport__canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.aura-stage-viewport__classic-art {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.aura-stage-viewport__classic-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(36px) saturate(200%);
+  transform: scale(1.3);
+  opacity: 0.85;
+}
+
+.aura-stage-viewport__classic-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 75% 30%, transparent 20%, rgba(10, 11, 16, 0.70) 80%);
+}
+
+.aura-stage-viewport__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 14px 18px;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 40%, rgba(8, 10, 15, 0.75) 100%);
+}
+
+.aura-stage-viewport__track-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(18, 21, 30, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 5px 10px 5px 6px;
+  border-radius: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.aura-stage-viewport__track-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.aura-stage-viewport__track-thumb--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.aura-stage-viewport__track-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.aura-stage-viewport__track-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.aura-stage-viewport__track-sub {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.50);
+  white-space: nowrap;
+}
+
+.aura-stage-viewport__mode-tag {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(18, 21, 30, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* 2. Visual Tuning Shelf */
+.aura-tuning-shelf {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+@media (max-width: 600px) {
+  .aura-tuning-shelf {
+    grid-template-columns: 1fr;
+  }
+}
+
+.aura-tuning-card {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.aura-tuning-card--toggle {
+  justify-content: center;
+}
+
+.aura-tuning-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.aura-tuning-card__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.90);
+}
+
+.aura-tuning-card__sub {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 2px;
+}
+
+.aura-tuning-card__val {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.80);
+  font-variant-numeric: tabular-nums;
+}
+
+.aura-tuning-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aura-range-input {
+  width: 100%;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.aura-range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.aura-range-input::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.aura-preset-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.aura-preset-chip {
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.aura-preset-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.aura-preset-chip.is-active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* iOS Style Minimal Switch */
+.aura-switch {
+  width: 38px;
+  height: 21px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 2px;
+  box-sizing: border-box;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+}
+
+.aura-switch.is-on {
+  background: var(--music-accent, #ffffff);
+  border-color: var(--music-accent, #ffffff);
+}
+
+.aura-switch__thumb {
+  display: block;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.18s ease;
+}
+
+.aura-switch.is-on .aura-switch__thumb {
+  transform: translateX(17px);
+  background: #0f1117;
+}
+
+/* 3. Refined Visualizer Gallery */
+.aura-gallery-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.aura-gallery-section__title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.50);
+}
+
+.aura-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.aura-card {
+  display: flex;
+  flex-direction: column;
+  padding: 13px 14px 15px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.14s ease;
+  position: relative;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.aura-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.aura-card.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.30);
+}
+
+.aura-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.aura-card__icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.70);
+}
+
+.aura-card__tag {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.aura-card.is-active .aura-card__tag {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.aura-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.aura-card__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.aura-card__desc {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.48);
+  line-height: 1.35;
+}
+
+.aura-card__check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #0a0c10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

@@ -263,15 +263,14 @@ export default function LyricsSettingsPopover({
           </div>
         </div>
 
-        {/* 3. Liquid Metaballs, Aero Shards & Aurora Backdrop Selector */}
+        {/* 3. Liquid Metaballs, Aero Shards & Classic Aura Backdrop Selector */}
         <div className="lsp__group">
           <span className="lsp__group-label" id="lsp-metaballs-label">Liquid aura</span>
           <div className="lsp__pill-row" role="radiogroup" aria-labelledby="lsp-metaballs-label">
             {[
               { id: 'dynamic', label: 'Metaballs' },
               { id: 'shards', label: 'Aero shards' },
-              { id: 'aurora', label: 'Aurora wave' },
-              { id: 'off', label: 'Off' },
+              { id: 'classic', label: 'Classic' },
             ].map((opt) => (
               <button
                 key={opt.id}
@@ -292,6 +291,26 @@ export default function LyricsSettingsPopover({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* 4. Deep Link into Settings Aura Studio */}
+        <div className="lsp__footer-row">
+          <button
+            type="button"
+            className="lsp__studio-link-btn"
+            onClick={() => {
+              if (window.island?.openSettings) {
+                window.island.openSettings('aura');
+              }
+              onClose?.();
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ opacity: 0.85 }}>
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+            </svg>
+            <span>Open Aura Studio in Settings</span>
+            <span className="lsp__studio-arrow">↗</span>
+          </button>
         </div>
       </motion.div>
     </motion.div>
