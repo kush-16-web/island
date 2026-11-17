@@ -71,6 +71,8 @@ contextBridge.exposeInMainWorld('island', {
   setNotchDisplay: (displayId) => ipcRenderer.invoke('notch:set-display', displayId),
   getAuraSettings: () => ipcRenderer.invoke('aura:get-settings'),
   setAuraSettings: (settings) => ipcRenderer.send('aura:set-settings', settings),
+  openCinema: () => ipcRenderer.send('cinema:open'),
+  closeCinema: () => ipcRenderer.send('cinema:close'),
 
   // Standalone Desktop Pet Window
   movePetBy: (dx, dy) => ipcRenderer.send('pet:move-by', { dx, dy }),

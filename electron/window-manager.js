@@ -81,6 +81,7 @@ class WindowManager {
     this.workspaceWin = null;
     this.settingsWin = null;
     this.petWin = null;
+    this.cinemaWin = null;
     this.lastMediaState = null;
   }
 
@@ -99,7 +100,7 @@ class WindowManager {
     if (channel === 'media') {
       this.lastMediaState = payload;
     }
-    const wins = [this.islandWin, this.workspaceWin, this.settingsWin, this.petWin];
+    const wins = [this.islandWin, this.workspaceWin, this.settingsWin, this.petWin, this.cinemaWin];
     for (const w of wins) {
       if (w && !w.isDestroyed() && w.webContents && !w.webContents.isDestroyed()) {
         try {
@@ -323,6 +324,91 @@ class WindowManager {
     });
 
     return this.settingsWin;
+  }
+
+  /**
+   * Dedicated Fullscreen Cinema Mode (Immersive Visualizer & Lyrics)
+   */
+  openCinema() {
+    // Hide top Island notch while in Fullscreen Cinema mode
+    if (this.islandWin && !this.islandWin.isDestroyed()) {
+      this.islandWin.hide();
+    }
+
+    if (this.cinemaWin && !this.cinemaWin.isDestroyed()) {
+      if (this.cinemaWin.isMinimized()) this.cinemaWin.restore();
+      if (!this.cinemaWin.isVisible()) this.cinemaWin.show();
+      this.cinemaWin.focus();
+      if (this.lastMediaState) {
+        this.cinemaWin.webContents.send('media', this.lastMediaState);
+      }
+      return this.cinemaWin;
+    }
+
+    const primaryDisplay = screen ? screen.getPrimaryDisplay() : null;
+    const bounds = primaryDisplay ? primaryDisplay.bounds : { x: 0, y: 0, width: 1920, height: 1080 };
+
+    this.cinemaWin = new BrowserWindow({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      fullscreen: true,
+      frame: false,
+      transparent: false,
+      backgroundColor: '#090a0f',
+      show: false,
+      skipTaskbar: false,
+      focusable: true,
+      alwaysOnTop: false,
+      icon: this.iconPath,
+      webPreferences: {
+        preload: this.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        spellcheck: false,
+        backgroundThrottling: false,
+      },
+    });
+
+    const targetUrl = this.devUrl
+      ? `${this.devUrl}#cinema`
+      : `file://${this.distHtmlPath}#cinema`;
+
+    this.cinemaWin.loadURL(targetUrl);
+
+    this.cinemaWin.once('ready-to-show', () => {
+      if (this.cinemaWin && !this.cinemaWin.isDestroyed()) {
+        this.cinemaWin.show();
+        this.cinemaWin.focus();
+        if (this.lastMediaState) {
+          this.cinemaWin.webContents.send('media', this.lastMediaState);
+        }
+      }
+    });
+
+    this.cinemaWin.on('closed', () => {
+      this.cinemaWin = null;
+      // Restore Island notch when cinema window closes
+      if (this.islandWin && !this.islandWin.isDestroyed()) {
+        this.islandWin.show();
+        this.islandWin.focus();
+      }
+    });
+
+    return this.cinemaWin;
+  }
+
+  closeCinema() {
+    if (this.cinemaWin && !this.cinemaWin.isDestroyed()) {
+      this.cinemaWin.close();
+      this.cinemaWin = null;
+    }
+    if (this.islandWin && !this.islandWin.isDestroyed()) {
+      this.islandWin.show();
+      this.islandWin.focus();
+    }
   }
 
   /**

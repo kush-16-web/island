@@ -2060,29 +2060,31 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: -0.01em;
-  transition: color 0.22s, opacity 0.22s, filter 0.22s, font-size 0.22s;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  transition: color 0.22s, opacity 0.22s, font-size 0.22s;
 }
 .mini-lyrics__line.is-active {
   font-size: 14.5px;
-  font-weight: 750;
+  font-weight: 700;
   color: #ffffff !important;
   opacity: 1;
   filter: none;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+  text-shadow: none;
 }
 .mini-lyrics__line.is-adjacent {
   font-size: 12px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.48);
   opacity: 0.5;
-  filter: blur(0.3px);
+  filter: none;
 }
 .mini-lyrics__line.is-far {
   font-size: 10.5px;
   font-weight: 450;
   color: rgba(255, 255, 255, 0.25);
   opacity: 0.22;
-  filter: blur(0.6px);
+  filter: none;
 }
 /* Isolated word-sync typography: avoids blur/opacity/font-size transitions that conflict with word fill */
 .mini-lyrics__line.is-word-synced {
@@ -2090,7 +2092,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
 }
 .mini-lyrics__line.is-word-synced.is-active {
   font-size: 14.5px;
-  font-weight: 750;
+  font-weight: 700;
   color: #ffffff !important;
   opacity: 1;
   filter: none;
@@ -3016,6 +3018,7 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   text-transform: inherit;
   white-space: pre;
   color: rgba(255, 255, 255, 0.44);
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   /* Word-synchronized text has no color transition to eliminate completion blinking */
   transition: none;

@@ -3,6 +3,7 @@ import Island from './components/Island';
 import DesktopPetWindow from './pets/DesktopPetWindow';
 import WorkspaceApp from './components/workspace/WorkspaceApp';
 import SettingsApp from './components/settings/SettingsApp';
+import CinemaPlayer from './components/cinema/CinemaPlayer';
 import { island, isMock } from './lib/bridge';
 import { useClickThrough } from './hooks/useClickThrough';
 
@@ -79,12 +80,13 @@ export default function App() {
   const isPetWin = hash === '#pet' || hash.startsWith('#pet?');
   const isWorkspaceWin = hash === '#workspace' || hash.startsWith('#workspace?');
   const isSettingsWin = hash === '#settings' || hash.startsWith('#settings?');
+  const isCinemaWin = hash === '#cinema' || hash.startsWith('#cinema?');
 
   useEffect(() => {
-    if (isMock && !isPetWin && !isWorkspaceWin && !isSettingsWin) {
+    if (isMock && !isPetWin && !isWorkspaceWin && !isSettingsWin && !isCinemaWin) {
       document.body.classList.add('mock');
     }
-  }, [isPetWin, isWorkspaceWin, isSettingsWin]);
+  }, [isPetWin, isWorkspaceWin, isSettingsWin, isCinemaWin]);
 
   if (isPetWin) {
     return (
@@ -106,6 +108,14 @@ export default function App() {
     return (
       <ErrorBoundary>
         <SettingsApp />
+      </ErrorBoundary>
+    );
+  }
+
+  if (isCinemaWin) {
+    return (
+      <ErrorBoundary>
+        <CinemaPlayer />
       </ErrorBoundary>
     );
   }

@@ -1289,6 +1289,10 @@ function wireIpc() {
     send('aura:settings-changed', settings);
   });
 
+  // Fullscreen Cinema Music Mode
+  listen('cinema:open', () => windowManager && windowManager.openCinema());
+  listen('cinema:close', () => windowManager && windowManager.closeCinema());
+
   // Dedicated Pet Window IPC
   listen('pet:move-by', ({ dx, dy }) => {
     if (!petWin || petWin.isDestroyed()) return;

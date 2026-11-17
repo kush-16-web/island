@@ -1,0 +1,595 @@
+/* ==========================================================================
+   Island Cinema Mode — Immersive Fullscreen Music & Lyrics Visualizer
+   ========================================================================== */
+
+.cinema-container {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #090a0f;
+  color: #ffffff;
+  overflow: hidden;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  z-index: 9999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  cursor: default;
+  transition: background-color 0.4s ease;
+}
+
+.cinema-container.is-idle {
+  cursor: none;
+}
+
+/* 0. Fullscreen Ambient Album Art Blurred Background Layer */
+.cinema-ambient-art {
+  position: absolute;
+  inset: -120px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+}
+
+.cinema-ambient-art__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.35);
+  filter: blur(95px) saturate(240%) brightness(0.36);
+  opacity: 0.92;
+  transition: opacity 0.8s ease;
+}
+
+.cinema-ambient-art__overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 70% 35%, transparent 20%, rgba(9, 10, 15, 0.72) 85%),
+    linear-gradient(180deg, rgba(9, 10, 15, 0.35) 0%, rgba(9, 10, 15, 0.88) 100%);
+}
+
+/* 1. Ambient Visualizer Canvas Layer */
+.cinema-canvas-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cinema-canvas-scrim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(9, 10, 15, 0.25) 0%, rgba(9, 10, 15, 0.65) 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 2. Top Header Navigation */
+.cinema-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  z-index: 20;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.cinema-container.is-idle .cinema-header {
+  opacity: 0;
+  transform: translateY(-16px);
+  pointer-events: none;
+}
+
+.cinema-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cinema-brand__eyes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cinema-brand__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.02em;
+}
+
+.cinema-exit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(20px);
+}
+
+.cinema-exit-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: scale(1.04);
+}
+
+.cinema-exit-kbd {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.04em;
+}
+
+/* 3. Main Split Stage */
+.cinema-stage {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 72px 64px 36px;
+  gap: 64px;
+}
+
+/* Left Hero Column: Artwork, Metadata, Atmosphere Switcher, Large Controls */
+.cinema-left {
+  width: 440px;
+  min-width: 400px;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+  height: 100%;
+  padding-bottom: 24px;
+  box-sizing: border-box;
+}
+
+.cinema-cover-wrap {
+  position: relative;
+  width: 360px;
+  height: 360px;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(255, 255, 255, 0.12);
+  background: #11141c;
+  flex-shrink: 0;
+}
+
+.cinema-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cinema-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cinema-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.cinema-artist {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Atmosphere Switcher Dropdown */
+.cinema-atmosphere-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.cinema-atmosphere-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  transition: all 0.18s ease;
+}
+
+.cinema-atmosphere-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+.cinema-atmosphere-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: rgba(18, 20, 28, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  padding: 6px;
+  min-width: 180px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(28px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 50;
+}
+
+.cinema-atmosphere-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.cinema-atmosphere-item:hover {
+  background: rgba(255, 255, 255, 0.10);
+  color: #ffffff;
+}
+
+.cinema-atmosphere-item.is-selected {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Big Controls & Scrubber Deck */
+.cinema-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.cinema-progress-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.cinema-progress-row .song-progress {
+  gap: 12px;
+}
+
+.cinema-progress-row .song-progress__time {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.65);
+  min-width: 36px;
+}
+
+.cinema-progress-row .song-progress__hit {
+  height: 20px;
+}
+
+.cinema-progress-row .song-progress__track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  transition: height 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cinema-progress-row .song-progress:hover .song-progress__track,
+.cinema-progress-row .song-progress.is-dragging .song-progress__track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.cinema-progress-row .song-progress__thumb {
+  width: 8px;
+  height: 8px;
+}
+
+.cinema-progress-row .song-progress:hover .song-progress__thumb,
+.cinema-progress-row .song-progress.is-dragging .song-progress__thumb {
+  width: 12px;
+  height: 12px;
+}
+
+.cinema-buttons-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.cinema-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+
+.cinema-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.08);
+}
+
+.cinema-play-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #090a0f;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  transition: transform 0.16s ease, background-color 0.16s ease;
+}
+
+.cinema-play-btn:hover {
+  transform: scale(1.06);
+  background: #f0f2f5;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+
+.cinema-play-btn:active {
+  transform: scale(0.96);
+}
+
+.cinema-volume-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.cinema-volume-control {
+  width: 100%;
+}
+
+/* Right Column: Centered Focused Lyrics Reel with Natural Line Wrapping */
+.cinema-right {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 40px 32px;
+}
+
+.cinema-lyrics-reel {
+  position: relative;
+  width: 100%;
+  max-width: 780px;
+  height: 420px;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.cinema-lyrics-reel__inner {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  will-change: transform;
+}
+
+.cinema-lyric-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
+  padding: 4px 12px;
+  transition: opacity 0.3s cubic-bezier(0.2, 0, 0, 1), transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.cinema-lyric-row.is-far {
+  opacity: 0 !important;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.cinema-lyric-row.is-adjacent {
+  opacity: 0.50;
+  cursor: pointer;
+}
+
+.cinema-lyric-row.is-adjacent:hover {
+  opacity: 0.75;
+}
+
+.cinema-lyric-row.is-active {
+  opacity: 1;
+}
+
+.cinema-lyric-line {
+  font-size: 20px;
+  line-height: 1.45;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.45);
+  transition: color 0.25s ease, opacity 0.25s ease, transform 0.25s ease, font-size 0.25s ease;
+  text-align: center;
+  user-select: none;
+  white-space: normal;
+  word-break: break-word;
+  word-spacing: 0.34em;
+  letter-spacing: -0.005em;
+  max-width: 760px;
+  display: block;
+  width: 100%;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cinema-lyric-line.is-adjacent {
+  font-size: 20px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.45);
+  opacity: 0.50;
+  word-spacing: 0.34em;
+}
+
+.cinema-lyric-line.is-far {
+  opacity: 0 !important;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.cinema-lyric-line.is-active {
+  font-size: 29px;
+  font-weight: 700;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  transform: scale(1.02);
+  word-spacing: 0.38em;
+  text-shadow: none;
+  filter: none;
+}
+
+/* Precision lyric overrides inside Cinema Mode: lock dead center and allow natural line breaks */
+.cinema-lyric-row .precision-lyric-container,
+.precision-lyric-container.cinema-lyric-line {
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  word-spacing: 0.38em !important;
+  font: inherit;
+}
+
+.cinema-lyric-row .precision-lyric-content,
+.precision-lyric-container.cinema-lyric-line .precision-lyric-content {
+  text-align: center !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  word-spacing: 0.38em !important;
+  display: inline-block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  transform: none !important;
+  /* Allow centered natural wrapping rather than horizontal off-screen translate */
+}
+
+.cinema-lyric-row .karaoke-words,
+.precision-lyric-container.cinema-lyric-line .karaoke-words {
+  font: inherit;
+  text-align: center !important;
+  white-space: normal !important;
+  word-spacing: 0.38em !important;
+  display: inline !important;
+}
+
+.cinema-lyric-row .k-word,
+.precision-lyric-container.cinema-lyric-line .k-word {
+  font: inherit;
+  font-size: 29px;
+  font-weight: 700;
+  white-space: normal !important;
+  display: inline-block;
+  margin-right: 0.44em;
+  font-synthesis: none;
+}
+
+.cinema-lyric-row .k-word:last-child,
+.precision-lyric-container.cinema-lyric-line .k-word:last-child {
+  margin-right: 0;
+}
+
+.cinema-lyrics-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+.cinema-lyrics-empty__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.cinema-lyrics-empty__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0;
+}
+
+.cinema-lyrics-empty__sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0;
+  max-width: 280px;
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { upgradeProviderArtUrl, enrichTrackMetadata } from '../lib/art-resolver';
+import { upgradeProviderArtUrl, enrichTrackMetadata } from '../lib/music/art-resolver.js';
 
 // In-memory cache for loaded high-res artwork URLs to make repeat views zero-latency
 const highResCache = new Map();
@@ -47,13 +47,16 @@ export function useHighResArt(media) {
 
   useEffect(() => {
     const seq = ++reqSequenceRef.current;
+    let graceTimeout = null;
 
     // Case 1: Session stopped or inactive -> clear artwork state immediately
     if (!isActive) {
       setDisplayArt(null);
       setIsUpgraded(false);
       setIsLoading(false);
-      return;
+      return () => {
+        if (graceTimeout) clearTimeout(graceTimeout);
+      };
     }
 
     // Case 2: Provider supplies rawArt
@@ -64,31 +67,61 @@ export function useHighResArt(media) {
         setDisplayArt(cached);
         setIsUpgraded(cached !== rawArt);
         setIsLoading(false);
-        return;
+        return () => {
+          if (graceTimeout) clearTimeout(graceTimeout);
+        };
       }
 
       // Immediately display authentic raw art to prevent blank layout jumping
       setDisplayArt(rawArt);
 
       const upgradedUrl = upgradeProviderArtUrl(rawArt);
-      if (!upgradedUrl || upgradedUrl === rawArt) {
-        // Authentic provider artwork is kept directly without overwriting from external search APIs
+      let targetHdUrl = (upgradedUrl && upgradedUrl !== rawArt) ? upgradedUrl : null;
+
+      // If rawArt is a downsampled base64 thumbnail from Windows SMTC, check YouTube ID
+      if (!targetHdUrl && (rawArt.startsWith('data:') || rawArt.length < 500)) {
+        if (media?.youtubeId) {
+          targetHdUrl = `https://i.ytimg.com/vi/${media.youtubeId}/maxresdefault.jpg`;
+        }
+      }
+
+      if (!targetHdUrl) {
+        // Attempt background verified enrichment (guaranteed exact track match)
+        if (title && artist) {
+          enrichTrackMetadata(title, artist).then((enriched) => {
+            if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
+            if (enriched?.artwork) {
+              preloadImage(enriched.artwork).then((ok) => {
+                if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
+                if (ok) {
+                  setDisplayArt(enriched.artwork);
+                  setIsUpgraded(true);
+                  highResCache.set(rawArt, enriched.artwork);
+                  highResCache.set(trackKey, enriched.artwork);
+                }
+              });
+            }
+          }).catch(() => {});
+        }
+
         highResCache.set(rawArt, rawArt);
         highResCache.set(trackKey, rawArt);
         setIsUpgraded(false);
         setIsLoading(false);
-        return;
+        return () => {
+          if (graceTimeout) clearTimeout(graceTimeout);
+        };
       }
 
       // Preload upgraded high-res image in background
       setIsLoading(true);
-      preloadImage(upgradedUrl).then((ok) => {
+      preloadImage(targetHdUrl).then((ok) => {
         if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
         if (ok) {
-          setDisplayArt(upgradedUrl);
+          setDisplayArt(targetHdUrl);
           setIsUpgraded(true);
-          highResCache.set(rawArt, upgradedUrl);
-          highResCache.set(trackKey, upgradedUrl);
+          highResCache.set(rawArt, targetHdUrl);
+          highResCache.set(trackKey, targetHdUrl);
         } else {
           setDisplayArt(rawArt);
           setIsUpgraded(false);
@@ -97,7 +130,9 @@ export function useHighResArt(media) {
         }
         setIsLoading(false);
       });
-      return;
+      return () => {
+        if (graceTimeout) clearTimeout(graceTimeout);
+      };
     }
 
     // Case 3: rawArt is null/empty for an active track
@@ -107,13 +142,15 @@ export function useHighResArt(media) {
       setDisplayArt(cached);
       setIsUpgraded(true);
       setIsLoading(false);
-      return;
+      return () => {
+        if (graceTimeout) clearTimeout(graceTimeout);
+      };
     }
 
     // Bounded transition: Keep current image briefly for at most 1200ms
     // so rapid track updates don't cause harsh flashes.
     setIsLoading(true);
-    let graceTimeout = setTimeout(() => {
+    graceTimeout = setTimeout(() => {
       if (seq === reqSequenceRef.current && activeTrackRef.current === trackKey) {
         setDisplayArt(null);
         setIsUpgraded(false);
@@ -125,7 +162,7 @@ export function useHighResArt(media) {
       .then((res) => {
         if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
         if (res?.artwork) {
-          clearTimeout(graceTimeout);
+          if (graceTimeout) clearTimeout(graceTimeout);
           preloadImage(res.artwork).then((ok) => {
             if (seq !== reqSequenceRef.current || activeTrackRef.current !== trackKey) return;
             if (ok) {
@@ -149,7 +186,7 @@ export function useHighResArt(media) {
       });
 
     return () => {
-      clearTimeout(graceTimeout);
+      if (graceTimeout) clearTimeout(graceTimeout);
     };
   }, [isActive, trackKey, rawArt, title, artist]);
 

@@ -6,7 +6,7 @@
       "artist": "Test Ensemble",
       "lyrics": "A quiet echo in the empty hall"
     },
-    "createdAt": "2026-11-17T07:06:56.188Z",
+    "createdAt": "2026-11-17T12:58:15.482Z",
     "status": "workflow_validated",
     "generator": {
       "status": "workflow_validated",
@@ -30,7 +30,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 760,
+      "freeRamMB": 682,
       "nodeVersion": "v22.12.0"
     }
   },
@@ -40,7 +40,7 @@
       "title": "Silent Northern Aurora",
       "artist": "Fjord Lights"
     },
-    "createdAt": "2026-11-17T07:06:56.116Z",
+    "createdAt": "2026-11-17T12:58:15.359Z",
     "status": "workflow_validated",
     "generator": {
       "status": "workflow_validated",
@@ -64,7 +64,7 @@
       "cpuModel": "AMD Ryzen 3 7320U with Radeon Graphics         ",
       "cpuCores": 8,
       "totalRamMB": 5965,
-      "freeRamMB": 770,
+      "freeRamMB": 668,
       "nodeVersion": "v22.12.0"
     }
   }

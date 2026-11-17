@@ -1,6 +1,5 @@
-'use strict';
 /**
- * src/lib/art-resolver.js
+ * src/lib/music/art-resolver.js
  * High-Resolution Artwork & Poster Resolution Pipeline.
  *
  * Automatically resolves and upgrades low-res SMTC/browser thumbnails
@@ -100,6 +99,32 @@ export function upgradeProviderArtUrl(url) {
 // In-memory artwork cache to prevent duplicate queries and provide zero-latency poster displays
 const trackArtCache = new Map();
 
+function isStrictTrackMatch(resultTrack, resultArtist, targetTitle, targetArtist) {
+  if (!resultTrack || !targetTitle) return false;
+  const clean = (s) => (s || '').toLowerCase().replace(/[[\]()_.,!?'"-]/g, ' ').replace(/\s+/g, ' ').trim();
+  const rT = clean(resultTrack);
+  const tT = clean(targetTitle);
+  const rA = clean(resultArtist);
+  const tA = clean(targetArtist);
+
+  const titleMatches = rT.includes(tT) || tT.includes(rT);
+  if (!titleMatches) {
+    const tWords = tT.split(' ').filter((w) => w.length > 2);
+    const matched = tWords.filter((w) => rT.includes(w));
+    if (tWords.length === 0 || matched.length / tWords.length < 0.6) return false;
+  }
+
+  if (tA && rA) {
+    const artistMatches = rA.includes(tA) || tA.includes(rA);
+    if (!artistMatches) {
+      const aWords = tA.split(' ').filter((w) => w.length > 2);
+      const matchedA = aWords.filter((w) => rA.includes(w));
+      if (aWords.length > 0 && matchedA.length === 0) return false;
+    }
+  }
+  return true;
+}
+
 export async function enrichTrackMetadata(title, artist = '') {
   if (!title) return { artwork: null, artist: null, album: null, provider: null };
 
@@ -112,45 +137,54 @@ export async function enrichTrackMetadata(title, artist = '') {
 
   // 1. Query iTunes API (Fast, public, provides crystal-clear 1000x1000 studio album covers)
   try {
-    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`, {
-      signal: AbortSignal.timeout(4000),
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
+    const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=4`, {
+      signal: controller ? controller.signal : undefined,
     });
+    if (timeoutId) clearTimeout(timeoutId);
     if (res.ok) {
       const data = await res.json();
       if (data.results && data.results.length > 0) {
-        const item = data.results[0];
-        const rawArt = item.artworkUrl100 || '';
-        const hdArt = rawArt.replace(/\/\d+x\d+bb\./, '/1000x1000bb.');
-        const result = {
-          artwork: hdArt || rawArt || null,
-          artist: item.artistName || artist || null,
-          album: item.collectionName || null,
-          artworkSource: 'itunes',
-        };
-        trackArtCache.set(cacheKey, result);
-        return result;
+        const item = data.results.find((r) => isStrictTrackMatch(r.trackName, r.artistName, title, artist)) || data.results[0];
+        if (isStrictTrackMatch(item.trackName, item.artistName, title, artist)) {
+          const rawArt = item.artworkUrl100 || '';
+          const hdArt = rawArt.replace(/\/\d+x\d+bb\./, '/1000x1000bb.');
+          const result = {
+            artwork: hdArt || rawArt || null,
+            artist: item.artistName || artist || null,
+            album: item.collectionName || null,
+            artworkSource: 'itunes',
+          };
+          trackArtCache.set(cacheKey, result);
+          return result;
+        }
       }
     }
-  } catch {}
+} catch (_err) {
+  // Network or abort error fallback
+}
 
-  // 2. Query YouTube resolution via Electron bridge if available
-  if (typeof window !== 'undefined' && window.island?.media?.resolveYouTubeId) {
-    try {
-      const ytId = await window.island.media.resolveYouTubeId(query);
-      if (ytId) {
-        const result = {
-          artwork: `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`,
-          artist: artist || null,
-          album: null,
-          provider: 'youtube',
-          youtubeId: ytId,
-        };
-        trackArtCache.set(cacheKey, result);
-        return result;
-      }
-    } catch {}
+// 2. Query YouTube resolution via Electron bridge if available
+if (typeof window !== 'undefined' && window.island?.media?.resolveYouTubeId) {
+  try {
+    const ytId = await window.island.media.resolveYouTubeId(query);
+    if (ytId) {
+      const result = {
+        artwork: `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`,
+        artist: artist || null,
+        album: null,
+        provider: 'youtube',
+        youtubeId: ytId,
+      };
+      trackArtCache.set(cacheKey, result);
+      return result;
+    }
+} catch (_err) {
+  // YouTube bridge error fallback
+}
   }
 
-  return { artwork: null, artist: null, album: null, provider: null };
+return { artwork: null, artist: null, album: null, provider: null };
 }
 

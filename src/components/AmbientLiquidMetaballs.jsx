@@ -94,6 +94,8 @@ export default function AmbientLiquidMetaballs({
   reactive,
   isLoopbackDisabled = false,
   className = '',
+  originX = 0.52,
+  originY = 0.58,
 }) {
   const [pulse, setPulse] = useState(0);
   const [bloom, setBloom] = useState(0);
@@ -367,8 +369,8 @@ export default function AmbientLiquidMetaballs({
           wobble={0.5}
           stretch={0.55}
           animationSize={24}
-          originX={0.52 /* Centered lava lamp; legacy originX={0.72} */}
-          originY={0.58 /* Lifted upward behind lyrics and artwork */}
+          originX={originX}
+          originY={originY}
           enableTransparency={true}
           paused={!isPlaying}
           beatPulse={effectivePulse}
