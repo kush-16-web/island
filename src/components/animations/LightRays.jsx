@@ -81,11 +81,11 @@ void main() {
   float slope = fwidth(angle);
   float depth = distance / uReach;
 
-  float source = exp(-depth * depth * 9.0) * 0.9 + exp(-depth * 3.2) * 0.25;
+  float source = exp(-depth * depth * 22.0) * 0.95 + exp(-depth * 6.0) * 0.25;
   float glowLight = uGlow * source * smoothstep(-0.2, 0.6, cosAngle);
   float spread = pow(max(angle, 0.0), 1.0 / uSpread);
   float lengthFalloff = clamp(1.0 - distance / (uReach * uLength), 0.0, 1.0);
-  float fadeFalloff = clamp(1.0 - distance / (uReach * uFade), 0.5, 1.0);
+  float fadeFalloff = clamp(1.0 - distance / (uReach * uFade), 0.0, 1.0);
   float envelope = spread * lengthFalloff * fadeFalloff;
   float reveal = uIntensity * uIntro.y * (1.0 - smoothstep(uIntro.x - 0.35, uIntro.x, depth));
   if ((envelope * 1.6 + glowLight) * reveal < 0.0015) {
@@ -141,7 +141,8 @@ void main() {
   float near = clamp(1.2 - distance / (uResolution.y / uScale), 0.0, 1.0);
   vec3 tint = mix(vec3(0.9), vec3(0.1, 0.3, 0.5) + near * vec3(0.8, 0.6, 0.5), uAtmosphere);
   float gray = dot(tint, vec3(0.299, 0.587, 0.114));
-  vec3 hue = max(mix(vec3(gray), tint, uSaturation), 0.0) * uColor;
+  vec3 beamColor = mix(uColor, vec3(1.0), 0.38 * smoothstep(0.35, 0.85, light));
+  vec3 hue = max(mix(vec3(gray), tint, uSaturation), 0.0) * beamColor;
 
   float grain = (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5) / 255.0;
   if (uLight > 0.5) {
@@ -315,6 +316,9 @@ const CoreLightRays = ({
     const pulseData = new Float32Array(MAX_PULSES * 4);
     let time = 0;
     let opening = settingsRef.current.intro && !reduced && generation === 0 ? 0 : 1;
+    let smoothTilt = settingsRef.current.tilt;
+    let smoothIntensity = settingsRef.current.intensity;
+    let smoothLength = settingsRef.current.length;
     let raf = 0;
     let last = 0;
     let visible = true;
@@ -391,8 +395,17 @@ const CoreLightRays = ({
       const height = size.height;
       const sourceX = s.origin.anchor[0] * width;
       const sourceY = s.origin.anchor[1] * height;
-      const cos = Math.cos(s.tilt);
-      const sin = Math.sin(s.tilt);
+
+      // Silky smooth concert stage lighting interpolation (eliminates twitching/shaking)
+      const tiltT = 1 - Math.exp(-dt / 0.45);
+      smoothTilt += (s.tilt - smoothTilt) * tiltT;
+
+      const dynT = 1 - Math.exp(-dt / 0.12);
+      smoothIntensity += (s.intensity - smoothIntensity) * dynT;
+      smoothLength += (s.length - smoothLength) * dynT;
+
+      const cos = Math.cos(smoothTilt);
+      const sin = Math.sin(smoothTilt);
       let dirX = s.origin.dir[0] * cos - s.origin.dir[1] * sin;
       let dirY = s.origin.dir[0] * sin + s.origin.dir[1] * cos;
       if (s.follow && s.influence > 0) {
@@ -418,10 +431,11 @@ const CoreLightRays = ({
       gl.uniform1f(u.uTime, time);
       gl.uniform2f(u.uSource, sourceX, sourceY);
       gl.uniform2f(u.uAim, dirX, dirY);
-      gl.uniform1f(u.uReach, Math.max(width, height));
+      const diagonal = Math.hypot(width, height);
+      gl.uniform1f(u.uReach, diagonal * 1.35);
       gl.uniform3f(u.uColor, s.color[0], s.color[1], s.color[2]);
       gl.uniform1f(u.uSpread, s.spread);
-      gl.uniform1f(u.uLength, s.length);
+      gl.uniform1f(u.uLength, smoothLength);
       gl.uniform1f(u.uFade, s.fade);
       gl.uniform1f(u.uSaturation, s.saturation);
       gl.uniform1f(u.uPulsating, s.pulsating ? 1 : 0);
@@ -432,10 +446,10 @@ const CoreLightRays = ({
       gl.uniform1f(u.uGlow, s.glow);
       gl.uniform1f(u.uHaze, s.haze);
       gl.uniform1f(u.uAtmosphere, s.atmosphere);
-      gl.uniform1f(u.uIntensity, s.intensity);
+      gl.uniform1f(u.uIntensity, smoothIntensity * eased);
       gl.uniform4f(u.uShadow, shade.x * width, shade.y * height, shade.presence, 16);
       gl.uniform4fv(u.uPulses, pulseData);
-      gl.uniform2f(u.uIntro, eased * 2.6, smoother(opening / 0.5));
+      gl.uniform2f(u.uIntro, eased * 3.5, smoother(opening / 0.5));
       gl.uniform1f(u.uLight, s.light ? 1 : 0);
       gl.uniform1f(u.uOpacity, s.opacity);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -500,6 +514,7 @@ const CoreLightRays = ({
     const onPointerUp = event => {
       if (event.pointerType !== 'mouse') onLeave();
     };
+
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('pointerdown', onPointerDown, { passive: true });
     window.addEventListener('pointerup', onPointerUp, { passive: true });
@@ -564,6 +579,27 @@ const CoreLightRays = ({
   );
 };
 
+function ensureLuminousColor(col) {
+  if (!col) return '#ffffff';
+  const text = String(col).trim();
+  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text);
+  if (hex) {
+    const full = hex[1].length === 3 ? hex[1].replace(/./g, d => d + d) : hex[1];
+    let r = parseInt(full.slice(0, 2), 16) / 255;
+    let g = parseInt(full.slice(2, 4), 16) / 255;
+    let b = parseInt(full.slice(4, 6), 16) / 255;
+    const maxVal = Math.max(r, g, b);
+    if (maxVal < 0.35) {
+      const factor = 0.90 / Math.max(maxVal, 0.05);
+      r = Math.min(1, r * factor);
+      g = Math.min(1, g * factor);
+      b = Math.min(1, b * factor);
+      return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+    }
+  }
+  return col;
+}
+
 export default function LightRays({
   color,
   speed = 1,
@@ -580,11 +616,18 @@ export default function LightRays({
   const pConfig = PRESETS[presetKey] || {};
   const base = { ...LOOK, ...pConfig };
 
-  const effectiveColor = color || base.raysColor || '#ffffff';
-  const effectiveIntensity = (base.intensity ?? 1) * (1 + (beatPulse || 0) * 0.45 + (bloomPulse || 0) * 0.3);
-  const effectiveGlow = (base.glow ?? 0.6) * (1 + (beatPulse || 0) * 0.5);
-  const effectiveSpread = (base.lightSpread ?? 0.5) * (1 + (melodyPulse || 0) * 0.35);
-  const effectiveSpeed = paused ? 0 : (base.raysSpeed ?? 1) * (speed || 1) * (1 + (melodyPulse || 0) * 0.3);
+  const effectiveColor = ensureLuminousColor(color || base.raysColor || '#ffffff');
+  // Dynamic concert music reactivity:
+  // 1. Intensity swells with live music pulse and heavy drops
+  const effectiveIntensity = (base.intensity ?? 1.35) * (1.0 + (beatPulse || 0) * 0.40 + (bloomPulse || 0) * 0.25);
+  // 2. Beams stretch deeper down the screen on musical peaks
+  const effectiveLength = (base.rayLength ?? 3.5) * (1.0 + (beatPulse || 0) * 0.22);
+  // 3. Glow breathes naturally with musical presence
+  const effectiveGlow = (base.glow ?? 0.60) * (1.0 + (beatPulse || 0) * 0.30);
+  // 4. Ray speed flows with melodic tempo
+  const effectiveSpeed = paused ? 0 : (base.raysSpeed ?? 0.85) * (speed || 1) * (1.0 + (melodyPulse || 0) * 0.35);
+  // 5. Melodic moving-head motorized concert sway (subtle & graceful)
+  const effectiveTilt = (base.tilt ?? 0) + ((melodyPulse || 0) - 0.35) * 1.5;
 
   return (
     <CoreLightRays
@@ -592,10 +635,14 @@ export default function LightRays({
       {...overrides}
       raysColor={effectiveColor}
       intensity={effectiveIntensity}
+      rayLength={effectiveLength}
       glow={effectiveGlow}
-      lightSpread={effectiveSpread}
+      lightSpread={base.lightSpread}
+      rayDensity={base.rayDensity}
+      raySharpness={base.raySharpness}
       raysSpeed={effectiveSpeed}
-      pulsating={base.pulsating || Boolean(beatPulse > 0.05)}
+      tilt={effectiveTilt}
+      pulsating={base.pulsating || false}
       className={className}
       style={style}
     />

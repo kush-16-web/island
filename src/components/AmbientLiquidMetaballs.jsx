@@ -301,7 +301,7 @@ export default function AmbientLiquidMetaballs({
   const effectivePulse = isReactive ? pulse : 0;
   const effectiveBloom = isReactive ? bloom : 0;
   const effectiveMelody = isReactive ? melody : 0;
-  const effectiveSpeed = isPlaying ? 0.35 : 0;
+  const effectiveSpeed = isPlaying ? (mode === 'light-rays' ? 0.85 : 0.35) : 0;
 
   const isShards = mode === 'shards' || mode === 'aeroshards';
   const isUnblurred = isShards || mode === 'light-rays';

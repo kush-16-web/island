@@ -43,7 +43,14 @@ export default function CinemaPlayer() {
     }
   });
 
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(() => {
+    try {
+      const saved = localStorage.getItem('island_media_cache');
+      return saved ? JSON.parse(saved)?.status === 'playing' : false;
+    } catch {
+      return false;
+    }
+  });
   const [localNow, setLocalNow] = useState(Date.now);
   const [optimisticSeek, setOptimisticSeek] = useState(null); // { posMs, timestamp }
 
@@ -61,6 +68,10 @@ export default function CinemaPlayer() {
 
   const [selectedEffect, setSelectedEffect] = useState(() => {
     try {
+      const hash = typeof window !== 'undefined' ? window.location.hash : '';
+      const params = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
+      const queryMode = params.get('mode');
+      if (queryMode) return queryMode;
       return localStorage.getItem('island_metaballs_mode') || 'dynamic';
     } catch {
       return 'dynamic';
@@ -69,6 +80,10 @@ export default function CinemaPlayer() {
   const [showAtmosphereMenu, setShowAtmosphereMenu] = useState(false);
   const [lightPreset, setLightPreset] = useState(() => {
     try {
+      const hash = typeof window !== 'undefined' ? window.location.hash : '';
+      const params = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
+      const queryPreset = params.get('preset');
+      if (queryPreset) return queryPreset;
       return localStorage.getItem('island_cinema_light_preset') || 'spotlight';
     } catch {
       return 'spotlight';
@@ -409,10 +424,11 @@ export default function CinemaPlayer() {
   return (
     <div
       className={`cinema-container${isIdle ? ' is-idle' : ''}`}
+      data-effect={selectedEffect}
       style={{ '--music-accent': accentColor }}
     >
-      {/* 0. Fullscreen Ambient Album Art Blurred Background Layer */}
-      {displayArt && (
+      {/* 0. Fullscreen Ambient Album Art Blurred Background Layer (Omitted for Light Rays pure stage contrast) */}
+      {displayArt && selectedEffect !== 'light-rays' && (
         <div className="cinema-ambient-art" aria-hidden="true">
           <img src={displayArt} alt="" className="cinema-ambient-art__img" />
           <div className="cinema-ambient-art__overlay" />
@@ -433,7 +449,7 @@ export default function CinemaPlayer() {
           preset={lightPreset}
         />
       </div>
-      <div className="cinema-canvas-scrim" aria-hidden="true" />
+      {selectedEffect !== 'light-rays' && <div className="cinema-canvas-scrim" aria-hidden="true" />}
 
       {/* 2. Top Header Navigation */}
       <header className="cinema-header">
