@@ -682,30 +682,33 @@ export default function CinemaPlayer() {
                   else if (distance === 1) lineClass += ' is-adjacent';
                   else lineClass += ' is-far';
 
+                  const lineKey = line.id ?? line.timeMs ?? idx;
+
+                  if (isActive) {
+                    return (
+                      <PrecisionLyricLine
+                        key={lineKey}
+                        line={line}
+                        currentPositionMs={displayPositionMs}
+                        playing={isPlaying}
+                        className={lineClass}
+                        style={{ height: CINEMA_LINE_HEIGHT }}
+                      />
+                    );
+                  }
+
                   return (
                     <div
-                      key={line.id ?? line.timeMs ?? idx}
-                      className={`cinema-lyric-row${isActive ? ' is-active' : distance === 1 ? ' is-adjacent' : ' is-far'}`}
+                      key={lineKey}
+                      className={lineClass}
                       style={{ height: CINEMA_LINE_HEIGHT }}
                       onClick={() => {
-                        if (!isActive && typeof line.timeMs === 'number') {
+                        if (typeof line.timeMs === 'number') {
                           handleSeek(line.timeMs / 1000);
                         }
                       }}
                     >
-                      {isActive ? (
-                        <PrecisionLyricLine
-                          key="active"
-                          line={line}
-                          currentPositionMs={displayPositionMs}
-                          playing={isPlaying}
-                          className={lineClass}
-                        />
-                      ) : (
-                        <div key="inactive" className={lineClass}>
-                          {line.text || '...'}
-                        </div>
-                      )}
+                      {line.text || '...'}
                     </div>
                   );
                 })}
