@@ -175,7 +175,6 @@ export default function AmbientLiquidMetaballs({
     let prevBass = 0;
     let prevMid = 0;
     let prevHigh = 0;
-    let smoothMelody = 0;
     const freqData = new Uint8Array(512);
 
     if (!isLoopbackDisabled) {
@@ -263,15 +262,6 @@ export default function AmbientLiquidMetaballs({
         const presence = (currentSubBass * 0.40 + currentBass * 0.30 + currentMid * 0.20 + currentHigh * 0.10) * 0.28;
         const totalPulse = Math.min(1.0, decay + presence);
 
-        // Musical Melodic & Harmonic Envelope Follower (piano, vocals, guitar, jazz chords):
-        // Weighted mid-frequency body + high-frequency attack/air with acoustic sustain
-        const rawMelody = Math.min(1.0, currentMid * 1.5 + currentHigh * 0.9);
-        if (rawMelody > smoothMelody) {
-          smoothMelody = smoothMelody * 0.45 + rawMelody * 0.55;
-        } else {
-          smoothMelody = Math.max(0, smoothMelody * 0.93 - 0.005);
-        }
-
         // If audio stream is silent/idle, smoothly blend with organic ambient wave
         if (currentSubBass === 0 && currentBass === 0 && currentMid === 0 && currentHigh === 0) {
           t += 0.035;
@@ -282,7 +272,7 @@ export default function AmbientLiquidMetaballs({
         } else {
           setPulse(totalPulse);
           setBloom(bloomDecay);
-          setMelody(smoothMelody);
+          setMelody(Math.min(1.0, currentMid * 1.8 + currentHigh * 1.2));
         }
       } else {
         // Fallback transient pulse wave

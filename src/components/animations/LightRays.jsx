@@ -396,11 +396,11 @@ const CoreLightRays = ({
       const sourceX = s.origin.anchor[0] * width;
       const sourceY = s.origin.anchor[1] * height;
 
-      // Silky smooth concert stage lighting interpolation (majestic motorized follow-spot movement)
-      const tiltT = 1 - Math.exp(-dt / 0.85);
+      // Silky smooth concert stage lighting interpolation (eliminates twitching/shaking)
+      const tiltT = 1 - Math.exp(-dt / 0.45);
       smoothTilt += (s.tilt - smoothTilt) * tiltT;
 
-      const dynT = 1 - Math.exp(-dt / 0.18);
+      const dynT = 1 - Math.exp(-dt / 0.12);
       smoothIntensity += (s.intensity - smoothIntensity) * dynT;
       smoothLength += (s.length - smoothLength) * dynT;
 
@@ -617,19 +617,17 @@ export default function LightRays({
   const base = { ...LOOK, ...pConfig };
 
   const effectiveColor = ensureLuminousColor(color || base.raysColor || '#ffffff');
-  // Melodic & Harmonic Concert Lighting Reactivity:
-  // Instead of thumping like a kick-drum subwoofer (metaballs), concert rays breathe with
-  // melody, piano chords, vocal phrasing, jazz horns, and harmonic resonance.
-  // 1. Intensity illuminates with harmonic presence and vocal/instrumental phrasing
-  const effectiveIntensity = (base.intensity ?? 1.35) * (1.0 + (melodyPulse || 0) * 0.38 + (bloomPulse || 0) * 0.18 + (beatPulse || 0) * 0.08);
-  // 2. Beams stretch gracefully down the stage as musical chords sustain
-  const effectiveLength = (base.rayLength ?? 3.5) * (1.0 + (melodyPulse || 0) * 0.22 + (beatPulse || 0) * 0.06);
-  // 3. Volumetric dust & glow breathe naturally with acoustic ambience
-  const effectiveGlow = (base.glow ?? 0.60) * (1.0 + (melodyPulse || 0) * 0.30 + (bloomPulse || 0) * 0.15);
-  // 4. Shimmer flow modulates smoothly with melodic energy
-  const effectiveSpeed = paused ? 0 : (base.raysSpeed ?? 0.85) * (speed || 1) * (1.0 + (melodyPulse || 0) * 0.22);
-  // 5. Motorized moving-head follow-spot sway (gentle, majestic arena sweep)
-  const effectiveTilt = (base.tilt ?? 0) + ((melodyPulse || 0) - 0.28) * 0.55;
+  // Dynamic concert music reactivity:
+  // 1. Intensity swells with live music pulse and heavy drops
+  const effectiveIntensity = (base.intensity ?? 1.35) * (1.0 + (beatPulse || 0) * 0.40 + (bloomPulse || 0) * 0.25);
+  // 2. Beams stretch deeper down the screen on musical peaks
+  const effectiveLength = (base.rayLength ?? 3.5) * (1.0 + (beatPulse || 0) * 0.22);
+  // 3. Glow breathes naturally with musical presence
+  const effectiveGlow = (base.glow ?? 0.60) * (1.0 + (beatPulse || 0) * 0.30);
+  // 4. Ray speed flows with melodic tempo
+  const effectiveSpeed = paused ? 0 : (base.raysSpeed ?? 0.85) * (speed || 1) * (1.0 + (melodyPulse || 0) * 0.35);
+  // 5. Melodic moving-head motorized concert sway (subtle & graceful)
+  const effectiveTilt = (base.tilt ?? 0) + ((melodyPulse || 0) - 0.35) * 1.5;
 
   return (
     <CoreLightRays

@@ -17,6 +17,8 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   cursor: default;
   transition: background-color 0.4s ease;
+  --cinema-lyric-font-size: clamp(20px, 1.25vw + 0.6vh, 28px);
+  --cinema-lyric-line-height: 1.35;
 }
 
 .cinema-container.is-idle {
@@ -493,164 +495,157 @@
   align-items: center;
   gap: 0;
   will-change: transform;
+  font-size: var(--cinema-lyric-font-size, 21px);
+  font-weight: 700;
+  line-height: var(--cinema-lyric-line-height, 1.35);
 }
 
-  .cinema-lyric-line {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    max-width: 860px;
-    height: 68px;
-    min-height: 68px;
-    max-height: 68px;
-    box-sizing: border-box;
-    padding: 0 16px;
-    margin: 0 auto;
-    font-size: 22px;
-    line-height: 1.35;
-    font-weight: 700;
-    color: rgba(255, 255, 255, 0.45);
-    transition: color 0.28s ease, opacity 0.28s ease;
-    text-align: center;
-    user-select: none;
-    white-space: normal;
-    word-break: break-word;
-    word-spacing: 0.30em;
-    letter-spacing: -0.005em;
-    font-synthesis: none;
-    -webkit-font-smoothing: antialiased;
-    overflow: visible;
-  }
+.cinema-lyric-line {
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  line-height: var(--cinema-lyric-line-height, 1.35) !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.45);
+  transition: color 0.5s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  text-align: center;
+  user-select: none;
+  white-space: normal;
+  word-break: break-word;
+  word-spacing: 0.30em;
+  letter-spacing: -0.005em;
+  max-width: 860px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  overflow: visible;
+}
 
-  .cinema-lyric-line.is-active {
-    font-size: 22px !important;
-    line-height: 1.35 !important;
-    font-weight: 700 !important;
-    color: #ffffff !important;
-    opacity: 1 !important;
-    cursor: default;
-    transform: none;
-    filter: none;
-    text-shadow: none;
-  }
+.cinema-lyric-line.is-adjacent {
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  font-weight: 650 !important;
+  color: rgba(255, 255, 255, 0.70) !important;
+  opacity: 0.50 !important;
+  cursor: pointer;
+}
 
-  .cinema-lyric-line.is-adjacent {
-    font-size: 22px !important;
-    line-height: 1.35 !important;
-    font-weight: 700 !important;
-    color: rgba(255, 255, 255, 0.48) !important;
-    opacity: 0.55 !important;
-    cursor: pointer;
-  }
+.cinema-lyric-line.is-adjacent:hover {
+  opacity: 0.85 !important;
+  color: rgba(255, 255, 255, 0.90) !important;
+}
 
-  .cinema-lyric-line.is-adjacent:hover {
-    opacity: 0.85 !important;
-    color: rgba(255, 255, 255, 0.85) !important;
-  }
+.cinema-lyric-line.is-far {
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  opacity: 0 !important;
+  pointer-events: none;
+  visibility: hidden;
+}
 
-  .cinema-lyric-line.is-far {
-    font-size: 22px !important;
-    opacity: 0 !important;
-    pointer-events: none;
-    visibility: hidden;
-  }
+.cinema-lyric-line.is-active {
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  cursor: default;
+  transform: none;
+  filter: none;
+  text-shadow: none;
+}
 
-  /* Precision lyric overrides inside Cinema Mode: lock dead center and smooth inline flow */
-  .precision-lyric-container.cinema-lyric-line {
-    width: 100% !important;
-    max-width: 860px !important;
-    height: 68px !important;
-    min-height: 68px !important;
-    max-height: 68px !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    text-align: center !important;
-    overflow: visible !important;
-    white-space: normal !important;
-    word-spacing: 0.30em !important;
-    font-size: 22px !important;
-    line-height: 1.35 !important;
-    font-weight: 700 !important;
-    box-sizing: border-box !important;
-    padding: 0 16px !important;
-    margin: 0 auto !important;
-  }
+/* Precision lyric overrides inside Cinema Mode: lock dead center and smooth inline flow */
+.precision-lyric-container.cinema-lyric-line {
+  width: 100% !important;
+  max-width: 860px !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+  padding: 0 16px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  word-spacing: 0.30em !important;
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  line-height: var(--cinema-lyric-line-height, 1.35) !important;
+  font-weight: 700 !important;
+}
 
-  .precision-lyric-container.cinema-lyric-line .precision-lyric-content {
-    text-align: center !important;
-    white-space: normal !important;
-    word-break: break-word !important;
-    word-spacing: 0.30em !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: auto !important;
-    max-width: 100% !important;
-    transform: none !important;
-    font-size: 22px !important;
-    line-height: 1.35 !important;
-    font-weight: 700 !important;
-  }
+.precision-lyric-container.cinema-lyric-line .precision-lyric-content {
+  text-align: center !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  word-spacing: 0.30em !important;
+  display: inline-block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  transform: none !important;
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  line-height: var(--cinema-lyric-line-height, 1.35) !important;
+  font-weight: 700 !important;
+}
 
-  .precision-lyric-container.cinema-lyric-line .karaoke-words {
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex-wrap: wrap !important;
-    gap: 0.30em !important;
-    white-space: normal !important;
-    font-size: 22px !important;
-    line-height: 1.35 !important;
-  }
+.precision-lyric-container.cinema-lyric-line .karaoke-words {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  gap: 0.30em !important;
+  white-space: normal !important;
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  line-height: var(--cinema-lyric-line-height, 1.35) !important;
+  font-weight: 700 !important;
+}
 
-  .precision-lyric-container.cinema-lyric-line .k-word {
-    font: inherit;
-    font-size: 22px !important;
-    font-weight: 700 !important;
-    line-height: 1.35 !important;
-    white-space: nowrap !important;
-    display: inline-block;
-    font-synthesis: none;
-  }
+.precision-lyric-container.cinema-lyric-line .k-word {
+  font: inherit !important;
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  font-weight: 700 !important;
+  line-height: var(--cinema-lyric-line-height, 1.35) !important;
+  white-space: nowrap !important;
+  display: inline-block !important;
+  font-synthesis: none;
+}
 
-  .precision-lyric-container.cinema-lyric-line .k-word:last-child {
-    margin-right: 0;
-  }
+.precision-lyric-container.cinema-lyric-line .k-word:last-child {
+  margin-right: 0;
+}
 
-  .cinema-lyrics-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    gap: 16px;
-    color: rgba(255, 255, 255, 0.45);
-    text-align: center;
-  }
+.cinema-lyrics-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
 
-  .cinema-lyrics-empty__icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255, 255, 255, 0.65);
-  }
+.cinema-lyrics-empty__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.65);
+}
 
-  .cinema-lyrics-empty__title {
-    font-size: 18px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.85);
-    margin: 0;
-  }
+.cinema-lyrics-empty__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0;
+}
 
-  .cinema-lyrics-empty__sub {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.45);
-    margin: 0;
-    max-width: 280px;
-  }
+.cinema-lyrics-empty__sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0;
+  max-width: 280px;
+}

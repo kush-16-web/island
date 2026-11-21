@@ -31,8 +31,6 @@ const LIGHT_RAY_PRESETS = [
   { id: 'horizon', name: 'Horizon' },
 ];
 
-const CINEMA_LINE_HEIGHT = 84; // Vertical pitch for large cinematic lyrics
-
 export default function CinemaPlayer() {
   const [media, setMedia] = useState(() => {
     try {
@@ -403,7 +401,6 @@ export default function CinemaPlayer() {
   const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lines.length;
   const safeActiveIndex = hasActiveLine ? activeLineIndex : 0;
 
-  const CINEMA_LINE_HEIGHT = 68;
   const viewportRef = useRef(null);
   const [viewportH, setViewportH] = useState(420);
 
@@ -418,6 +415,8 @@ export default function CinemaPlayer() {
     return () => window.removeEventListener('resize', updateH);
   }, []);
 
+  // Fluid vertical line pitch dynamically adapting to viewport height (clamped between 60px on laptops and 80px on 4K)
+  const CINEMA_LINE_HEIGHT = Math.round(Math.min(80, Math.max(60, viewportH * 0.16)));
   const centerOffset = viewportH / 2 - CINEMA_LINE_HEIGHT / 2;
   const targetY = -safeActiveIndex * CINEMA_LINE_HEIGHT + centerOffset;
 
@@ -670,7 +669,7 @@ export default function CinemaPlayer() {
               <motion.div
                 className="cinema-lyrics-reel__inner"
                 animate={{ y: targetY }}
-                transition={{ type: 'spring', stiffness: 240, damping: 26 }}
+                transition={{ type: 'spring', stiffness: 125, damping: 21, mass: 0.95 }}
               >
                 {lines.map((line, idx) => {
                   const isActive = hasActiveLine && idx === activeLineIndex;
