@@ -90,6 +90,38 @@ export default function CinemaPlayer() {
   const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [isIdle, setIsIdle] = useState(false);
 
+  const atmosphereWrapperRef = useRef(null);
+  const presetWrapperRef = useRef(null);
+
+  // Close atmosphere and preset dropdown menus when clicking outside
+  useEffect(() => {
+    if (!showAtmosphereMenu && !showPresetMenu) return;
+
+    const handlePointerDown = (e) => {
+      if (
+        showAtmosphereMenu &&
+        atmosphereWrapperRef.current &&
+        !atmosphereWrapperRef.current.contains(e.target)
+      ) {
+        setShowAtmosphereMenu(false);
+      }
+      if (
+        showPresetMenu &&
+        presetWrapperRef.current &&
+        !presetWrapperRef.current.contains(e.target)
+      ) {
+        setShowPresetMenu(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('mousedown', handlePointerDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('mousedown', handlePointerDown, true);
+    };
+  }, [showAtmosphereMenu, showPresetMenu]);
+
   const idleTimerRef = useRef(null);
 
   // High-Res Artwork resolution
@@ -494,7 +526,7 @@ export default function CinemaPlayer() {
 
           {/* Atmosphere Visualizer Dropdown & Preset Selector */}
           <div className="cinema-atmosphere-row">
-            <div className="cinema-dropdown-wrapper">
+            <div className="cinema-dropdown-wrapper" ref={atmosphereWrapperRef}>
               <button
                 type="button"
                 className="cinema-atmosphere-btn"
@@ -536,7 +568,7 @@ export default function CinemaPlayer() {
             </div>
 
             {selectedEffect === 'light-rays' && (
-              <div className="cinema-dropdown-wrapper">
+              <div className="cinema-dropdown-wrapper" ref={presetWrapperRef}>
                 <button
                   type="button"
                   className="cinema-atmosphere-btn cinema-preset-btn"
@@ -669,7 +701,7 @@ export default function CinemaPlayer() {
               <motion.div
                 className="cinema-lyrics-reel__inner"
                 animate={{ y: targetY }}
-                transition={{ type: 'spring', stiffness: 125, damping: 21, mass: 0.95 }}
+                transition={{ type: 'spring', stiffness: 240, damping: 26 }}
               >
                 {lines.map((line, idx) => {
                   const isActive = hasActiveLine && idx === activeLineIndex;
