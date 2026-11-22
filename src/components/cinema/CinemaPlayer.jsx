@@ -14,9 +14,6 @@ import './cinema-player.css';
 const ATMOSPHERE_OPTIONS = [
   { id: 'dynamic', name: 'Liquid Metaballs' },
   { id: 'shards', name: 'Aero Shards' },
-  { id: 'classic', name: 'Classic Aura' },
-  { id: 'galaxy', name: 'Galaxy' },
-  { id: 'ghost-fibers', name: 'Ghost Fibers' },
   { id: 'gradient-waves', name: 'Gradient Waves' },
   { id: 'light-rays', name: 'Light Rays' },
 ];
@@ -69,8 +66,11 @@ export default function CinemaPlayer() {
       const hash = typeof window !== 'undefined' ? window.location.hash : '';
       const params = new URLSearchParams(hash.includes('?') ? hash.split('?')[1] : '');
       const queryMode = params.get('mode');
-      if (queryMode) return queryMode;
-      return localStorage.getItem('island_metaballs_mode') || 'dynamic';
+      const validModes = ['dynamic', 'shards', 'gradient-waves', 'light-rays'];
+      if (queryMode && validModes.includes(queryMode)) return queryMode;
+      const saved = localStorage.getItem('island_metaballs_mode');
+      if (saved && validModes.includes(saved)) return saved;
+      return 'dynamic';
     } catch {
       return 'dynamic';
     }
@@ -458,8 +458,8 @@ export default function CinemaPlayer() {
       data-effect={selectedEffect}
       style={{ '--music-accent': accentColor }}
     >
-      {/* 0. Fullscreen Ambient Album Art Blurred Background Layer (Omitted for Light Rays pure stage contrast) */}
-      {displayArt && selectedEffect !== 'light-rays' && (
+      {/* 0. Fullscreen Ambient Album Art Blurred Background Layer (Omitted for 3D stage visualizers) */}
+      {displayArt && !['light-rays', 'gradient-waves', 'shards', 'aeroshards'].includes(selectedEffect) && (
         <div className="cinema-ambient-art" aria-hidden="true">
           <img src={displayArt} alt="" className="cinema-ambient-art__img" />
           <div className="cinema-ambient-art__overlay" />
@@ -480,7 +480,9 @@ export default function CinemaPlayer() {
           preset={lightPreset}
         />
       </div>
-      {selectedEffect !== 'light-rays' && <div className="cinema-canvas-scrim" aria-hidden="true" />}
+      {!['light-rays', 'gradient-waves', 'shards', 'aeroshards'].includes(selectedEffect) && (
+        <div className="cinema-canvas-scrim" aria-hidden="true" />
+      )}
 
       {/* 2. Top Header Navigation */}
       <header className="cinema-header">

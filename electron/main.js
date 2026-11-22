@@ -20,6 +20,8 @@ function getSystemAccentColor() {
 
 // High-performance GPU compositing & tile memory management
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-unsafe-webgpu');
+app.commandLine.appendSwitch('enable-features', 'WebGPU');
 app.commandLine.appendSwitch('force-gpu-mem-available-mb', '2048');
 app.commandLine.appendSwitch('gpu-rasterization-msaa-sample-count', '0');
 
@@ -1609,28 +1611,12 @@ if (!app.requestSingleInstanceLock()) {
       callback(false);
     });
 
-    let cachedDisplaySource = null;
-    (async () => {
-      try {
-        const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
-        cachedDisplaySource = sources[0] || null;
-      } catch {}
-    })();
-
     if (session.defaultSession.setDisplayMediaRequestHandler) {
-      session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+      session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
         try {
-          if (cachedDisplaySource) {
-            callback({ video: cachedDisplaySource, audio: 'loopback' });
-            return;
-          }
-          const sources = await desktopCapturer.getSources({
-            types: ['screen', 'window'],
-            thumbnailSize: { width: 1, height: 1 },
-          });
-          const matched = findMediaSource(sources) || sources[0] || null;
-          cachedDisplaySource = matched;
-          callback({ video: matched, audio: 'loopback' });
+          // Immediately fulfill with primary display and loopback audio.
+          // Bypassing desktopCapturer.getSources avoids WebRTC thread assignment locks on Windows.
+          callback({ video: { id: 'screen:0:0', name: 'Entire Screen' }, audio: 'loopback' });
         } catch {
           callback({ video: null, audio: null });
         }

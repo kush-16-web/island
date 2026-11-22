@@ -51,6 +51,7 @@ uniform vec4 uPulses[${MAX_PULSES}];
 uniform vec2 uIntro;
 uniform float uLight;
 uniform float uOpacity;
+uniform vec4 uBands;
 out vec4 fragColor;
 
 float hash(vec2 p) {
@@ -105,8 +106,36 @@ void main() {
   float pulseB = uPulsating > 0.5 ? 0.8 + 0.2 * sin(uTime * 3.3) : 1.0;
   float rayLight = envelope * (0.5 * shape(strengthA, widthA) * pulseA + 0.4 * shape(strengthB, widthB) * pulseB);
 
+  // Concert Multi-Tone Beam Rig:
+  // Signed angular offset relative to spotlight aiming axis (-PI to +PI)
+  float around = atan(uAim.x * dir.y - uAim.y * dir.x, cosAngle);
+  float spreadNorm = max(uSpread * 0.72, 0.12);
+  float normAngle = abs(around) / spreadNorm;
+
+  // 1. Center Beams: Lead Vocals & Melodic Highs (uBands.z)
+  // Tight central spotlight cone; ignites and reaches deep when singer hits notes
+  float centerBeam = exp(-pow(normAngle * 1.85, 2.0));
+
+  // 2. Outer Wings: Sub-Bass & Drum Kicks (uBands.x)
+  // Left and right flank concert arrays that pulse outward on drum beats
+  float wingBeams = smoothstep(0.32, 0.82, normAngle);
+
+  // 3. Mid Sectors: Guitars & Synth Harmonies (uBands.y)
+  // Intermediate beam fan bridging center to outer perimeter
+  float midBeams = smoothstep(0.10, 0.40, normAngle) * (1.0 - smoothstep(0.50, 0.90, normAngle));
+
+  // Discrete DMX-style tone dimmers (never pitch black: maintains warm 0.25-0.30 resting beam):
+  float centerTone = mix(0.30, 1.25, uBands.z); // Vocals / High solos
+  float wingTone = mix(0.25, 1.20, uBands.x);   // Sub-bass / Heavy kicks
+  float midTone = mix(0.26, 1.12, uBands.y);    // Synths / Harmonies
+
+  float beamToneMod = (centerBeam * centerTone + wingBeams * wingTone + midBeams * midTone)
+                    / max(centerBeam + wingBeams + midBeams, 1e-4);
+
+  // Modulate rayLight directly: preserves dark inter-ray gaps without merging into fog!
+  rayLight *= beamToneMod;
+
   if (uHaze > 0.0) {
-    float around = atan(uAim.x * dir.y - uAim.y * dir.x, cosAngle);
     vec2 drift = vec2(around * 2.2 + uTime * 0.035, depth * 2.6 - uTime * 0.11);
     float fog = 0.65 * valueNoise(drift * vec2(3.0, 1.0)) + 0.35 * valueNoise(drift * vec2(7.0, 2.3) + 4.1);
     rayLight *= mix(1.0, 0.25 + 1.2 * fog, uHaze);
@@ -133,9 +162,10 @@ void main() {
   }
   float light = (rayLight * (1.0 + boost) + glowLight) * reveal;
 
-  if (uNoise > 0.0) {
+  if (uNoise > 0.0 || uBands.w > 0.05) {
     float n = fract(sin(dot(coord * 0.02 + uTime * 0.1, vec2(12.9898, 78.233))) * 43758.5453123);
-    light *= 1.0 - uNoise + uNoise * n;
+    float noiseStrength = max(uNoise, uBands.w * 0.07);
+    light *= 1.0 - noiseStrength + noiseStrength * n;
   }
 
   float near = clamp(1.2 - distance / (uResolution.y / uScale), 0.0, 1.0);
@@ -248,6 +278,7 @@ const CoreLightRays = ({
   lightMode = false,
   opacity = 1,
   maxDevicePixelRatio = 2,
+  bands = [0.25, 0.25, 0.28, 0.1],
   className = '',
   style
 }) => {
@@ -281,7 +312,8 @@ const CoreLightRays = ({
     intro,
     light: lightMode,
     opacity: clamp(opacity, 0, 1),
-    maxRatio: clamp(maxDevicePixelRatio, 0.5, 3)
+    maxRatio: clamp(maxDevicePixelRatio, 0.5, 3),
+    bands: Array.isArray(bands) && bands.length === 4 ? bands : [0.25, 0.25, 0.28, 0.1]
   };
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -319,6 +351,10 @@ const CoreLightRays = ({
     let smoothTilt = settingsRef.current.tilt;
     let smoothIntensity = settingsRef.current.intensity;
     let smoothLength = settingsRef.current.length;
+    let smoothSpread = settingsRef.current.spread;
+    let smoothSwayAmp = 0.028;
+    let motorizedPhase = 0;
+    const smoothBands = new Float32Array([0.25, 0.25, 0.28, 0.1]);
     let raf = 0;
     let last = 0;
     let visible = true;
@@ -396,18 +432,43 @@ const CoreLightRays = ({
       const sourceX = s.origin.anchor[0] * width;
       const sourceY = s.origin.anchor[1] * height;
 
+      // DMX Stage moving-head dimmer curves:
+      // Fast attack (35ms) for punchy transient kicks.
+      // Dynamic release: sub-bass/drums (i === 0) release rapidly (85ms) into an acoustic trough
+      // so rapid consecutive beats ("dum dum dum") strike with equal power, while vocals (i === 2) breathe smoothly (160ms).
+      const targetBands = s.bands || [0.25, 0.25, 0.28, 0.1];
+      for (let i = 0; i < 4; i++) {
+        const target = targetBands[i] ?? 0.25;
+        const decayTau = i === 0 ? 0.085 : i === 1 ? 0.11 : i === 2 ? 0.16 : 0.09;
+        const rate = target > smoothBands[i] ? (1 - Math.exp(-dt / 0.035)) : (1 - Math.exp(-dt / decayTau));
+        smoothBands[i] += (target - smoothBands[i]) * rate;
+      }
+
       // Silky smooth concert stage lighting interpolation (eliminates twitching/shaking)
-      const tiltT = 1 - Math.exp(-dt / 0.45);
+      const tiltT = 1 - Math.exp(-dt / 0.6);
       smoothTilt += (s.tilt - smoothTilt) * tiltT;
 
       const dynT = 1 - Math.exp(-dt / 0.12);
       smoothIntensity += (s.intensity - smoothIntensity) * dynT;
       smoothLength += (s.length - smoothLength) * dynT;
 
-      const cos = Math.cos(smoothTilt);
-      const sin = Math.sin(smoothTilt);
-      let dirX = s.origin.dir[0] * cos - s.origin.dir[1] * sin;
-      let dirY = s.origin.dir[0] * sin + s.origin.dir[1] * cos;
+      // Motorized continuous concert stage gimbal sweep:
+      // Advances with constant phase speed (zero jerking, zero step changes)
+      if (!s.paused && !reduced) {
+        motorizedPhase += dt * 0.40; // ~15.7s full smooth sinusoidal cycle
+      }
+      const targetSwayAmp = 0.026 + (smoothBands[2] || 0) * 0.022;
+      smoothSwayAmp += (targetSwayAmp - smoothSwayAmp) * (1 - Math.exp(-dt / 0.35));
+      const gimbalSway = Math.sin(motorizedPhase) * smoothSwayAmp;
+
+      const effectiveAngle = smoothTilt + gimbalSway;
+      const effectiveCos = Math.cos(effectiveAngle);
+      const effectiveSin = Math.sin(effectiveAngle);
+      let dirX = s.origin.dir[0] * effectiveCos - s.origin.dir[1] * effectiveSin;
+      let dirY = s.origin.dir[0] * effectiveSin + s.origin.dir[1] * effectiveCos;
+
+      const spreadTarget = s.spread * (1.0 + smoothBands[0] * 0.08);
+      smoothSpread += (spreadTarget - smoothSpread) * (1 - Math.exp(-dt / 0.20));
       if (s.follow && s.influence > 0) {
         const mx = aim.x * width - sourceX;
         const my = aim.y * height - sourceY;
@@ -434,7 +495,7 @@ const CoreLightRays = ({
       const diagonal = Math.hypot(width, height);
       gl.uniform1f(u.uReach, diagonal * 1.35);
       gl.uniform3f(u.uColor, s.color[0], s.color[1], s.color[2]);
-      gl.uniform1f(u.uSpread, s.spread);
+      gl.uniform1f(u.uSpread, smoothSpread);
       gl.uniform1f(u.uLength, smoothLength);
       gl.uniform1f(u.uFade, s.fade);
       gl.uniform1f(u.uSaturation, s.saturation);
@@ -451,6 +512,7 @@ const CoreLightRays = ({
       gl.uniform4fv(u.uPulses, pulseData);
       gl.uniform2f(u.uIntro, eased * 3.5, smoother(opening / 0.5));
       gl.uniform1f(u.uLight, s.light ? 1 : 0);
+      gl.uniform4f(u.uBands, smoothBands[0], smoothBands[1], smoothBands[2], smoothBands[3]);
       gl.uniform1f(u.uOpacity, s.opacity);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -607,6 +669,7 @@ export default function LightRays({
   beatPulse = 0,
   bloomPulse = 0,
   melodyPulse = 0,
+  bands = [0.25, 0.25, 0.28, 0.1],
   preset = 'spotlight',
   className = '',
   style = {},
@@ -619,15 +682,15 @@ export default function LightRays({
   const effectiveColor = ensureLuminousColor(color || base.raysColor || '#ffffff');
   // Dynamic concert music reactivity:
   // 1. Intensity swells with live music pulse and heavy drops
-  const effectiveIntensity = (base.intensity ?? 1.35) * (1.0 + (beatPulse || 0) * 0.40 + (bloomPulse || 0) * 0.25);
+  const effectiveIntensity = (base.intensity ?? 1.35) * (1.0 + (beatPulse || 0) * 0.35 + (bloomPulse || 0) * 0.20);
   // 2. Beams stretch deeper down the screen on musical peaks
-  const effectiveLength = (base.rayLength ?? 3.5) * (1.0 + (beatPulse || 0) * 0.22);
+  const effectiveLength = (base.rayLength ?? 3.5) * (1.0 + (beatPulse || 0) * 0.20);
   // 3. Glow breathes naturally with musical presence
-  const effectiveGlow = (base.glow ?? 0.60) * (1.0 + (beatPulse || 0) * 0.30);
-  // 4. Ray speed flows with melodic tempo
-  const effectiveSpeed = paused ? 0 : (base.raysSpeed ?? 0.85) * (speed || 1) * (1.0 + (melodyPulse || 0) * 0.35);
-  // 5. Melodic moving-head motorized concert sway (subtle & graceful)
-  const effectiveTilt = (base.tilt ?? 0) + ((melodyPulse || 0) - 0.35) * 1.5;
+  const effectiveGlow = (base.glow ?? 0.60) * (1.0 + (beatPulse || 0) * 0.25);
+  // 4. Ray speed flows steadily without transient speed spikes
+  const effectiveSpeed = paused ? 0 : (base.raysSpeed ?? 0.85) * (speed || 1);
+  // 5. Preset tilt remains anchored, motorized gimbal handles the continuous smooth sweep
+  const effectiveTilt = base.tilt ?? 0;
 
   return (
     <CoreLightRays
@@ -643,6 +706,7 @@ export default function LightRays({
       raysSpeed={effectiveSpeed}
       tilt={effectiveTilt}
       pulsating={base.pulsating || false}
+      bands={bands}
       className={className}
       style={style}
     />

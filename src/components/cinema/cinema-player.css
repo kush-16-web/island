@@ -36,11 +36,17 @@
   transition: opacity 0.6s ease;
 }
 
-.cinema-container[data-effect="light-rays"] {
+.cinema-container[data-effect="light-rays"],
+.cinema-container[data-effect="gradient-waves"],
+.cinema-container[data-effect="shards"],
+.cinema-container[data-effect="aeroshards"] {
   background: #050505;
 }
 
-.cinema-container[data-effect="light-rays"] .cinema-ambient-art {
+.cinema-container[data-effect="light-rays"] .cinema-ambient-art,
+.cinema-container[data-effect="gradient-waves"] .cinema-ambient-art,
+.cinema-container[data-effect="shards"] .cinema-ambient-art,
+.cinema-container[data-effect="aeroshards"] .cinema-ambient-art {
   display: none !important;
   opacity: 0 !important;
 }
@@ -80,7 +86,10 @@
   transition: background 0.4s ease;
 }
 
-.cinema-container[data-effect="light-rays"] .cinema-canvas-scrim {
+.cinema-container[data-effect="light-rays"] .cinema-canvas-scrim,
+.cinema-container[data-effect="gradient-waves"] .cinema-canvas-scrim,
+.cinema-container[data-effect="shards"] .cinema-canvas-scrim,
+.cinema-container[data-effect="aeroshards"] .cinema-canvas-scrim {
   display: none !important;
 }
 

@@ -65,7 +65,9 @@ export async function getLoopbackAnalyser() {
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = 0.15;
+      analyser.smoothingTimeConstant = 0.18;
+      analyser.minDecibels = -85;
+      analyser.maxDecibels = -15;
 
       // Note: Never connect analyser to audioCtx.destination! Zero feedback loop.
       source.connect(analyser);
@@ -101,6 +103,7 @@ export default function AmbientLiquidMetaballs({
   const [pulse, setPulse] = useState(0);
   const [bloom, setBloom] = useState(0);
   const [melody, setMelody] = useState(0);
+  const [audioBands, setAudioBands] = useState([0.25, 0.25, 0.28, 0.1]);
   const animRef = useRef(null);
   const analyserRef = useRef(null);
 
@@ -170,12 +173,19 @@ export default function AmbientLiquidMetaballs({
     let t = 0;
     let decay = 0;
     let bloomDecay = 0;
-    let lastBloomTime = 0;
-    let prevSubBass = 0;
-    let prevBass = 0;
-    let prevMid = 0;
-    let prevHigh = 0;
+    let lastDropTime = 0;
+    let dynamicDropThreshold = 0.16;
+    let subBassBaseline = 0;
+    let bassBaseline = 0;
+    let midBaseline = 0;
+    let highBaseline = 0;
+    let melodyEnvelope = 0;
+    let lastCommitTime = 0;
     const freqData = new Uint8Array(512);
+
+    if (sharedAnalyser) {
+      analyserRef.current = sharedAnalyser;
+    }
 
     if (!isLoopbackDisabled) {
       getLoopbackAnalyser().then((analyser) => {
@@ -193,94 +203,148 @@ export default function AmbientLiquidMetaballs({
         analyser.getByteFrequencyData(freqData);
 
         // High-Precision Multi-Band Spectrum (fftSize = 1024, ~46.9Hz per bin):
-        // 1. Sub-Bass & Deep Kicks (~47Hz - 141Hz, e.g. FE!N 808s, One More Hour floor toms)
+        // 1. Sub-Bass & Deep Floor Toms/808s (~47Hz - 141Hz, e.g. One More Hour, FE!N)
         let subSum = 0;
         for (let i = 1; i <= 3; i++) subSum += freqData[i];
         const currentSubBass = subSum / (3 * 255);
 
-        // 2. Punch & Bass Body (~141Hz - 328Hz)
+        // 2. Punch & Bass Body (~141Hz - 375Hz)
         let bassSum = 0;
-        for (let i = 4; i <= 7; i++) bassSum += freqData[i];
-        const currentBass = bassSum / (4 * 255);
+        for (let i = 4; i <= 8; i++) bassSum += freqData[i];
+        const currentBass = bassSum / (5 * 255);
 
-        // 3. Mids / Claps / Snares / Vocals (~375Hz - 1875Hz, e.g. Harleys In Hawaii rimshots)
+        // 3. Mids / Pianos / Vocals / Guitars / Saxophone (~400Hz - 2400Hz)
         let midSum = 0;
-        for (let i = 8; i <= 40; i++) midSum += freqData[i];
-        const currentMid = midSum / (33 * 255);
+        for (let i = 9; i <= 51; i++) midSum += freqData[i];
+        const currentMid = midSum / (43 * 255);
 
-        // 4. Highs / Crisp Percussion / Hi-hats (~1900Hz - 6000Hz)
+        // 4. Highs / Cymbals / Hi-hats / Air (~2400Hz - 10000Hz)
         let highSum = 0;
-        for (let i = 41; i <= 128; i++) highSum += freqData[i];
-        const currentHigh = highSum / (88 * 255);
+        for (let i = 52; i <= 213; i++) highSum += freqData[i];
+        const currentHigh = highSum / (162 * 255);
 
-        // Positive Spectral Flux (instantaneous energy rise per musical band)
-        const subFlux = Math.max(0, currentSubBass - prevSubBass);
-        const bassFlux = Math.max(0, currentBass - prevBass);
-        const midFlux = Math.max(0, currentMid - prevMid);
-        const highFlux = Math.max(0, currentHigh - prevHigh);
+        // Initialize baselines to initial audio levels on first frame to prevent false startup surge
+        if (subBassBaseline === 0 && bassBaseline === 0 && (currentSubBass > 0 || currentBass > 0)) {
+          subBassBaseline = currentSubBass;
+          bassBaseline = currentBass;
+          midBaseline = currentMid;
+          highBaseline = currentHigh;
+        }
 
-        prevSubBass = currentSubBass;
-        prevBass = currentBass;
-        prevMid = currentMid;
-        prevHigh = currentHigh;
+        // Adaptive Energy Moving Average (EMA) baselines:
+        // Slow adapt rate allows sudden onset peaks to punch clearly above sustained volume
+        subBassBaseline += (currentSubBass - subBassBaseline) * 0.045;
+        bassBaseline += (currentBass - bassBaseline) * 0.045;
+        midBaseline += (currentMid - midBaseline) * 0.06;
+        highBaseline += (currentHigh - highBaseline) * 0.06;
 
-        // Weighted transient onset:
-        // Deep sub-bass drops + sharp rimshots/claps get priority weighting
+        // Onset transients measured relative to dynamic audio floor
+        const subOnset = Math.max(0, currentSubBass - subBassBaseline);
+        const bassOnset = Math.max(0, currentBass - bassBaseline);
+        const midOnset = Math.max(0, currentMid - midBaseline);
+        const highOnset = Math.max(0, currentHigh - highBaseline);
+
+        // Weighted composite transient:
+        // Floor toms, sub kicks, and 808s receive prime transient weighting
         const transient = Math.max(
-          subFlux * 3.2,
-          bassFlux * 2.4,
-          midFlux * 1.8,
-          highFlux * 1.3
+          subOnset * 3.4,
+          bassOnset * 2.6,
+          midOnset * 2.0,
+          highOnset * 1.4
         );
 
-        if (transient > 0.05) {
-          // Sharp punchy attack with fast recovery for consecutive trap beats & rolls
-          decay = Math.min(1.0, decay * 0.35 + transient * 0.95);
-          if (transient > 0.09 && typeof window !== 'undefined') {
+        if (transient > 0.04) {
+          // Sharp attack with fast recovery for rapid drum fills & consecutive kicks
+          decay = Math.min(1.0, decay * 0.40 + transient * 0.95);
+          if (transient > 0.08 && typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('island:music-beat', {
               detail: { transient, subBass: currentSubBass }
             }));
           }
         } else {
-          // Snappy, organic fluid decay
-          decay = Math.max(0, decay * 0.82 - 0.015);
+          // Organic fluid decay
+          decay = Math.max(0, decay * 0.84 - 0.012);
         }
 
-        // Accent Gating for Warm Light Bloom:
-        // Only fires on true heavy musical drops (transient > 0.28) with a 750ms phrasing cooldown
-        // Eliminates continuous strobe/disco flashing and keeps lighting warm and gentle on the eyes
+        // Dynamic Accent Gating for Heavy Beat Drops:
+        // Dual-stage recovery curve allows rapid consecutive hits ("dum dum dum") ~160ms-350ms apart
+        // to plunge into a clean acoustic trough and re-strike with full visual force on every beat.
         const now = performance.now();
-        if (transient > 0.28 && (now - lastBloomTime > 750)) {
-          bloomDecay = Math.min(1.0, transient * 1.1);
-          lastBloomTime = now;
+        const timeSinceLastDrop = now - lastDropTime;
+        dynamicDropThreshold = Math.max(0.12, dynamicDropThreshold * 0.88);
+
+        if (transient > dynamicDropThreshold && timeSinceLastDrop > 150) {
+          bloomDecay = Math.min(1.0, Math.max(0.70, transient * 1.35));
+          lastDropTime = now;
+          dynamicDropThreshold = Math.max(0.24, transient * 0.82);
         } else {
-          // Soft, gentle ember fade
-          bloomDecay = Math.max(0, bloomDecay * 0.91 - 0.015);
+          // Fast-trough initial drop with golden ember tail
+          bloomDecay = Math.max(0, bloomDecay * 0.78 - 0.02);
         }
 
         // Ambient groove presence from overall music energy
         const presence = (currentSubBass * 0.40 + currentBass * 0.30 + currentMid * 0.20 + currentHigh * 0.10) * 0.28;
         const totalPulse = Math.min(1.0, decay + presence);
 
+        // Instrumental / Melodic nuance:
+        // Smoothly envelope mid-range instruments (piano chords, jazz horns, vocals)
+        // to guide concert light tilt, ray rotation, and water flow
+        const instrumentalEnergy = currentMid * 1.6 + currentHigh * 0.9;
+        melodyEnvelope += (instrumentalEnergy - melodyEnvelope) * 0.10;
+
+        // Universal Acoustic Multi-Tone Frequency Bands (Logarithmic / Perceptual Response):
+        // Power curve naturally compresses quiet background instruments (arpeggios, fingerpicking)
+        // so they glow gently (35-45%) without jittery jumping, while full vocal belts and solos reach 90-100%.
+        const bSub = Math.min(1.0, Math.pow(currentSubBass, 1.25) * 1.35 + subOnset * 1.1);
+        const bBass = Math.min(1.0, Math.pow(currentBass, 1.25) * 1.25 + bassOnset * 0.9);
+        const bVocals = Math.min(1.0, Math.pow(currentMid, 1.3) * 1.35 + midOnset * 0.85);
+        const bHighs = Math.min(1.0, Math.pow(currentHigh, 1.3) * 1.4 + highOnset * 0.7);
+
         // If audio stream is silent/idle, smoothly blend with organic ambient wave
         if (currentSubBass === 0 && currentBass === 0 && currentMid === 0 && currentHigh === 0) {
           t += 0.035;
-          const fallbackBeat = Math.pow(Math.sin(t * 1.8), 6) * 0.35 + Math.pow(Math.sin(t * 0.9), 2) * 0.12;
-          setPulse(fallbackBeat);
-          setBloom(0);
-          setMelody(Math.pow(Math.sin(t * 1.2), 2) * 0.25);
+          if (now - lastCommitTime >= 22) {
+            lastCommitTime = now;
+            const fallbackBeat = Math.pow(Math.sin(t * 1.8), 6) * 0.35 + Math.pow(Math.sin(t * 0.9), 2) * 0.12;
+            setPulse(fallbackBeat);
+            setBloom(0);
+            setMelody(Math.pow(Math.sin(t * 1.2), 2) * 0.25);
+            setAudioBands([
+              Math.pow(Math.sin(t * 1.8), 6) * 0.45,
+              Math.pow(Math.sin(t * 1.2), 2) * 0.35,
+              Math.pow(Math.sin(t * 0.9), 2) * 0.40,
+              Math.pow(Math.sin(t * 2.4), 4) * 0.30,
+            ]);
+          }
         } else {
-          setPulse(totalPulse);
-          setBloom(bloomDecay);
-          setMelody(Math.min(1.0, currentMid * 1.8 + currentHigh * 1.2));
+          // Rate-limit React state dispatches to ~45Hz (every 22ms) unless a sharp transient/beat drops,
+          // completely eliminating React GC pauses and UI frame drops while preserving instant attack response.
+          const isSharpOnset = transient > 0.08 || (bloomDecay > 0.6 && now - lastDropTime < 40);
+          if (now - lastCommitTime >= 22 || isSharpOnset) {
+            lastCommitTime = now;
+            setPulse(totalPulse);
+            setBloom(bloomDecay);
+            setMelody(Math.min(1.0, melodyEnvelope));
+            setAudioBands([bSub, bBass, bVocals, bHighs]);
+          }
         }
       } else {
         // Fallback transient pulse wave
         t += 0.035;
-        const beat = Math.pow(Math.sin(t * 1.8), 6) * 0.35 + Math.pow(Math.sin(t * 0.9), 2) * 0.12;
-        setPulse(beat);
-        setBloom(0);
-        setMelody(Math.pow(Math.sin(t * 1.2), 2) * 0.25);
+        const now = performance.now();
+        if (now - lastCommitTime >= 22) {
+          lastCommitTime = now;
+          const beat = Math.pow(Math.sin(t * 1.8), 6) * 0.35 + Math.pow(Math.sin(t * 0.9), 2) * 0.12;
+          setPulse(beat);
+          setBloom(0);
+          setMelody(Math.pow(Math.sin(t * 1.2), 2) * 0.25);
+          setAudioBands([
+            Math.pow(Math.sin(t * 1.8), 6) * 0.45,
+            Math.pow(Math.sin(t * 1.2), 2) * 0.35,
+            Math.pow(Math.sin(t * 0.9), 2) * 0.40,
+            Math.pow(Math.sin(t * 2.4), 4) * 0.30,
+          ]);
+        }
       }
 
       animRef.current = requestAnimationFrame(tick);
@@ -308,6 +372,10 @@ export default function AmbientLiquidMetaballs({
 
   // Apply custom blur via inline style or CSS variable
   const containerStyle = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
     filter: isUnblurred ? 'none' : `blur(${customBlur}px) saturate(160%)`,
     WebkitFilter: isUnblurred ? 'none' : `blur(${customBlur}px) saturate(160%)`,
   };
@@ -325,6 +393,9 @@ export default function AmbientLiquidMetaballs({
           paused={!isPlaying}
           beatPulse={effectivePulse}
           bloomPulse={effectiveBloom}
+          melodyPulse={effectiveMelody}
+          markers="dots"
+          count={720}
         />
       ) : mode === 'galaxy' ? (
         <Galaxy
@@ -349,6 +420,7 @@ export default function AmbientLiquidMetaballs({
           paused={!isPlaying}
           beatPulse={effectivePulse}
           bloomPulse={effectiveBloom}
+          melodyPulse={effectiveMelody}
         />
       ) : mode === 'light-rays' ? (
         <LightRays
@@ -358,6 +430,7 @@ export default function AmbientLiquidMetaballs({
           beatPulse={effectivePulse}
           bloomPulse={effectiveBloom}
           melodyPulse={effectiveMelody}
+          bands={isReactive ? audioBands : [0.25, 0.25, 0.28, 0.1]}
           preset={preset}
         />
       ) : mode === 'aurora' || mode === 'fluid' ? (
@@ -378,7 +451,7 @@ export default function AmbientLiquidMetaballs({
           wobble={0.5}
           stretch={0.55}
           animationSize={24}
-          originX={originX}
+          originX={0.72}
           originY={originY}
           enableTransparency={true}
           paused={!isPlaying}
