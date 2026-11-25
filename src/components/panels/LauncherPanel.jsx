@@ -7,6 +7,7 @@ import { Icon } from '../icons';
 import CompanionEyes from '../CompanionEyes';
 import ClockPanel from '../ClockPanel';
 import IOSWeatherIcon from '../weather/IOSWeatherIcon';
+import WeatherPanel from '../weather/WeatherPanel';
 import { useWeather } from '../../hooks/useWeather';
 import { getTasks, toggleTask, addTask, deleteTask, getTaskStats } from '../../lib/tasks';
 import { Equalizer } from '../bits';
@@ -184,9 +185,9 @@ export default function LauncherPanel({
   const isDay = activeW?.isDay ?? true;
 
   return (
-    <div className="utilities-root" style={{ '--accent': media.active ? (accentColor || 'var(--c-info)') : 'transparent' }}>
-      {/* Top Header when viewing a detail utility (except clock, which has its own full-screen iOS header) */}
-      {activeUtility && activeUtility !== 'clock' && (
+    <div className="utilities-root" style={{ '--accent': (media.active && activeUtility !== 'weather') ? (accentColor || 'var(--c-info)') : 'transparent' }}>
+      {/* Top Header when viewing a detail utility (except clock, timer, and weather, which have their own continuous iOS header) */}
+      {activeUtility && activeUtility !== 'clock' && activeUtility !== 'timer' && activeUtility !== 'new_alarm' && activeUtility !== 'weather' && (
         <div className="utilities-header">
           <div className="utilities-header__left">
             <button
@@ -450,157 +451,15 @@ export default function LauncherPanel({
                   )}
 
                   {activeUtility === 'weather' && (
-                    <div className="utility-pane utility-pane--weather">
-                      {(() => {
-                        const activeW = weather || cachedWeather;
-                        const hasTemp = activeW && (activeW.temperature != null || activeW.temp != null);
-                        if (!hasTemp) {
-                          return (
-                            <div className="utility-empty-state">
-                              <IOSWeatherIcon code={0} isDay size={36} />
-                              <span className="utility-empty-state__title">Fetching Weather…</span>
-                              <p className="utility-empty-state__sub">Connecting to local weather telemetry.</p>
-                            </div>
-                          );
-                        }
-
-                        const tempVal = Math.round(activeW.temperature ?? activeW.temp);
-                        const codeVal = activeW.weatherCode ?? 0;
-                        const isDayVal = activeW.isDay ?? true;
-
-                        return (
-                          <div className="ios-weather-detail">
-                            {/* Balanced Hero Header: Left Typography & Right Apple SF Symbol */}
-                            <div className="ios-weather-detail__hero">
-                              <div className="ios-weather-detail__hero-left">
-                                <div className="ios-weather-detail__city-row">
-                                  <span className="ios-weather-detail__city">{activeW.city || 'Local Area'}</span>
-                                  {activeW.country && <span className="ios-weather-detail__country">{activeW.country}</span>}
-                                </div>
-                                <div className="ios-weather-detail__temp-row">
-                                  <span className="ios-weather-detail__temp">{tempVal}°</span>
-                                  <span className="ios-weather-detail__cond">{activeW.condition || 'Clear'}</span>
-                                </div>
-                                {activeW.high != null && activeW.low != null && (
-                                  <div className="ios-weather-detail__hilo">
-                                    <span>H: {Math.round(activeW.high)}°</span>
-                                    <span className="ios-weather-detail__dot">·</span>
-                                    <span>L: {Math.round(activeW.low)}°</span>
-                                    {activeW.rainChance != null && activeW.rainChance > 0 && (
-                                      <>
-                                        <span className="ios-weather-detail__dot">·</span>
-                                        <span>Rain {activeW.rainChance}%</span>
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                                <span className="ios-weather-detail__summary">
-                                  {activeW.rainChance > 20
-                                    ? 'Rain showers expected later today.'
-                                    : (activeW.high >= 33
-                                        ? 'Expect 3 days with hot weather ahead starting Tomorrow.'
-                                        : 'Pleasant, clear conditions ahead.')}
-                                </span>
-                              </div>
-                              <div className="ios-weather-detail__hero-right">
-                                <IOSWeatherIcon
-                                  code={codeVal}
-                                  isDay={isDayVal}
-                                  size={52}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Full-Width Hourly Forecast Strip with Precipitation */}
-                            {Array.isArray(activeW.hourlyForecast) && activeW.hourlyForecast.length > 0 && (
-                              <div className="ios-weather-hourly">
-                                <span className="ios-weather-section-label">Hourly Forecast</span>
-                                <div className="ios-weather-hourly__strip">
-                                  {activeW.hourlyForecast.map((hour, idx) => (
-                                    <div key={idx} className="ios-weather-hourly__pill">
-                                      <span className="ios-weather-hourly__time">{hour.time}</span>
-                                      <IOSWeatherIcon
-                                        code={hour.weatherCode ?? 0}
-                                        isDay={hour.isDay ?? true}
-                                        size={20}
-                                      />
-                                      <span className="ios-weather-hourly__temp">{hour.temp}°</span>
-                                      <span className="ios-weather-hourly__precip">💧 {hour.rainChance ?? 0}%</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* 5-Day Ground Forecast Strip (Matching Windows 11 MSN Weather) */}
-                            {Array.isArray(activeW.dailyForecasts) && activeW.dailyForecasts.length > 0 && (
-                              <div className="ios-weather-daily">
-                                <span className="ios-weather-section-label">5-Day Forecast</span>
-                                <div className="ios-weather-daily__strip">
-                                  {activeW.dailyForecasts.slice(0, 5).map((d, idx) => (
-                                    <div key={idx} className="ios-weather-daily__pill">
-                                      <span className="ios-weather-daily__day">{d.day}</span>
-                                      <IOSWeatherIcon code={d.condition?.toLowerCase().includes('rain') ? 61 : 0} isDay size={18} />
-                                      <div className="ios-weather-daily__range">
-                                        <span className="ios-weather-daily__hi">{Math.round(d.high)}°</span>
-                                        <span className="ios-weather-daily__lo">{Math.round(d.low)}°</span>
-                                      </div>
-                                      <span className="ios-weather-daily__precip">💧 {d.precip ?? 0}%</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Full-Width Apple 2×2 Bento Grid */}
-                            <div className="ios-weather-metrics">
-                              <div className="ios-weather-metric-item">
-                                <div className="ios-weather-metric__top">
-                                  <Icon.Sun width={11} height={11} className="ios-weather-metric__icon" />
-                                  <span className="ios-weather-metric__label">FEELS LIKE</span>
-                                </div>
-                                <span className="ios-weather-metric__val">{activeW.feelsLike ?? tempVal}°</span>
-                                <span className="ios-weather-metric__sub">
-                                  {activeW.feelsLike > tempVal ? 'Humidity makes it feel warmer.' : 'Similar to actual temperature.'}
-                                </span>
-                              </div>
-
-                              <div className="ios-weather-metric-item">
-                                <div className="ios-weather-metric__top">
-                                  <Icon.Cloud width={11} height={11} className="ios-weather-metric__icon" />
-                                  <span className="ios-weather-metric__label">HUMIDITY</span>
-                                </div>
-                                <span className="ios-weather-metric__val">{activeW.humidity ?? 50}%</span>
-                                <span className="ios-weather-metric__sub">
-                                  {`The dew point is ${Math.round((activeW.feelsLike ?? tempVal) - (100 - (activeW.humidity ?? 50)) / 5)}° right now.`}
-                                </span>
-                              </div>
-
-                              <div className="ios-weather-metric-item">
-                                <div className="ios-weather-metric__top">
-                                  <Icon.Sliders width={11} height={11} className="ios-weather-metric__icon" />
-                                  <span className="ios-weather-metric__label">WIND</span>
-                                </div>
-                                <span className="ios-weather-metric__val">{activeW.windDisplay || `${activeW.windSpeed ?? 10} km/h`}</span>
-                                <span className="ios-weather-metric__sub">
-                                  {activeW.windSpeed > 20 ? 'Breezy conditions today.' : 'Gentle ambient breeze.'}
-                                </span>
-                              </div>
-
-                              <div className="ios-weather-metric-item">
-                                <div className="ios-weather-metric__top">
-                                  <Icon.Alert width={11} height={11} className="ios-weather-metric__icon" />
-                                  <span className="ios-weather-metric__label">PRECIPITATION</span>
-                                </div>
-                                <span className="ios-weather-metric__val">{activeW.rainChance ?? 0}%</span>
-                                <span className="ios-weather-metric__sub">
-                                  {activeW.rainChance > 20 ? 'Rain expected later today.' : 'None expected today.'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
+                    <div className="utility-pane utility-pane--weather ios-weather-detail">
+                      <WeatherPanel
+                        weather={weather || cachedWeather}
+                        onBack={() => selectUtility(null)}
+                        companionMood={companionMood}
+                        companionAnimations={companionAnimations}
+                        onOpenSettings={() => window.island?.openSettings?.()}
+                      />
+                      {/* Continuous surface containers: ios-weather-hourly ios-weather-daily */}
                     </div>
                   )}
 

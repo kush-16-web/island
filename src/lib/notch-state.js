@@ -154,6 +154,8 @@ export function computeNotchDimensions({
           else if (count === 1) hubH = 186;
           else if (count === 2) hubH = 246;
           else hubH = 270;
+        } else if (activeUtility === 'weather') {
+          hubH = 352;
         } else if (activeUtility === 'tasks') {
           hubH = 320;
         } else {

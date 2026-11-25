@@ -44,6 +44,7 @@ const { GeminiVoiceService } = require('./gemini');
 const { KokoroLocalService } = require('./kokoro-tts');
 const { windowsTtsService } = require('./windows-tts');
 const { GroqService } = require('./groq');
+const weatherService = require('./weather-service');
 
 let geminiVoiceService = null;
 let kokoroLocalService = null;
@@ -968,6 +969,7 @@ function wireIpc() {
   handle('scheduler:snooze', (input) => guard(() => ({ item: scheduler.snooze(input) })));
   handle('scheduler:remove', (id) => guard(() => ({ removed: scheduler.remove(String(id)) })));
   handle('scheduler:set-enabled', (id, enabled) => guard(() => ({ updated: scheduler.setEnabled(String(id), enabled) })));
+  handle('weather:get-telemetry', (params) => weatherService.fetchWeatherTelemetry(params));
 
   ipcMain.on('win:ignore-mouse', (event, ignore) => {
     if (!trusted(event)) return;

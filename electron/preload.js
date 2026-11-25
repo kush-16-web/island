@@ -174,6 +174,10 @@ contextBridge.exposeInMainWorld('island', {
     dispatchCommand: (cmd) => ipcRenderer.invoke('companion:dispatch', cmd),
   },
 
+  weather: {
+    getTelemetry: (params) => ipcRenderer.invoke('weather:get-telemetry', params),
+  },
+
   on: (channel, callback) => {
     if (!CHANNELS.has(channel)) throw new Error(`Unknown channel: ${channel}`);
     const listener = (_event, payload) => callback(payload);

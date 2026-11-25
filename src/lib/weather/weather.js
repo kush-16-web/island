@@ -146,7 +146,7 @@ export function clearUserLocation(storage = null) {
     store.setItem('island_location_cleared', 'true');
     weatherCache.clear();
     lastWeatherSessionContext = null;
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -264,7 +264,7 @@ export async function resolveLocation(locationQuery = null, options = {}, storag
         lastWeatherSessionContext = { ...resolved };
         return resolved;
       }
-    } catch {}
+    } catch { }
   }
 
   // Priority 3: Previously validated saved location
@@ -529,11 +529,62 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       };
     }
 
-    // Primary: Query Microsoft Foreca (official Windows 11 weather feed)
+    // 1. Electron Main-Process IPC: Bypasses renderer CORS using validated Node.js adapter
+    if (typeof window !== 'undefined' && window.island?.weather?.getTelemetry) {
+      try {
+        const ipcRes = await window.island.weather.getTelemetry({
+          city: loc.city,
+          lat: loc.lat,
+          lon: loc.lon,
+          provider: options.provider || 'auto',
+        });
+
+        if (ipcRes && ipcRes.ok && ipcRes.data) {
+          const t = ipcRes.data;
+          const speech = formatWeatherSpeech({
+            city: t.city || loc.city,
+            locationType: loc.type,
+            timeframe,
+            questionType,
+            temp: t.temp,
+            feelsLike: t.feelsLike,
+            condition: t.condition,
+            high: t.high,
+            low: t.low,
+            rainChance: t.rainChance,
+            tomorrow: t.dailyForecasts?.[1] ? {
+              high: t.dailyForecasts[1].high,
+              low: t.dailyForecasts[1].low,
+              condition: t.dailyForecasts[1].condition,
+              weatherCode: t.dailyForecasts[1].weatherCode,
+              rainChance: t.dailyForecasts[1].precip,
+            } : null,
+            evening: null,
+          });
+
+          const result = {
+            ok: true,
+            ...t,
+            locationType: loc.type,
+            timeframe,
+            questionType,
+            speech,
+            updatedAt: Date.now(),
+          };
+
+          weatherCache.set(cacheKey, { timestamp: now, data: result });
+          return result;
+        }
+      } catch (ipcErr) {
+        console.warn('[weather.js] IPC getTelemetry failed, falling back to direct fetch:', ipcErr.message);
+      }
+    }
+
+    // 2. Direct Isomorphic Fallback (for Node.js test environments or web-only runs)
     let msnData = null;
     try {
       msnData = await fetchMicrosoftWeather(loc.city);
-    } catch {}
+    } catch { }
 
     const forecastUrl =
       `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
@@ -546,7 +597,7 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
     try {
       const res = await fetch(forecastUrl, { headers: { Accept: 'application/json' } });
       if (res.ok) data = await res.json();
-    } catch {}
+    } catch { }
 
     const current = data.current || {};
     const daily = data.daily || {};
@@ -647,6 +698,26 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       evening: eveningData,
     });
 
+    // 7-Day Ground Forecast from Open-Meteo; fallback to MSN
+    let dailyForecastsList = [];
+    if (daily && Array.isArray(daily.time) && daily.time.length > 0) {
+      dailyForecastsList = daily.time.slice(0, 7).map((dateStr, idx) => {
+        const d = new Date(dateStr + 'T12:00:00Z');
+        const dayName = idx === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' });
+        const cCode = daily.weather_code ? daily.weather_code[idx] : 0;
+        return {
+          day: dayName,
+          high: Math.round(daily.temperature_2m_max ? daily.temperature_2m_max[idx] : 25),
+          low: Math.round(daily.temperature_2m_min ? daily.temperature_2m_min[idx] : 18),
+          condition: WMO_CONDITIONS[cCode] || 'Fair',
+          weatherCode: cCode,
+          precip: daily.precipitation_probability_max ? Number(daily.precipitation_probability_max[idx]) : 0,
+        };
+      });
+    } else if (Array.isArray(msnData?.dailyForecasts) && msnData.dailyForecasts.length > 0) {
+      dailyForecastsList = msnData.dailyForecasts;
+    }
+
     const result = {
       ok: true,
       city: loc.city,
@@ -666,7 +737,7 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       windSpeed,
       windDisplay,
       rainChance,
-      dailyForecasts: msnData?.dailyForecasts || [],
+      dailyForecasts: dailyForecastsList,
       tomorrow: tomorrowData,
       evening: eveningData,
       hourlyForecast,
