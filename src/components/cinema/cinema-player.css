@@ -487,14 +487,21 @@
   position: relative;
   width: 100%;
   max-width: 860px;
-  height: 420px;
-  overflow: hidden;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
+  height: 520px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+}
+
+.cinema-lyrics-reel::-webkit-scrollbar {
+  display: none;
 }
 
 .cinema-lyrics-reel__inner {
@@ -502,11 +509,39 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0;
-  will-change: transform;
+  gap: 22px;
+  padding: 240px 0;
+  box-sizing: border-box;
   font-size: var(--cinema-lyric-font-size, 21px);
   font-weight: 700;
   line-height: var(--cinema-lyric-line-height, 1.35);
+}
+
+.cinema-lyric-row {
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.cinema-lyric-row.is-active-row {
+  pointer-events: auto;
+  cursor: default;
+}
+
+.cinema-lyric-row.is-prev-row,
+.cinema-lyric-row.is-next-row {
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cinema-lyric-row.is-prev-row:hover,
+.cinema-lyric-row.is-next-row:hover {
+  transform: scale(1.015);
 }
 
 .cinema-lyric-line {
@@ -514,7 +549,7 @@
   line-height: var(--cinema-lyric-line-height, 1.35) !important;
   font-weight: 700 !important;
   color: rgba(255, 255, 255, 0.45);
-  transition: color 0.28s ease, opacity 0.28s ease;
+  transition: color 0.32s ease, opacity 0.32s ease, transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
   text-align: center;
   user-select: none;
   white-space: normal;
@@ -523,10 +558,11 @@
   letter-spacing: -0.005em;
   max-width: 860px;
   width: 100%;
+  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 16px;
+  padding: 6px 16px;
   box-sizing: border-box;
   margin: 0 auto;
   font-synthesis: none;
@@ -534,35 +570,49 @@
   overflow: visible;
 }
 
-.cinema-lyric-line.is-adjacent {
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  font-weight: 650 !important;
-  color: rgba(255, 255, 255, 0.70) !important;
-  opacity: 0.50 !important;
-  cursor: pointer;
-}
-
-.cinema-lyric-line.is-adjacent:hover {
-  opacity: 0.85 !important;
-  color: rgba(255, 255, 255, 0.90) !important;
-}
-
-.cinema-lyric-line.is-far {
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  opacity: 0 !important;
-  pointer-events: none;
-  visibility: hidden;
-}
-
+/* 3-Line Focused Presentation: Previous, Active Center, Next Upcoming */
 .cinema-lyric-line.is-active {
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  font-size: var(--cinema-lyric-font-size, 22px) !important;
   font-weight: 700 !important;
   color: #ffffff !important;
   opacity: 1 !important;
   cursor: default;
-  transform: none;
+  transform: scale(1.02);
   filter: none;
   text-shadow: none;
+}
+
+.cinema-lyric-line.is-prev {
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  font-weight: 600 !important;
+  color: rgba(255, 255, 255, 0.65) !important;
+  opacity: 0.38 !important;
+  transform: scale(0.98);
+  cursor: pointer;
+}
+
+.cinema-lyric-line.is-next {
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  font-weight: 650 !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  opacity: 0.52 !important;
+  transform: scale(0.99);
+  cursor: pointer;
+}
+
+.cinema-lyric-row.is-prev-row:hover .cinema-lyric-line,
+.cinema-lyric-row.is-next-row:hover .cinema-lyric-line {
+  opacity: 0.90 !important;
+  color: #ffffff !important;
+}
+
+/* Lines beyond prev/current/next are strictly hidden with zero pointer capture */
+.cinema-lyric-line.is-far {
+  font-size: var(--cinema-lyric-font-size, 21px) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transform: scale(0.95);
 }
 
 /* Precision lyric overrides inside Cinema Mode: lock dead center and smooth inline flow */
@@ -573,7 +623,8 @@
   justify-content: center !important;
   align-items: center !important;
   text-align: center !important;
-  padding: 0 16px !important;
+  padding: 6px 16px !important;
+  min-height: 48px !important;
   box-sizing: border-box !important;
   overflow: visible !important;
   white-space: normal !important;

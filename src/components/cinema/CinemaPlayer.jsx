@@ -431,26 +431,95 @@ export default function CinemaPlayer() {
   const lines = effectiveLyrics?.lines || [];
   const hasLyrics = lines.length > 0;
   const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lines.length;
-  const safeActiveIndex = hasActiveLine ? activeLineIndex : 0;
 
-  const viewportRef = useRef(null);
-  const [viewportH, setViewportH] = useState(420);
+  const containerRef = useRef(null);
+  const activeLineRef = useRef(null);
+  const userScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef(null);
+  const scrollAnimRef = useRef(null);
+  const isProgrammaticScrollRef = useRef(false);
 
-  useEffect(() => {
-    if (!viewportRef.current) return;
-    const updateH = () => {
-      const h = viewportRef.current?.clientHeight;
-      if (h && h > 0) setViewportH(h);
+  const isReducedMotion = typeof window !== 'undefined'
+    && window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const scrollToActiveLine = useCallback((immediate = false) => {
+    if (!containerRef.current || !activeLineRef.current) return;
+    const container = containerRef.current;
+    const activeEl = activeLineRef.current;
+
+    const containerHeight = container.clientHeight;
+    const activeOffset = activeEl.offsetTop;
+    const activeHeight = activeEl.clientHeight;
+
+    // Exact constant document coordinate matching Expanded Lyrics (FullLyrics.jsx)
+    const targetScroll = Math.max(0, activeOffset - containerHeight / 2 + activeHeight / 2);
+
+    if (scrollAnimRef.current) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
+
+    const start = container.scrollTop;
+    const change = targetScroll - start;
+    if (Math.abs(change) < 1) return;
+
+    if (immediate || isReducedMotion) {
+      container.scrollTop = targetScroll;
+      return;
+    }
+
+    const startTime = performance.now();
+    // Dynamic duration clamped between 140ms and 300ms matching Expanded Lyrics
+    const duration = Math.min(300, Math.max(140, Math.abs(change) * 0.7));
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+    const step = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      isProgrammaticScrollRef.current = true;
+      container.scrollTop = start + change * easeOutCubic(progress);
+
+      if (progress < 1) {
+        scrollAnimRef.current = requestAnimationFrame(step);
+      } else {
+        scrollAnimRef.current = null;
+        // Keep flag true briefly to safely swallow browser's trailing asynchronous scroll events
+        setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 100);
+      }
     };
-    updateH();
-    window.addEventListener('resize', updateH);
-    return () => window.removeEventListener('resize', updateH);
+
+    isProgrammaticScrollRef.current = true;
+    scrollAnimRef.current = requestAnimationFrame(step);
+  }, [isReducedMotion]);
+
+  // Fluid cubic-bezier auto-scroll on activeLineIndex change or seek
+  useEffect(() => {
+    if (userScrollingRef.current) return;
+    scrollToActiveLine();
+    return () => {
+      if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
+    };
+  }, [activeLineIndex, scrollToActiveLine]);
+
+  // Detect user manual scroll to pause auto-scroll for 2.8s
+  const handleLyricsScroll = useCallback(() => {
+    if (isProgrammaticScrollRef.current) return;
+    userScrollingRef.current = true;
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      userScrollingRef.current = false;
+    }, 2800);
   }, []);
 
-  // Fluid vertical line pitch dynamically adapting to viewport height (clamped between 60px on laptops and 80px on 4K)
-  const CINEMA_LINE_HEIGHT = Math.round(Math.min(80, Math.max(60, viewportH * 0.16)));
-  const centerOffset = viewportH / 2 - CINEMA_LINE_HEIGHT / 2;
-  const targetY = -safeActiveIndex * CINEMA_LINE_HEIGHT + centerOffset;
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
+    };
+  }, []);
 
   return (
     <div
@@ -699,53 +768,73 @@ export default function CinemaPlayer() {
         {/* Right Column: Centered Focused Lyrics Reel with Natural Line Wrapping */}
         <section className="cinema-right">
           {hasLyrics ? (
-            <div className="cinema-lyrics-reel" ref={viewportRef}>
-              <motion.div
-                className="cinema-lyrics-reel__inner"
-                animate={{ y: targetY }}
-                transition={{ type: 'spring', stiffness: 240, damping: 26 }}
-              >
+            <div
+              className="cinema-lyrics-reel"
+              ref={containerRef}
+              onScroll={handleLyricsScroll}
+            >
+              <div className="cinema-lyrics-reel__inner">
                 {lines.map((line, idx) => {
                   const isActive = hasActiveLine && idx === activeLineIndex;
-                  const distance = hasActiveLine ? Math.abs(idx - activeLineIndex) : idx + 1;
                   const isWordSynced = Boolean(line?.syncType === 'word' || (line?.words && line.words.length > 0));
                   let lineClass = 'cinema-lyric-line';
                   if (isWordSynced) lineClass += ' is-word-synced';
-                  if (isActive) lineClass += ' is-active';
-                  else if (distance === 1) lineClass += ' is-adjacent';
-                  else lineClass += ' is-far';
 
-                  const lineKey = line.id ?? line.timeMs ?? idx;
+                  const isPrev = hasActiveLine && idx === activeLineIndex - 1;
+                  const isNext = hasActiveLine && idx === activeLineIndex + 1;
 
                   if (isActive) {
-                    return (
-                      <PrecisionLyricLine
-                        key={lineKey}
-                        line={line}
-                        currentPositionMs={displayPositionMs}
-                        playing={isPlaying}
-                        className={lineClass}
-                        style={{ height: CINEMA_LINE_HEIGHT }}
-                      />
-                    );
+                    lineClass += ' is-active';
+                  } else if (isPrev) {
+                    lineClass += ' is-prev';
+                  } else if (isNext) {
+                    lineClass += ' is-next';
+                  } else {
+                    lineClass += ' is-far';
                   }
+
+                  const lineKey = line.id ?? line.timeMs ?? idx;
+                  const lineTimeMs = typeof line.timeMs === 'number'
+                    ? line.timeMs
+                    : (typeof line.startTimeMs === 'number'
+                        ? line.startTimeMs
+                        : (Number(line.time) || 0) * 1000);
+
+                  const handleClick = () => {
+                    if (Number.isFinite(lineTimeMs)) {
+                      handleSeek(lineTimeMs / 1000);
+                    }
+                  };
+
+                  let rowClass = 'cinema-lyric-row';
+                  if (isActive) rowClass += ' is-active-row';
+                  else if (isPrev) rowClass += ' is-prev-row';
+                  else if (isNext) rowClass += ' is-next-row';
 
                   return (
                     <div
                       key={lineKey}
-                      className={lineClass}
-                      style={{ height: CINEMA_LINE_HEIGHT }}
-                      onClick={() => {
-                        if (typeof line.timeMs === 'number') {
-                          handleSeek(line.timeMs / 1000);
-                        }
-                      }}
+                      ref={isActive ? activeLineRef : null}
+                      className={rowClass}
+                      onClick={handleClick}
+                      title={isActive ? undefined : 'Click to jump to lyric'}
                     >
-                      {line.text || '...'}
+                      {isActive ? (
+                        <PrecisionLyricLine
+                          line={line}
+                          currentPositionMs={displayPositionMs}
+                          playing={isPlaying}
+                          className={lineClass}
+                        />
+                      ) : (
+                        <div className={lineClass}>
+                          {line.text || '...'}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
-              </motion.div>
+              </div>
             </div>
           ) : (
             <div className="cinema-lyrics-empty">
