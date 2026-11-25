@@ -117,15 +117,17 @@ export function computeNotchDimensions({
   isLyricsFull = false,
   hasActiveMedia = false,
   scheduleCount = 0,
+  alarmCount = null,
   inboxCount = 0,
   idlePrefs = null,
   measureTextFn = null,
+  activeUtility = null,
 }) {
   const measure = typeof measureTextFn === 'function' ? measureTextFn : (t) => (t ? t.length * 7 : 60);
 
   // Urgent notifications / ringing alarms take top priority
   if (mode === 'ring') {
-    return { width: 404, height: 94, bottomRadius: 24 };
+    return { width: 414, height: 54, bottomRadius: 27 };
   }
   if (mode === 'toast') {
     return { width: 384, height: 66, bottomRadius: 22 };
@@ -143,7 +145,20 @@ export function computeNotchDimensions({
     switch (tab) {
       case 'launcher':
         hubW = 520;
-        hubH = hasActiveMedia ? 276 : 240;
+        if (activeUtility === 'new_alarm') {
+          hubH = 315;
+        } else if (activeUtility === 'clock' || activeUtility === 'timer') {
+          // Content-adaptive height for Alarms (0: 154, 1: 186, 2: 246, 3+: 270 with scroll)
+          const count = alarmCount !== null ? alarmCount : (scheduleCount || 0);
+          if (count === 0) hubH = 154;
+          else if (count === 1) hubH = 186;
+          else if (count === 2) hubH = 246;
+          else hubH = 270;
+        } else if (activeUtility === 'tasks') {
+          hubH = 320;
+        } else {
+          hubH = hasActiveMedia ? 276 : 240;
+        }
         break;
       case 'voice':
         hubH = 330;
@@ -223,10 +238,13 @@ export function computeNotchDimensions({
   }
 
   // Idle compact notch: responsive to enabled idle items while keeping eyes centered
-  const extrasCount = idlePrefs
-    ? [idlePrefs.showTime, idlePrefs.showDate, idlePrefs.showWeather].filter(Boolean).length
-    : 0;
-  const idleW = extrasCount >= 2 ? 276 : extrasCount === 1 ? 244 : 200;
+  const leftWidget = idlePrefs?.leftWidget ?? (idlePrefs?.showTime ? 'clock' : (idlePrefs?.showWeather ? 'weather' : 'none'));
+  const rightWidget = idlePrefs?.rightWidget ?? (idlePrefs?.showDate ? 'date' : (idlePrefs?.showWeather && leftWidget !== 'weather' ? 'weather' : 'none'));
+  const hasLeft = Boolean(leftWidget && leftWidget !== 'none');
+  const hasRight = Boolean(rightWidget && rightWidget !== 'none');
+  const extrasCount = (hasLeft ? 1 : 0) + (hasRight ? 1 : 0);
+  const hasWide = leftWidget === 'date' || rightWidget === 'date' || leftWidget === 'tasks' || rightWidget === 'tasks';
+  const idleW = extrasCount === 0 ? 200 : extrasCount === 1 ? (hasWide ? 228 : 220) : (hasWide ? 254 : 242);
   return { width: idleW, height: 36, bottomRadius: 16 };
 }
 

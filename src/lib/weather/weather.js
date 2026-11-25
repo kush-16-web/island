@@ -415,6 +415,85 @@ function formatWeatherSpeech({
   return speech;
 }
 
+export function mapMsnSkyCodeToWmo(skycode) {
+  const code = Number(skycode);
+  if ([31, 32, 33, 34].includes(code)) return 0; // Clear / Sunny
+  if ([29, 30].includes(code)) return 2; // Partly Cloudy
+  if ([26, 27, 28].includes(code)) return 3; // Cloudy / Overcast
+  if ([20, 21, 22].includes(code)) return 45; // Fog / Haze
+  if ([9, 10].includes(code)) return 51; // Drizzle
+  if ([11, 12, 18, 39, 40].includes(code)) return 61; // Rain / Showers
+  if ([4, 17, 35, 37, 38].includes(code)) return 95; // Thunderstorm
+  if ([13, 14, 15, 16, 41, 42, 43].includes(code)) return 71; // Snow
+  return 0;
+}
+
+/**
+ * Fetch live ground station observation from Microsoft MSN Weather & Foreca
+ * (The exact official weather provider used by Windows 10/11 Taskbar Weather).
+ */
+export async function fetchMicrosoftWeather(city) {
+  if (!city || typeof city !== 'string') return null;
+  try {
+    const url = `https://weather.service.msn.com/data.aspx?weasearchstr=${encodeURIComponent(city.trim())}&culture=en-US&weadegreetype=C&src=outlook`;
+    const res = await fetch(url, { headers: { Accept: 'application/xml, text/xml' } });
+    if (!res.ok) return null;
+    const xml = await res.text();
+    const currentMatch = xml.match(/<current\s+([^>]+)\/>/);
+    if (!currentMatch) return null;
+    const attrs = {};
+    for (const m of currentMatch[1].matchAll(/(\w+)="([^"]*)"/g)) {
+      attrs[m[1]] = m[2];
+    }
+    const locMatch = xml.match(/weatherlocationname="([^"]*)"/);
+    const locationName = locMatch ? locMatch[1] : city;
+    const temp = attrs.temperature != null ? Number(attrs.temperature) : null;
+    if (temp == null || Number.isNaN(temp)) return null;
+
+    const forecasts = [];
+    for (const f of xml.matchAll(/<forecast\s+([^>]+)\/>/g)) {
+      const fAttrs = {};
+      for (const a of f[1].matchAll(/(\w+)="([^"]*)"/g)) fAttrs[a[1]] = a[2];
+      forecasts.push(fAttrs);
+    }
+
+    const todayForecast = forecasts[0] || null;
+    const high = todayForecast?.high ? Number(todayForecast.high) : null;
+    const low = todayForecast?.low ? Number(todayForecast.low) : null;
+    const feelsLike = attrs.feelslike ? Number(attrs.feelslike) : temp;
+    const humidity = attrs.humidity ? Number(attrs.humidity) : null;
+    const windSpeed = attrs.windspeed ? Number(attrs.windspeed.replace(/[^0-9]/g, '')) : 10;
+    const condition = attrs.skytext || 'Clear';
+    const skycode = Number(attrs.skycode) || 32;
+
+    return {
+      provider: 'foreca_msn',
+      city: locationName.split(',')[0].trim(),
+      country: locationName.split(',')[1]?.trim() || '',
+      temperature: temp,
+      feelsLike,
+      high,
+      low,
+      condition,
+      weatherCode: mapMsnSkyCodeToWmo(skycode),
+      humidity,
+      windSpeed,
+      windDisplay: attrs.winddisplay || `${windSpeed} km/h`,
+      rainChance: todayForecast?.precip ? Number(todayForecast.precip) : 0,
+      dailyForecasts: forecasts.slice(0, 5).map((f) => ({
+        day: f.shortday || f.day,
+        high: Number(f.high),
+        low: Number(f.low),
+        condition: f.skytextday,
+        precip: Number(f.precip || 0),
+      })),
+    };
+  } catch (err) {
+    console.warn('[Weather] Microsoft Foreca fetch error:', err);
+    return null;
+  }
+}
+
 /**
  * Fetch current live weather and forecasts for a given city or the user's location.
  *
@@ -450,6 +529,12 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       };
     }
 
+    // Primary: Query Microsoft Foreca (official Windows 11 weather feed)
+    let msnData = null;
+    try {
+      msnData = await fetchMicrosoftWeather(loc.city);
+    } catch {}
+
     const forecastUrl =
       `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
       `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,is_day` +
@@ -457,34 +542,36 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
       `&temperature_unit=celsius&wind_speed_unit=kmh&timezone=auto`;
 
-    const res = await fetch(forecastUrl, { headers: { Accept: 'application/json' } });
-    if (!res.ok) {
-      throw new Error(`Weather service returned HTTP ${res.status}`);
-    }
+    let data = {};
+    try {
+      const res = await fetch(forecastUrl, { headers: { Accept: 'application/json' } });
+      if (res.ok) data = await res.json();
+    } catch {}
 
-    const data = await res.json();
     const current = data.current || {};
     const daily = data.daily || {};
     const hourly = data.hourly || {};
 
-    const temp = Math.round(current.temperature_2m ?? 20);
-    const feelsLike = Math.round(current.apparent_temperature ?? temp);
-    const code = current.weather_code ?? 0;
-    const condition = WMO_CONDITIONS[code] || 'fair conditions';
-    const isDay = current.is_day !== 0;
-    const windSpeed = Math.round(current.wind_speed_10m ?? 10);
-    const humidity = Math.round(current.relative_humidity_2m ?? 50);
+    // Live ground-station observation from Microsoft Foreca; fallback to Open-Meteo model
+    const temp = msnData?.temperature != null ? msnData.temperature : Math.round(current.temperature_2m ?? 20);
+    const feelsLike = msnData?.feelsLike != null ? msnData.feelsLike : Math.round(current.apparent_temperature ?? temp);
+    const code = msnData?.weatherCode != null ? msnData.weatherCode : (current.weather_code ?? 0);
+    const condition = msnData?.condition || WMO_CONDITIONS[code] || 'fair conditions';
+    const isDay = current.is_day !== undefined ? current.is_day !== 0 : true;
+    const windSpeed = msnData?.windSpeed != null ? msnData.windSpeed : Math.round(current.wind_speed_10m ?? 10);
+    const windDisplay = msnData?.windDisplay || `${windSpeed} km/h`;
+    const humidity = msnData?.humidity != null ? msnData.humidity : Math.round(current.relative_humidity_2m ?? 50);
 
-    const high = daily.temperature_2m_max ? daily.temperature_2m_max[0] : null;
-    const low = daily.temperature_2m_min ? daily.temperature_2m_min[0] : null;
-    const rainChance = daily.precipitation_probability_max ? daily.precipitation_probability_max[0] : 0;
+    const high = msnData?.high != null ? msnData.high : (daily.temperature_2m_max ? daily.temperature_2m_max[0] : null);
+    const low = msnData?.low != null ? msnData.low : (daily.temperature_2m_min ? daily.temperature_2m_min[0] : null);
+    const rainChance = msnData?.rainChance != null ? msnData.rainChance : (daily.precipitation_probability_max ? daily.precipitation_probability_max[0] : 0);
 
     // Tomorrow's verified forecast from daily index 1
-    const tomorrowHigh = daily.temperature_2m_max ? daily.temperature_2m_max[1] : null;
-    const tomorrowLow = daily.temperature_2m_min ? daily.temperature_2m_min[1] : null;
+    const tomorrowHigh = daily.temperature_2m_max ? daily.temperature_2m_max[1] : (msnData?.dailyForecasts?.[1]?.high ?? null);
+    const tomorrowLow = daily.temperature_2m_min ? daily.temperature_2m_min[1] : (msnData?.dailyForecasts?.[1]?.low ?? null);
     const tomorrowCode = daily.weather_code ? daily.weather_code[1] : 0;
-    const tomorrowCondition = WMO_CONDITIONS[tomorrowCode] || 'fair conditions';
-    const tomorrowRain = daily.precipitation_probability_max ? daily.precipitation_probability_max[1] : 0;
+    const tomorrowCondition = WMO_CONDITIONS[tomorrowCode] || msnData?.dailyForecasts?.[1]?.condition || 'fair conditions';
+    const tomorrowRain = daily.precipitation_probability_max ? daily.precipitation_probability_max[1] : (msnData?.dailyForecasts?.[1]?.precip ?? 0);
 
     const tomorrowData = tomorrowHigh != null ? {
       high: tomorrowHigh,
@@ -512,6 +599,39 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       }
     }
 
+    // Next 6 hours forecast anchored smoothly to the live Windows ground-station temperature
+    const hourlyForecast = [];
+    if (Array.isArray(hourly.time) && Array.isArray(hourly.temperature_2m)) {
+      const nowLocal = new Date();
+      const localYear = nowLocal.getFullYear();
+      const localMonth = String(nowLocal.getMonth() + 1).padStart(2, '0');
+      const localDay = String(nowLocal.getDate()).padStart(2, '0');
+      const localHour = String(nowLocal.getHours()).padStart(2, '0');
+      const localPrefix = `${localYear}-${localMonth}-${localDay}T${localHour}`;
+      let startIdx = hourly.time.findIndex((t) => typeof t === 'string' && t.startsWith(localPrefix));
+      if (startIdx < 0) {
+        const nowMs = Date.now();
+        startIdx = hourly.time.findIndex((t) => new Date(t).getTime() >= nowMs - 30 * 60 * 1000);
+      }
+      if (startIdx < 0) startIdx = 0;
+
+      const baseModelTemp = hourly.temperature_2m[startIdx] ?? temp;
+      const offset = temp - baseModelTemp;
+      for (let i = startIdx; i < Math.min(startIdx + 6, hourly.time.length); i++) {
+        const rawTime = hourly.time[i];
+        const hDate = new Date(rawTime);
+        const hourLabel = i === startIdx ? 'Now' : hDate.toLocaleTimeString([], { hour: 'numeric' });
+        const projectedTemp = i === startIdx ? temp : Math.round((hourly.temperature_2m[i] ?? temp) + offset * 0.6);
+        hourlyForecast.push({
+          time: hourLabel,
+          temp: projectedTemp,
+          weatherCode: hourly.weather_code ? hourly.weather_code[i] : code,
+          isDay: Array.isArray(hourly.is_day) ? hourly.is_day[i] !== 0 : isDay,
+          rainChance: hourly.precipitation_probability ? hourly.precipitation_probability[i] : 0,
+        });
+      }
+    }
+
     const speech = formatWeatherSpeech({
       city: loc.city,
       locationType: loc.type,
@@ -534,6 +654,7 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       locationType: loc.type,
       timeframe,
       questionType,
+      temp,
       temperature: temp,
       feelsLike,
       high,
@@ -543,9 +664,12 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       isDay,
       humidity,
       windSpeed,
+      windDisplay,
       rainChance,
+      dailyForecasts: msnData?.dailyForecasts || [],
       tomorrow: tomorrowData,
       evening: eveningData,
+      hourlyForecast,
       speech,
       updatedAt: Date.now(),
     };

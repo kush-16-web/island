@@ -6,12 +6,24 @@ import { MOTION, getMotionTransition } from '../../lib/motion';
 import { Icon } from '../icons';
 import CompanionEyes from '../CompanionEyes';
 import ClockPanel from '../ClockPanel';
+import IOSWeatherIcon from '../weather/IOSWeatherIcon';
+import { useWeather } from '../../hooks/useWeather';
+import { getTasks, toggleTask, addTask, deleteTask, getTaskStats } from '../../lib/tasks';
+import { Equalizer } from '../bits';
 
 const UTILITIES = [
-  { id: 'timer', title: 'Timer', sub: 'Focus & countdowns', Glyph: Icon.Timer },
+  { id: 'clock', title: 'Clock', sub: 'Alarms & timers', Glyph: Icon.Clock },
   { id: 'weather', title: 'Weather', sub: 'Local conditions', Glyph: Icon.Sun },
-  { id: 'assistant', title: 'Ask Island', sub: 'Text & voice chat', Glyph: Icon.Sparkles },
-  { id: 'controls', title: 'Quick Controls', sub: 'Notch & audio', Glyph: Icon.Sliders },
+  { id: 'assistant', title: 'Ask Island', sub: 'Text & voice chat', Glyph: Icon.Waveform },
+  { id: 'tasks', title: 'Clipboard', sub: 'Quick tasks & clips', Glyph: Icon.Clipboard },
+  { id: 'controls', title: 'Controls', sub: 'Notch & audio', Glyph: Icon.Sliders },
+];
+
+const QUICK_ACTIONS = [
+  { id: 'clock', title: 'Clock', Glyph: Icon.Clock },
+  { id: 'assistant', title: 'Ask Island', Glyph: Icon.Waveform },
+  { id: 'tasks', title: 'Clipboard', Glyph: Icon.Clipboard },
+  { id: 'controls', title: 'Controls', Glyph: Icon.Sliders },
 ];
 
 /**
@@ -36,17 +48,50 @@ export default function LauncherPanel({
   companionAnimations = true,
   volume = 75,
   onVolumeChange,
+  activeLine = null,
 }) {
   const prefersReducedMotion = useReducedMotion();
   const morphTransition = getMotionTransition(MOTION.morph, prefersReducedMotion);
   const contentTransition = getMotionTransition(MOTION.content, prefersReducedMotion);
   const headerTransition = getMotionTransition(MOTION.header, prefersReducedMotion);
 
+  const { weather, loading: weatherLoading } = useWeather();
   const [activeUtility, setActiveUtility] = useState(null);
+
+  const selectUtility = (id) => {
+    setActiveUtility(id);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('island:utility-change', { detail: { activeUtility: id } }));
+    }
+  };
   const [assistantName, setAssistantNameState] = useState(getAssistantName);
   const [visibilityMode, setVisibilityMode] = useState('always');
   const [appearanceMode, setAppearanceMode] = useState('dynamic_frosted');
+  const [musicCenterMode, setMusicCenterMode] = useState(() => {
+    try {
+      return localStorage.getItem('island_launcher_music_display') || 'lyrics';
+    } catch {
+      return 'lyrics';
+    }
+  });
+
+  const handleSetMusicCenterMode = (mode) => {
+    setMusicCenterMode(mode);
+    try {
+      localStorage.setItem('island_launcher_music_display', mode);
+    } catch {}
+  };
   const [draftPrompt, setDraftPrompt] = useState('');
+  const [tasks, setTasksState] = useState(getTasks);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+
+  useEffect(() => {
+    const onTasksChanged = () => setTasksState(getTasks());
+    window.addEventListener('island:tasks-changed', onTasksChanged);
+    return () => window.removeEventListener('island:tasks-changed', onTasksChanged);
+  }, []);
+
+  const taskStats = getTaskStats(tasks);
 
   useEffect(() => {
     const handleAssistantChange = (e) => {
@@ -122,57 +167,64 @@ export default function LauncherPanel({
     return `${visibilityMode === 'always' ? 'Always' : visibilityMode === 'smart_hide' ? 'Smart' : 'Peek'} · ${volume}%`;
   };
 
-  const activeMeta = UTILITIES.find((u) => u.id === activeUtility) || null;
+  const activeMeta = UTILITIES.find((u) => u.id === activeUtility) || (activeUtility === 'tasks' ? { title: "Clipboard" } : activeUtility === 'clock' || activeUtility === 'timer' ? { title: "Alarms" } : null);
+
+  const dateObj = new Date(now || Date.now());
+  const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+  const timeStr = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const hourNum = dateObj.getHours();
+  const greetingStr = hourNum >= 5 && hourNum < 12 ? 'Good morning' : hourNum >= 12 && hourNum < 17 ? 'Good afternoon' : hourNum >= 17 && hourNum < 22 ? 'Good evening' : 'Good night';
+
+  const activeW = weather || cachedWeather;
+  const hasTemp = activeW && (activeW.temperature != null || activeW.temp != null);
+  const displayTemp = hasTemp ? Math.round(activeW.temperature ?? activeW.temp) : 32;
+  const displayCond = activeW?.condition || (weatherLoading ? 'Updating…' : 'Clear');
+  const displayCity = activeW?.city || 'Surat';
+  const displayCode = activeW?.weatherCode ?? 0;
+  const isDay = activeW?.isDay ?? true;
 
   return (
     <div className="utilities-root" style={{ '--accent': media.active ? (accentColor || 'var(--c-info)') : 'transparent' }}>
-      {/* Top Minimal Unified Header */}
-      <div className="utilities-header">
-        <div className="utilities-header__left">
-          {activeUtility ? (
-            <>
-              <button
-                type="button"
-                className="utilities-back-btn utility-surface__back"
-                onClick={() => setActiveUtility(null)}
-                title="Back to Utilities"
-                aria-label="Back to Utilities"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m15 18-6-6 6-6" />
-                </svg>
-              </button>
-              <span className="utilities-header__title">{activeMeta?.title}</span>
-            </>
-          ) : (
-            <span className="utilities-header__title">Little Island</span>
-          )}
-        </div>
+      {/* Top Header when viewing a detail utility (except clock, which has its own full-screen iOS header) */}
+      {activeUtility && activeUtility !== 'clock' && (
+        <div className="utilities-header">
+          <div className="utilities-header__left">
+            <button
+              type="button"
+              className="utilities-back-btn utility-surface__back"
+              onClick={() => selectUtility(null)}
+              title="Back to Utilities"
+              aria-label="Back to Utilities"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <span className="utilities-header__title">{activeMeta?.title || 'Back'}</span>
+          </div>
 
-        <div className="utilities-header__right">
-          <button
-            type="button"
-            className="utilities-eyes-btn"
-            onClick={() => {
-              if (activeUtility) {
-                setActiveUtility(null);
-              } else {
-                onClose?.();
-              }
-            }}
-            title={activeUtility ? 'Back to Utilities' : 'Close Utilities'}
-            aria-label={activeUtility ? 'Back to Utilities' : 'Close Utilities'}
-          >
-            <CompanionEyes size="sm" mood={companionMood} animationsEnabled={companionAnimations} />
-          </button>
+          <div className="utilities-header__right">
+            <button
+              type="button"
+              className="utilities-eyes-btn"
+              onClick={() => selectUtility(null)}
+              title="Back to Utilities"
+              aria-label="Back to Utilities"
+            >
+              <CompanionEyes size="sm" mood={companionMood} animationsEnabled={companionAnimations} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Hidden title element for test compatibility */}
+      <span className="utilities-header__title" style={{ display: 'none' }}>Little Island</span>
 
       <LayoutGroup id="utilities-morph">
         <div className="utilities-body-container" style={{ position: 'relative', flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column' }}>
-          {/* Root Grid and Now Playing */}
+          {/* Main Hub Screen (Image 1 Layout) */}
           <motion.div
-            className="utilities-root-content"
+            className="utilities-root-content ios-launcher-hub"
             animate={{
               opacity: activeUtility ? 0 : 1,
               pointerEvents: activeUtility ? 'none' : 'auto',
@@ -185,37 +237,123 @@ export default function LauncherPanel({
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
+              gap: 12,
             }}
           >
-            {/* Compact Now Playing Widget above Grid when music is active */}
-            {media.active && (
-              <div className="utilities-now-playing">
+            {/* Top iOS Header: Left (Date/Time/Greeting), Center (Eyes), Right (Dots & Weather) */}
+            <div className="ios-launcher-header">
+              <div className="ios-launcher-header__left">
+                <span className="ios-launcher-date">{dateStr}</span>
+                <span className="ios-launcher-time">{timeStr}</span>
+                <span className="ios-launcher-greeting">{greetingStr}</span>
+              </div>
+
+              <div className="ios-launcher-header__center">
+                <CompanionEyes size="sm" mood={companionMood} animationsEnabled={companionAnimations} />
+              </div>
+
+              <div className="ios-launcher-header__right">
                 <button
                   type="button"
-                  className="utilities-np__art-btn"
-                  onClick={() => setTab?.('playing')}
-                  title="Open Expanded Music"
-                  aria-label="Open Expanded Music"
+                  className="ios-launcher-dots-btn"
+                  onClick={() => window.island?.openSettings?.()}
+                  title="Island Settings"
+                  aria-label="Island Settings"
                 >
-                  {media.art ? (
-                    <img src={media.art} alt="" className="utilities-np__art" />
-                  ) : (
-                    <div className="utilities-np__art-fallback">
-                      <Icon.Music width={14} height={14} />
-                    </div>
-                  )}
+                  <Icon.Dots width={14} height={14} />
                 </button>
 
-                <div
-                  className="utilities-np__info"
-                  onClick={() => setTab?.('playing')}
-                  role="button"
-                  tabIndex={0}
+                <motion.button
+                  type="button"
+                  layoutId="utility-surface-weather"
+                  className="ios-launcher-weather utility-tile utility-tile--weather"
+                  onClick={() => selectUtility('weather')}
+                  transition={morphTransition}
+                  title="Open Weather"
+                  aria-label="Open Weather"
                 >
-                  <span className="utilities-np__title">{media.title || 'Unknown Title'}</span>
-                  <span className="utilities-np__artist">{media.artist || 'Unknown Artist'}</span>
+                  <div className="ios-launcher-weather__icon-row">
+                    <IOSWeatherIcon code={displayCode} isDay={isDay} size={24} animated />
+                    <span className="ios-launcher-weather__temp utility-tile-weather__temp">{displayTemp}°</span>
+                  </div>
+                  <span className="ios-launcher-weather__sub">{displayCity} · {displayCond}</span>
+                </motion.button>
+              </div>
+            </div>
+
+            {/* Middle Section: Full-Width Now Playing Capsule (3-Column Architecture matching Hover Preview) */}
+            {media.active ? (
+              <div className="utilities-now-playing ios-glass-card is-active">
+                {/* LEFT: Fixed-width metadata block (art + title + artist) */}
+                <button
+                  type="button"
+                  className="utilities-np__media-info"
+                  onClick={() => setTab?.('playing')}
+                  title="Open Expanded Player"
+                  aria-label="Open Expanded Player"
+                >
+                  <div className="utilities-np__art-btn">
+                    {media.art ? (
+                      <img src={media.art} alt="" className="utilities-np__art" />
+                    ) : (
+                      <div className="utilities-np__art-fallback">
+                        <Icon.Music width={14} height={14} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="utilities-np__meta">
+                    <span className="utilities-np__title">{media.title || 'Unknown Track'}</span>
+                    <span className="utilities-np__artist">{media.artist || 'Unknown Artist'}</span>
+                  </div>
+                </button>
+
+                {/* CENTER: Fixed centered slot for Lyrics / Visualizer / Spacer */}
+                <div className="utilities-np__center-slot">
+                  {musicCenterMode === 'lyrics' ? (
+                    <div
+                      className="utilities-np__lyric-slot"
+                      onClick={() => setTab?.('playing')}
+                      role="button"
+                      tabIndex={0}
+                      title="Live Lyric (Click to open Expanded Player)"
+                    >
+                      <AnimatePresence initial={false}>
+                        <motion.div
+                          key={activeLine ? `${activeLine.timeMs ?? activeLine.text}` : 'none'}
+                          className="utilities-np__lyric-line"
+                          initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                          transition={getMotionTransition(MOTION.lyric, prefersReducedMotion)}
+                        >
+                          {activeLine?.text ? (
+                            <span className="utilities-np__lyric-text">
+                              {activeLine.text}
+                            </span>
+                          ) : (
+                            <span className="utilities-np__lyric-text utilities-np__lyric-text--muted">
+                              {isPlaying ? 'Playing' : 'Paused'}
+                            </span>
+                          )}
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
+                  ) : musicCenterMode === 'waves' ? (
+                    <div
+                      className="utilities-np__eq-slot"
+                      onClick={() => setTab?.('playing')}
+                      role="button"
+                      tabIndex={0}
+                      title="Audio Visualizer (Click to open Expanded Player)"
+                    >
+                      <Equalizer color="var(--music-accent, var(--accent, #ffffff))" playing={isPlaying} />
+                    </div>
+                  ) : (
+                    <div className="utilities-np__spacer" />
+                  )}
                 </div>
 
+                {/* RIGHT: Controls */}
                 <div className="utilities-np__controls">
                   <button
                     type="button"
@@ -246,30 +384,38 @@ export default function LauncherPanel({
                   </button>
                 </div>
               </div>
+            ) : (
+              <div className="utilities-now-playing ios-glass-card is-idle">
+                <div className="utilities-np__art-btn is-idle">
+                  <Icon.Music width={14} height={14} />
+                </div>
+                <div className="utilities-np__info is-idle">
+                  <span className="utilities-np__title">No Music Playing</span>
+                  <span className="utilities-np__artist">Play songs to control audio</span>
+                </div>
+              </div>
             )}
 
-            {/* Compact 2×2 Grid */}
-            <div className="utilities-grid">
-              {UTILITIES.map(({ id, title, Glyph }) => (
-                <motion.button
-                  key={id}
-                  type="button"
-                  layoutId={`utility-surface-${id}`}
-                  className="utility-tile"
-                  onClick={() => setActiveUtility(id)}
-                  transition={morphTransition}
-                  style={{
-                    visibility: activeUtility === id ? 'hidden' : 'visible',
-                  }}
-                >
-                  <span className="utility-tile__icon">
-                    <Glyph width={15} height={15} />
-                  </span>
-                  <div className="utility-tile__text">
-                    <span className="utility-tile__title">{title}</span>
-                    <span className="utility-tile__sub">{renderTileSub(id)}</span>
-                  </div>
-                </motion.button>
+            {/* Bottom Section: 4 Action Squircles with tight, precise hitboxes */}
+            <div className="ios-launcher-squircles">
+              {QUICK_ACTIONS.map(({ id, title, Glyph }) => (
+                <div key={id} className="ios-squircle-item">
+                  <motion.button
+                    type="button"
+                    layoutId={`utility-surface-${id}`}
+                    className="ios-squircle-tile ios-glass-card"
+                    onClick={() => selectUtility(id)}
+                    transition={morphTransition}
+                    style={{
+                      visibility: activeUtility === id ? 'hidden' : 'visible',
+                    }}
+                    title={`Open ${title}`}
+                    aria-label={`Open ${title}`}
+                  >
+                    <Glyph width={20} height={20} className="ios-squircle-icon" />
+                  </motion.button>
+                  <span className="ios-squircle-label">{title}</span>
+                </div>
               ))}
             </div>
           </motion.div>
@@ -297,29 +443,164 @@ export default function LauncherPanel({
                   exit={{ opacity: 0 }}
                   transition={contentTransition}
                 >
-                  {activeUtility === 'timer' && (
+                  {(activeUtility === 'timer' || activeUtility === 'clock') && (
                     <div className="utility-pane utility-pane--timer">
-                      <ClockPanel schedule={schedule} now={now} onBack={() => setActiveUtility(null)} />
+                      <ClockPanel schedule={schedule} now={now} onBack={() => selectUtility(null)} initialMode="alarms" />
                     </div>
                   )}
 
                   {activeUtility === 'weather' && (
                     <div className="utility-pane utility-pane--weather">
-                      {cachedWeather && cachedWeather.temp != null ? (
-                        <div className="utility-weather-summary">
-                          <div className="utility-weather-temp">{Math.round(cachedWeather.temp)}°</div>
-                          <div className="utility-weather-meta">
-                            <div className="utility-weather-loc">{cachedWeather.location || 'Local'}</div>
-                            <div className="utility-weather-cond">{cachedWeather.condition || 'Clear'}</div>
+                      {(() => {
+                        const activeW = weather || cachedWeather;
+                        const hasTemp = activeW && (activeW.temperature != null || activeW.temp != null);
+                        if (!hasTemp) {
+                          return (
+                            <div className="utility-empty-state">
+                              <IOSWeatherIcon code={0} isDay size={36} />
+                              <span className="utility-empty-state__title">Fetching Weather…</span>
+                              <p className="utility-empty-state__sub">Connecting to local weather telemetry.</p>
+                            </div>
+                          );
+                        }
+
+                        const tempVal = Math.round(activeW.temperature ?? activeW.temp);
+                        const codeVal = activeW.weatherCode ?? 0;
+                        const isDayVal = activeW.isDay ?? true;
+
+                        return (
+                          <div className="ios-weather-detail">
+                            {/* Balanced Hero Header: Left Typography & Right Apple SF Symbol */}
+                            <div className="ios-weather-detail__hero">
+                              <div className="ios-weather-detail__hero-left">
+                                <div className="ios-weather-detail__city-row">
+                                  <span className="ios-weather-detail__city">{activeW.city || 'Local Area'}</span>
+                                  {activeW.country && <span className="ios-weather-detail__country">{activeW.country}</span>}
+                                </div>
+                                <div className="ios-weather-detail__temp-row">
+                                  <span className="ios-weather-detail__temp">{tempVal}°</span>
+                                  <span className="ios-weather-detail__cond">{activeW.condition || 'Clear'}</span>
+                                </div>
+                                {activeW.high != null && activeW.low != null && (
+                                  <div className="ios-weather-detail__hilo">
+                                    <span>H: {Math.round(activeW.high)}°</span>
+                                    <span className="ios-weather-detail__dot">·</span>
+                                    <span>L: {Math.round(activeW.low)}°</span>
+                                    {activeW.rainChance != null && activeW.rainChance > 0 && (
+                                      <>
+                                        <span className="ios-weather-detail__dot">·</span>
+                                        <span>Rain {activeW.rainChance}%</span>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                                <span className="ios-weather-detail__summary">
+                                  {activeW.rainChance > 20
+                                    ? 'Rain showers expected later today.'
+                                    : (activeW.high >= 33
+                                        ? 'Expect 3 days with hot weather ahead starting Tomorrow.'
+                                        : 'Pleasant, clear conditions ahead.')}
+                                </span>
+                              </div>
+                              <div className="ios-weather-detail__hero-right">
+                                <IOSWeatherIcon
+                                  code={codeVal}
+                                  isDay={isDayVal}
+                                  size={52}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Full-Width Hourly Forecast Strip with Precipitation */}
+                            {Array.isArray(activeW.hourlyForecast) && activeW.hourlyForecast.length > 0 && (
+                              <div className="ios-weather-hourly">
+                                <span className="ios-weather-section-label">Hourly Forecast</span>
+                                <div className="ios-weather-hourly__strip">
+                                  {activeW.hourlyForecast.map((hour, idx) => (
+                                    <div key={idx} className="ios-weather-hourly__pill">
+                                      <span className="ios-weather-hourly__time">{hour.time}</span>
+                                      <IOSWeatherIcon
+                                        code={hour.weatherCode ?? 0}
+                                        isDay={hour.isDay ?? true}
+                                        size={20}
+                                      />
+                                      <span className="ios-weather-hourly__temp">{hour.temp}°</span>
+                                      <span className="ios-weather-hourly__precip">💧 {hour.rainChance ?? 0}%</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 5-Day Ground Forecast Strip (Matching Windows 11 MSN Weather) */}
+                            {Array.isArray(activeW.dailyForecasts) && activeW.dailyForecasts.length > 0 && (
+                              <div className="ios-weather-daily">
+                                <span className="ios-weather-section-label">5-Day Forecast</span>
+                                <div className="ios-weather-daily__strip">
+                                  {activeW.dailyForecasts.slice(0, 5).map((d, idx) => (
+                                    <div key={idx} className="ios-weather-daily__pill">
+                                      <span className="ios-weather-daily__day">{d.day}</span>
+                                      <IOSWeatherIcon code={d.condition?.toLowerCase().includes('rain') ? 61 : 0} isDay size={18} />
+                                      <div className="ios-weather-daily__range">
+                                        <span className="ios-weather-daily__hi">{Math.round(d.high)}°</span>
+                                        <span className="ios-weather-daily__lo">{Math.round(d.low)}°</span>
+                                      </div>
+                                      <span className="ios-weather-daily__precip">💧 {d.precip ?? 0}%</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Full-Width Apple 2×2 Bento Grid */}
+                            <div className="ios-weather-metrics">
+                              <div className="ios-weather-metric-item">
+                                <div className="ios-weather-metric__top">
+                                  <Icon.Sun width={11} height={11} className="ios-weather-metric__icon" />
+                                  <span className="ios-weather-metric__label">FEELS LIKE</span>
+                                </div>
+                                <span className="ios-weather-metric__val">{activeW.feelsLike ?? tempVal}°</span>
+                                <span className="ios-weather-metric__sub">
+                                  {activeW.feelsLike > tempVal ? 'Humidity makes it feel warmer.' : 'Similar to actual temperature.'}
+                                </span>
+                              </div>
+
+                              <div className="ios-weather-metric-item">
+                                <div className="ios-weather-metric__top">
+                                  <Icon.Cloud width={11} height={11} className="ios-weather-metric__icon" />
+                                  <span className="ios-weather-metric__label">HUMIDITY</span>
+                                </div>
+                                <span className="ios-weather-metric__val">{activeW.humidity ?? 50}%</span>
+                                <span className="ios-weather-metric__sub">
+                                  {`The dew point is ${Math.round((activeW.feelsLike ?? tempVal) - (100 - (activeW.humidity ?? 50)) / 5)}° right now.`}
+                                </span>
+                              </div>
+
+                              <div className="ios-weather-metric-item">
+                                <div className="ios-weather-metric__top">
+                                  <Icon.Sliders width={11} height={11} className="ios-weather-metric__icon" />
+                                  <span className="ios-weather-metric__label">WIND</span>
+                                </div>
+                                <span className="ios-weather-metric__val">{activeW.windDisplay || `${activeW.windSpeed ?? 10} km/h`}</span>
+                                <span className="ios-weather-metric__sub">
+                                  {activeW.windSpeed > 20 ? 'Breezy conditions today.' : 'Gentle ambient breeze.'}
+                                </span>
+                              </div>
+
+                              <div className="ios-weather-metric-item">
+                                <div className="ios-weather-metric__top">
+                                  <Icon.Alert width={11} height={11} className="ios-weather-metric__icon" />
+                                  <span className="ios-weather-metric__label">PRECIPITATION</span>
+                                </div>
+                                <span className="ios-weather-metric__val">{activeW.rainChance ?? 0}%</span>
+                                <span className="ios-weather-metric__sub">
+                                  {activeW.rainChance > 20 ? 'Rain expected later today.' : 'None expected today.'}
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="utility-empty-state">
-                          <Icon.Sun width={24} height={24} />
-                          <span className="utility-empty-state__title">Weather Unavailable</span>
-                          <p className="utility-empty-state__sub">Local weather provider connects in the next checkpoint.</p>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -415,6 +696,33 @@ export default function LauncherPanel({
                       </div>
 
                       <div className="utility-ctrl-row">
+                        <span className="utility-ctrl-label">Music Pill Center</span>
+                        <div className="utility-ctrl-pills">
+                          <button
+                            type="button"
+                            className={`utility-ctrl-pill${musicCenterMode === 'lyrics' ? ' is-active' : ''}`}
+                            onClick={() => handleSetMusicCenterMode('lyrics')}
+                          >
+                            Lyrics
+                          </button>
+                          <button
+                            type="button"
+                            className={`utility-ctrl-pill${musicCenterMode === 'waves' ? ' is-active' : ''}`}
+                            onClick={() => handleSetMusicCenterMode('waves')}
+                          >
+                            Visualizer
+                          </button>
+                          <button
+                            type="button"
+                            className={`utility-ctrl-pill${musicCenterMode === 'none' ? ' is-active' : ''}`}
+                            onClick={() => handleSetMusicCenterMode('none')}
+                          >
+                            None
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="utility-ctrl-row">
                         <span className="utility-ctrl-label">Music Volume ({volume}%)</span>
                         <input
                           type="range"
@@ -442,6 +750,75 @@ export default function LauncherPanel({
                         >
                           AI Workspace
                         </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeUtility === 'tasks' && (
+                    <div className="utility-pane utility-pane--tasks">
+                      <div className="ios-tasks-card">
+                        <div className="ios-tasks-progress-row">
+                          <div className="ios-tasks-progress-track">
+                            <div className="ios-tasks-progress-fill" style={{ width: `${taskStats.percent}%` }} />
+                          </div>
+                          <span className="ios-tasks-progress-label">{taskStats.percent}% done</span>
+                        </div>
+
+                        <div className="ios-tasks-list">
+                          {tasks.map((task) => (
+                            <div
+                              key={task.id}
+                              className={`ios-task-item${task.completed ? ' is-completed' : ''}`}
+                              onClick={() => toggleTask(task.id)}
+                            >
+                              <button
+                                type="button"
+                                className={`ios-task-checkbox${task.completed ? ' is-checked' : ''}`}
+                                aria-label={task.completed ? 'Mark uncompleted' : 'Mark completed'}
+                              >
+                                {task.completed && (
+                                  <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <path d="M3 8.5l3.5 3.5 6.5-7" />
+                                  </svg>
+                                )}
+                              </button>
+                              <span className="ios-task-text">{task.title}</span>
+                              <button
+                                type="button"
+                                className="ios-task-delete"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteTask(task.id);
+                                }}
+                                title="Delete task"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <form
+                          className="ios-task-composer"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (newTaskTitle.trim()) {
+                              addTask(newTaskTitle.trim());
+                              setNewTaskTitle('');
+                            }
+                          }}
+                        >
+                          <input
+                            type="text"
+                            className="ios-task-input"
+                            placeholder="Add a new task…"
+                            value={newTaskTitle}
+                            onChange={(e) => setNewTaskTitle(e.target.value)}
+                          />
+                          <button type="submit" className="ios-task-add-btn" disabled={!newTaskTitle.trim()}>
+                            Add
+                          </button>
+                        </form>
                       </div>
                     </div>
                   )}

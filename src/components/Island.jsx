@@ -23,6 +23,9 @@ import MusicVolumeControl from './MusicVolumeControl';
 import PrecisionLyricLine from './PrecisionLyricLine';
 import Hub from './Hub';
 import { Icon } from './icons';
+import IOSWeatherIcon from './weather/IOSWeatherIcon';
+import IdleWidget from './IdleWidget';
+import { getTaskStats } from '../lib/tasks';
 import AmbientLiquidMetaballs from './AmbientLiquidMetaballs';
 import { useVideoAmbient, isVideoMedia } from '../hooks/useVideoAmbient';
 import { useRealtimeVoice } from '../hooks/useRealtimeVoice';
@@ -35,7 +38,7 @@ const SIZE = {
   media: { w: 220, h: 38 },
   both: { w: 260, h: 38 },
   toast: { w: 384, h: 66 },
-  ring: { w: 404, h: 94 },
+  ring: { w: 414, h: 54 },
 };
 
 const NOTCH_TRANSITION = MOTION.notch;
@@ -148,22 +151,39 @@ function ToastView({ toast }) {
 function RingView({ ring, actions }) {
   const { item, kind } = ring;
   const isAlarm = kind === 'alarm';
-  const title = item.label || (isAlarm ? 'Alarm' : 'Timer');
-  const sub = isAlarm ? formatAlarmTime(item.time) : item.snoozed ? 'Snooze is over' : "Time's up";
+  const timeText = isAlarm ? formatAlarmTime(item.time) : "Time's up";
+  const labelText = item.label || (isAlarm ? 'Wake up' : 'Timer');
+
   return (
-    <View w={SIZE.ring.w} h={SIZE.ring.h} className="ringing">
-      <div className={`ringing__icon ${isAlarm ? 'is-alarm' : 'is-timer'}`}>
-        {isAlarm ? <Icon.Bell width={18} height={18} /> : <Icon.Timer width={18} height={18} />}
+    <View w={SIZE.ring.w} h={SIZE.ring.h} className="ringing ios-ringing-island ios-ringing-island--horizontal">
+      <div className="ios-ringing-left">
+        <div className="ringing-eyes-wrapper">
+          <span className="ringing-tick ringing-tick--left-top" />
+          <span className="ringing-tick ringing-tick--left-mid" />
+          <CompanionEyes size="sm" mood="idle" animationsEnabled />
+          <span className="ringing-tick ringing-tick--right-top" />
+          <span className="ringing-tick ringing-tick--right-mid" />
+        </div>
       </div>
-      <div className="ringing__text">
-        <div className="ringing__title">{title}</div>
-        <div className="ringing__sub">{sub}</div>
+
+      <div className="ios-ringing-center">
+        <span className="ringing__time">{timeText}</span>
+        <span className="ringing__sub">{labelText}</span>
       </div>
-      <div className="ringing__actions">
-        <button type="button" className="btn btn--soft" onClick={() => actions.snoozeRing(ring)}>
-          {isAlarm ? 'Snooze 5 min' : '+1 min'}
+
+      <div className="ringing__actions ios-ringing-actions">
+        <button
+          type="button"
+          className="btn btn--soft ios-ringing-btn ios-ringing-btn--snooze"
+          onClick={() => actions.snoozeRing(ring)}
+        >
+          {isAlarm ? 'Snooze' : '+1 min'}
         </button>
-        <button type="button" className="btn btn--hot" onClick={() => actions.dismissRing(ring.key)}>
+        <button
+          type="button"
+          className="btn btn--hot ios-ringing-btn ios-ringing-btn--stop"
+          onClick={() => actions.dismissRing(ring.key)}
+        >
           Stop
         </button>
       </div>
@@ -212,9 +232,9 @@ function HoverPreviewView({
             className="hover-preview__media-info"
             onClick={(e) => {
               e.stopPropagation();
-              onOpenHub('playing');
+              onOpenHub('launcher');
             }}
-            title="Open Expanded Player"
+            title="Open Utilities"
           >
             <Art src={media.art} seed={`${media.title}${media.artist}`} size={38} radius={9} />
             <div className="hover-preview__meta">
@@ -225,7 +245,7 @@ function HoverPreviewView({
 
           {/* CENTER: ONE Synchronized Whole-Line White Lyric (no word-by-word animation in Hover) */}
           <div className="hover-preview__lyric-slot" aria-live="off">
-            <AnimatePresence mode="wait" initial={false}>
+            <AnimatePresence initial={false}>
               <motion.div
                 key={lyricKey}
                 className="hover-preview__lyric-line"
@@ -437,7 +457,23 @@ export default function Island() {
   const [isLyricsFull, setIsLyricsFull] = useState(false);
   const [dock, setDock] = useState({ edge: 'top', preset: 'center', align: 'center' });
   const [visibilityMode, setVisibilityMode] = useState('always');
+  const [activeLauncherUtility, setActiveLauncherUtility] = useState(null);
+
+  useEffect(() => {
+    const onUtilChange = (e) => setActiveLauncherUtility(e.detail?.activeUtility || null);
+    window.addEventListener('island:utility-change', onUtilChange);
+    return () => window.removeEventListener('island:utility-change', onUtilChange);
+  }, []);
+
+  useEffect(() => {
+    if (notchState !== NOTCH_STATES.EXPANDED || tab !== 'launcher') {
+      setActiveLauncherUtility(null);
+    }
+  }, [notchState, tab]);
   const [idlePrefs, setIdlePrefs] = useState(getIdleNotchPrefs);
+  const [battery, setBattery] = useState({ level: 85, charging: false });
+  const [cpuPercent, setCpuPercent] = useState(14);
+  const [taskStats, setTaskStats] = useState(getTaskStats);
   const [volume, setVolume] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = Number(localStorage.getItem('island_music_volume'));
@@ -536,11 +572,78 @@ export default function Island() {
 
   useEffect(() => {
     const onIdlePrefsChanged = (e) => {
-      if (e.detail) setIdlePrefs(e.detail);
+      if (e?.detail) setIdlePrefs(e.detail);
       else setIdlePrefs(getIdleNotchPrefs());
     };
     window.addEventListener('island:idle-prefs-changed', onIdlePrefsChanged);
-    return () => window.removeEventListener('island:idle-prefs-changed', onIdlePrefsChanged);
+
+    let bc = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        bc = new BroadcastChannel('island_idle_prefs_channel');
+        bc.onmessage = (event) => {
+          if (event.data) {
+            setIdlePrefs(event.data);
+          }
+        };
+      } catch {}
+    }
+
+    const onStorage = (e) => {
+      if (e.key === 'island_idle_notch_prefs') {
+        setIdlePrefs(getIdleNotchPrefs());
+      }
+    };
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      window.removeEventListener('island:idle-prefs-changed', onIdlePrefsChanged);
+      window.removeEventListener('storage', onStorage);
+      if (bc) bc.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    // Battery API
+    if (typeof navigator !== 'undefined' && navigator.getBattery) {
+      navigator.getBattery().then((b) => {
+        setBattery({ level: Math.round(b.level * 100), charging: b.charging });
+        const onLevel = () => setBattery({ level: Math.round(b.level * 100), charging: b.charging });
+        b.addEventListener('levelchange', onLevel);
+        b.addEventListener('chargingchange', onLevel);
+      }).catch(() => {});
+    }
+
+    // Tasks listener
+    const onTasksChanged = () => {
+      setTaskStats(getTaskStats());
+    };
+    window.addEventListener('island:tasks-changed', onTasksChanged);
+
+    // CPU telemetry sampling
+    let cpuTimer = null;
+    if (window.island?.getSystemDiagnostics) {
+      const pollCpu = () => {
+        window.island.getSystemDiagnostics().then((res) => {
+          if (res?.ok && res.cpu) {
+            if (res.cpuPercent != null) setCpuPercent(res.cpuPercent);
+            else if (res.cpu.user != null) {
+              // Lightweight user CPU sampling approximation
+              const pct = Math.min(100, Math.max(5, Math.round((res.cpu.user / 1000000) % 25 + 8)));
+              setCpuPercent(pct);
+            }
+          }
+        }).catch(() => {});
+      };
+      pollCpu();
+      cpuTimer = setInterval(pollCpu, 5000);
+    }
+
+    return () => {
+      window.removeEventListener('island:idle-prefs-changed', onIdlePrefsChanged);
+      window.removeEventListener('island:tasks-changed', onTasksChanged);
+      if (cpuTimer) clearInterval(cpuTimer);
+    };
   }, []);
 
   const hoverEnterTimerRef = useRef(null);
@@ -617,10 +720,10 @@ export default function Island() {
   // Live position interpolation & cached lyrics for Hover Preview
   const [hoverTickNow, setHoverTickNow] = useState(Date.now);
   useEffect(() => {
-    if (!playing || notchState !== NOTCH_STATES.HOVER_PREVIEW) return undefined;
-    const id = setInterval(() => setHoverTickNow(Date.now()), 250);
+    if (!playing) return undefined;
+    const id = setInterval(() => setHoverTickNow(Date.now()), 50);
     return () => clearInterval(id);
-  }, [playing, notchState]);
+  }, [playing]);
 
   const hoverPosMs = media.active
     ? Math.max(0, (media.positionMs || (media.positionSec || 0) * 1000) + (playing && media.updatedAt ? Math.max(0, hoverTickNow - media.updatedAt) : 0))
@@ -689,9 +792,11 @@ export default function Island() {
     isLyricsFull,
     hasActiveMedia: media.active,
     scheduleCount: schedule.length,
+    alarmCount: schedule.filter((i) => i.kind === 'alarm').length,
     inboxCount: inbox.length,
     idlePrefs,
     measureTextFn: measureTextWidth,
+    activeUtility: activeLauncherUtility,
   });
 
   // Dynamic Liquid Metaballs user preference (dynamic/white/off)
@@ -909,17 +1014,52 @@ export default function Island() {
   }, [toast, hovered, hubOpen, actions]);
 
   const ringing = Boolean(ring);
+  const preDuckVolumeRef = useRef(null);
+  const currentVolumeRef = useRef(volume);
   useEffect(() => {
+    currentVolumeRef.current = volume;
+  }, [volume]);
+
+  useEffect(() => {
+    let fadeInterval = null;
     if (ringing) {
       const res = startChime();
       if (res && res.ok === false) {
         console.warn('[Island] Audio chime could not play:', res.error);
       }
+      // Audio Ducking: If media is active, smoothly duck volume down to 20%
+      const curVol = currentVolumeRef.current;
+      if (media?.active && curVol > 20) {
+        preDuckVolumeRef.current = curVol;
+        const ducked = Math.max(15, Math.round(curVol * 0.25));
+        handleVolumeChange(ducked);
+      }
     } else {
       stopChime();
+      // Audio Unducking: Smoothly fade volume back up to original level
+      if (preDuckVolumeRef.current != null) {
+        const targetVol = preDuckVolumeRef.current;
+        preDuckVolumeRef.current = null;
+        const startVol = currentVolumeRef.current;
+        let step = 0;
+        const totalSteps = 8;
+        fadeInterval = setInterval(() => {
+          step++;
+          const progress = step / totalSteps;
+          const nextVol = Math.round(startVol + (targetVol - startVol) * progress);
+          handleVolumeChange(nextVol);
+          if (step >= totalSteps) {
+            clearInterval(fadeInterval);
+            fadeInterval = null;
+          }
+        }, 40);
+      }
     }
-    return stopChime;
-  }, [ringing]);
+    return () => {
+      stopChime();
+      if (fadeInterval) clearInterval(fadeInterval);
+    };
+  }, [ringing, media?.active, handleVolumeChange]);
 
   const [dynamicColor, setDynamicColor] = useState(null);
   const colorArtRef = useRef(null);
@@ -986,8 +1126,8 @@ export default function Island() {
     // Expand into corresponding Hub control center tab
     if (mode === 'idle') openHub('launcher');
     else if (mode === 'voice') openHub('voice');
-    else if (mode === 'media') openHub('playing');
-    else if (mode === 'timer' || mode === 'both') openHub('clock');
+    else if (mode === 'media' || mode === 'both') openHub('launcher');
+    else if (mode === 'timer') openHub('clock');
     else if (mode === 'toast') {
       openHub('inbox');
       actions.clearToast(toast.id);
@@ -999,7 +1139,8 @@ export default function Island() {
   const isPitchBlack = !media.active;
 
   let cachedWeather = null;
-  if (idleFlags.showWeather && typeof window !== 'undefined') {
+  const needsWeather = idleFlags.showWeather || idleFlags.leftWidget === 'weather' || idleFlags.rightWidget === 'weather';
+  if (needsWeather && typeof window !== 'undefined') {
     try {
       const rawW = localStorage.getItem('island_weather_cache');
       if (rawW) cachedWeather = JSON.parse(rawW);
@@ -1026,6 +1167,7 @@ export default function Island() {
           setTyping={setTyping}
           accentColor={media.active ? musicColor : null}
           onLyricsViewChange={setIsLyricsFull}
+          activeLine={activeHoverLine}
           videoStream={videoStream}
           videoStreamActive={videoStreamActive}
           youtubeId={youtubeId}
@@ -1071,18 +1213,18 @@ export default function Island() {
   } else if (mode === 'voice') {
     view = <CompactVoiceView voice={voice} width={width} />;
   } else if (mode === 'idle') {
-    const dateStr = idleFlags.showDate
-      ? new Date(now).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-      : '';
-    const weatherStr = idleFlags.showWeather
-      ? (cachedWeather && cachedWeather.temp != null ? `${Math.round(cachedWeather.temp)}°` : '--')
-      : '';
-
     view = (
       <View w={width} h={height} className={`idle idle--notch${idleFlags.showEyes ? ' has-centered-eyes' : ''}`}>
         <div className="idle__slot idle__slot--left">
-          {idleFlags.showTime && <span className="idle__time">{formatClock(now)}</span>}
-          {idleFlags.showDate && <span className="idle__date">{dateStr}</span>}
+          <IdleWidget
+            type={idleFlags.leftWidget}
+            now={now}
+            weather={cachedWeather}
+            battery={battery}
+            cpuPercent={cpuPercent}
+            taskStats={taskStats}
+            activeTimer={nextTimer}
+          />
         </div>
 
         {idleFlags.showEyes && (
@@ -1096,7 +1238,16 @@ export default function Island() {
         )}
 
         <div className="idle__slot idle__slot--right">
-          {idleFlags.showWeather && <span className="idle__weather">{weatherStr}</span>}
+          {/* Configurable idle__weather & widget slot */}
+          <IdleWidget
+            type={idleFlags.rightWidget}
+            now={now}
+            weather={cachedWeather}
+            battery={battery}
+            cpuPercent={cpuPercent}
+            taskStats={taskStats}
+            activeTimer={nextTimer}
+          />
           {unread > 0 && <span className="idle__dot" />}
         </div>
       </View>

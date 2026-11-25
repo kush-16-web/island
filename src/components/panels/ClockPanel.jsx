@@ -7,6 +7,140 @@ import { DAY_LABELS, DAY_NAMES, describeDays, formatAlarmTime, formatRemaining, 
 import { MOTION, getMotionTransition } from '../../lib/motion';
 import { Switch } from '../bits';
 import { Icon } from '../icons';
+import CompanionEyes from '../CompanionEyes';
+
+function playWheelTick() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!window.__islandAudioCtx) {
+      window.__islandAudioCtx = new AudioCtx();
+    }
+    const ctx = window.__islandAudioCtx;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1400, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.005);
+    gain.gain.setValueAtTime(0.04, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.005);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.006);
+  } catch (e) {}
+}
+
+const ALARM_SOUND_OPTIONS = [
+  'Soft chime',
+  'Digital clock',
+  'Gentle bell',
+  'Classic alarm',
+];
+
+function WheelPickerColumn({ value, min, max, onChange, padZeros = true }) {
+  const range = max - min + 1;
+  const wrap = (val) => (((val - min) % range) + range) % range + min;
+  const formatVal = (v) => (padZeros ? pad(v) : String(v));
+  const ITEM_HEIGHT = 22;
+
+  const [dragOffset, setDragOffset] = useState(0);
+  const isDragging = useRef(false);
+  const startY = useRef(null);
+  const startVal = useRef(value);
+  const lastStep = useRef(0);
+  const wheelTimeout = useRef(null);
+
+  const handlePointerDown = (e) => {
+    isDragging.current = true;
+    startY.current = e.clientY;
+    startVal.current = value;
+    lastStep.current = 0;
+    setDragOffset(0);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  const handlePointerMove = (e) => {
+    if (!isDragging.current || startY.current === null) return;
+    const totalDy = e.clientY - startY.current;
+    const step = Math.round(totalDy / ITEM_HEIGHT);
+    const remainder = totalDy - step * ITEM_HEIGHT;
+
+    if (step !== lastStep.current) {
+      playWheelTick();
+      lastStep.current = step;
+      onChange(wrap(startVal.current - step));
+    }
+    setDragOffset(remainder);
+  };
+
+  const handlePointerUp = (e) => {
+    isDragging.current = false;
+    startY.current = null;
+    lastStep.current = 0;
+    setDragOffset(0);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  const handleWheel = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dir = e.deltaY > 0 ? 1 : -1;
+    setDragOffset(dir > 0 ? -6 : 6);
+    onChange(wrap(value + dir));
+    playWheelTick();
+    clearTimeout(wheelTimeout.current);
+    wheelTimeout.current = setTimeout(() => {
+      setDragOffset(0);
+    }, 140);
+  };
+
+  const vMinus2 = wrap(value - 2);
+  const vMinus1 = wrap(value - 1);
+  const vCenter = value;
+  const vPlus1 = wrap(value + 1);
+  const vPlus2 = wrap(value + 2);
+
+  return (
+    <div
+      className="ios-wheel-col"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onWheel={handleWheel}
+      tabIndex={0}
+      role="spinbutton"
+      aria-valuenow={value}
+      aria-valuemin={min}
+      aria-valuemax={max}
+    >
+      {/* Stationary Center Lens (Remains rock-solid while numbers glide through) */}
+      <div className="ios-wheel-stationary-lens" aria-hidden="true" />
+
+      <div
+        className="ios-wheel-items-track"
+        style={{
+          transform: `translate3d(0, ${dragOffset}px, 0)`,
+          transition: isDragging.current ? 'none' : 'transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1)',
+        }}
+      >
+        <div className="ios-wheel-item ios-wheel-item--faint">{formatVal(vMinus2)}</div>
+        <div className="ios-wheel-item ios-wheel-item--sub">{formatVal(vMinus1)}</div>
+        <div className="ios-wheel-item ios-wheel-item--center">{formatVal(vCenter)}</div>
+        <div className="ios-wheel-item ios-wheel-item--sub">{formatVal(vPlus1)}</div>
+        <div className="ios-wheel-item ios-wheel-item--faint">{formatVal(vPlus2)}</div>
+      </div>
+    </div>
+  );
+}
 
 const PRESET_TIMERS = [
   { label: '1m', minutes: 1 },
@@ -165,8 +299,8 @@ export function DigitSpinner({ value, min = 0, max = 59, onChange, label }) {
   );
 }
 
-export default function ClockPanel({ schedule = [], now = Date.now(), onBack }) {
-  const [subMode, setSubMode] = useState('countdown'); // 'countdown' | 'alarms'
+export default function ClockPanel({ schedule = [], now = Date.now(), onBack, initialMode = 'alarms' }) {
+  const [subMode, setSubMode] = useState(initialMode); // 'countdown' | 'alarms'
   const prefersReducedMotion = useReducedMotion();
   const contentTransition = getMotionTransition(MOTION.content, prefersReducedMotion);
 
@@ -182,7 +316,32 @@ export default function ClockPanel({ schedule = [], now = Date.now(), onBack }) 
   const [alarmMinute, setAlarmMinute] = useState(0);
   const [alarmDays, setAlarmDays] = useState([]);
   const [alarmLabel, setAlarmLabel] = useState('');
+  const [alarmSound, setAlarmSound] = useState('Soft chime');
+  const [isSoundDropdownOpen, setIsSoundDropdownOpen] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
+
+  // Synchronize height state with Island
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('island:utility-change', {
+          detail: { activeUtility: isAddingAlarm ? 'new_alarm' : 'clock' },
+        })
+      );
+    }
+  }, [isAddingAlarm]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('island:utility-change', {
+            detail: { activeUtility: null },
+          })
+        );
+      }
+    };
+  }, []);
 
   // Find active running timer from schedule
   const activeTimers = schedule
@@ -272,41 +431,30 @@ export default function ClockPanel({ schedule = [], now = Date.now(), onBack }) 
 
   return (
     <div className="clock-experience">
-      {/* Top Segmented Mode Selector [ Countdown | Alarms ] */}
-      <div className="clock-segmented-row">
-        <div className="clock-segmented">
-          <button
-            type="button"
-            className={`clock-segmented__btn${subMode === 'countdown' ? ' is-active' : ''}`}
-            onClick={() => {
-              setSubMode('countdown');
-              setIsAddingAlarm(false);
-            }}
-          >
-            Countdown
-          </button>
-          <button
-            type="button"
-            className={`clock-segmented__btn${subMode === 'alarms' ? ' is-active' : ''}`}
-            onClick={() => setSubMode('alarms')}
-          >
-            Alarms
-          </button>
+      {/* Top Segmented Mode Selector [ Countdown | Alarms ] - only displayed in countdown mode */}
+      {subMode === 'countdown' && (
+        <div className="clock-segmented-row">
+          <div className="clock-segmented">
+            <button
+              type="button"
+              className={`clock-segmented__btn${subMode === 'countdown' ? ' is-active' : ''}`}
+              onClick={() => {
+                setSubMode('countdown');
+                setIsAddingAlarm(false);
+              }}
+            >
+              Countdown
+            </button>
+            <button
+              type="button"
+              className={`clock-segmented__btn${subMode === 'alarms' ? ' is-active' : ''}`}
+              onClick={() => setSubMode('alarms')}
+            >
+              Alarms
+            </button>
+          </div>
         </div>
-
-        {subMode === 'alarms' && !isAddingAlarm && (
-          <button
-            type="button"
-            className="clock-add-alarm-btn"
-            onClick={() => setIsAddingAlarm(true)}
-            title="Add Alarm"
-            aria-label="Add Alarm"
-          >
-            <Icon.Plus width={12} height={12} />
-            <span>New Alarm</span>
-          </button>
-        )}
-      </div>
+      )}
 
       {feedbackError && <div className="clock-feedback-error">{feedbackError}</div>}
 
@@ -439,141 +587,286 @@ export default function ClockPanel({ schedule = [], now = Date.now(), onBack }) 
           ) : (
             <motion.div
               key="alarms-view"
-              className="alarms-view"
+              className="alarms-view ios-alarms-panel"
               initial={{ opacity: 0, x: 8 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 8 }}
               transition={contentTransition}
             >
-              {isAddingAlarm ? (
-                /* DEDICATED ADD ALARM EDITOR */
-                <div className="alarm-editor">
-                  <div className="alarm-editor__time">
-                    <DigitSpinner
-                      value={showAlarmHour}
-                      min={uses12h ? 1 : 0}
-                      max={uses12h ? 12 : 23}
-                      onChange={(h) => {
-                        if (uses12h) {
-                          const isPm = alarmHour >= 12;
-                          const h24 = (h % 12) + (isPm ? 12 : 0);
-                          setAlarmHour(h24);
-                        } else {
-                          setAlarmHour(h);
-                        }
-                      }}
-                      label="Hour"
-                    />
-                    <span className="countdown-colon">:</span>
-                    <DigitSpinner
-                      value={alarmMinute}
-                      min={0}
-                      max={59}
-                      onChange={setAlarmMinute}
-                      label="Minute"
-                    />
-                    {uses12h && (
-                      <button
-                        type="button"
-                        className="alarm-period-toggle"
-                        onClick={() => setAlarmHour((h) => (h + 12) % 24)}
-                      >
-                        {alarmPeriod}
-                      </button>
-                    )}
-                  </div>
+              {/* Header with Back, Eyes, and + or ✓ (Images 1 & 2) */}
+              <div className="ios-alarm-header">
+                <button
+                  type="button"
+                  className="ios-alarm-header-btn"
+                  onClick={() => {
+                    if (isAddingAlarm) setIsAddingAlarm(false);
+                    else onBack?.();
+                  }}
+                  title={isAddingAlarm ? 'Back to Alarms' : 'Back to Utilities'}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                  <span>{isAddingAlarm ? 'New alarm' : 'Alarms'}</span>
+                </button>
 
-                  {/* Repeat Days */}
-                  <div className="alarm-days-row" role="group" aria-label="Repeat days">
-                    {DAY_LABELS.map((d, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        className={`alarm-day-pill${alarmDays.includes(i) ? ' is-on' : ''}`}
-                        onClick={() => toggleAlarmDay(i)}
-                        aria-pressed={alarmDays.includes(i)}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
+                <button
+                  type="button"
+                  className="ios-alarm-header-eyes utilities-eyes-btn"
+                  onClick={() => {
+                    if (isAddingAlarm) setIsAddingAlarm(false);
+                    else onBack?.();
+                  }}
+                  title="Back to Utilities"
+                  aria-label="Back to Utilities"
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  <CompanionEyes size="sm" mood="idle" />
+                </button>
 
-                  {/* Optional Label */}
-                  <input
-                    type="text"
-                    className="alarm-label-input"
-                    placeholder="Alarm label (optional)"
-                    maxLength={40}
-                    value={alarmLabel}
-                    onChange={(e) => setAlarmLabel(e.target.value)}
-                  />
-
-                  {/* Editor Actions */}
-                  <div className="alarm-editor__actions">
+                <div className="ios-alarm-header-right">
+                  {isAddingAlarm ? (
                     <button
                       type="button"
-                      className="clock-btn clock-btn--secondary"
-                      onClick={() => setIsAddingAlarm(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="clock-btn clock-btn--primary"
+                      className="ios-alarm-save-check"
                       onClick={handleSaveAlarm}
+                      title="Save alarm"
+                      aria-label="Save alarm"
                     >
-                      Save Alarm
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
                     </button>
-                  </div>
-                </div>
-              ) : (
-                /* ALARMS LIST */
-                <div className="alarms-list-container">
-                  {alarmsList.length === 0 ? (
-                    <div className="alarms-empty">
-                      <Icon.Bell width={24} height={24} />
-                      <p>No alarms set</p>
-                      <button
-                        type="button"
-                        className="clock-btn clock-btn--primary"
-                        onClick={() => setIsAddingAlarm(true)}
-                      >
-                        Set an Alarm
-                      </button>
-                    </div>
                   ) : (
-                    <ul className="alarms-list">
-                      {alarmsList.map((item) => (
-                        <li key={item.id} className={`alarm-row${item.enabled ? '' : ' is-off'}`}>
-                          <div className="alarm-row__info">
-                            <span className="alarm-row__time">{formatAlarmTime(item.time)}</span>
-                            <span className="alarm-row__sub">
-                              {item.label} · {describeDays(item.days)}
-                              {item.enabled && item.fireAt ? ` · ${untilText(item.fireAt - now)}` : ''}
-                            </span>
-                          </div>
-                          <div className="alarm-row__actions">
-                            <Switch
-                              checked={item.enabled}
-                              label={`Toggle alarm at ${formatAlarmTime(item.time)}`}
-                              onChange={(on) => island.scheduler.setEnabled(item.id, on)}
-                            />
-                            <button
-                              type="button"
-                              className="alarm-delete-btn"
-                              onClick={() => island.scheduler.remove(item.id)}
-                              title="Delete alarm"
-                              aria-label="Delete alarm"
-                            >
-                              <Icon.Trash width={13} height={13} />
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                    <button
+                      type="button"
+                      className="ios-alarm-add-plus"
+                      onClick={() => setIsAddingAlarm(true)}
+                      title="Add alarm"
+                      aria-label="Add alarm"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                    </button>
                   )}
                 </div>
-              )}
+              </div>
+
+              <AnimatePresence mode="wait" initial={false}>
+                {isAddingAlarm ? (
+                  /* DEDICATED ADD ALARM EDITOR (Images 2 & 4) */
+                  <motion.div
+                    key="alarm-editor"
+                    className="ios-alarm-editor"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {/* Wheel Picker Row */}
+                    <div className="ios-wheel-container">
+                      <WheelPickerColumn
+                        value={showAlarmHour}
+                        min={uses12h ? 1 : 0}
+                        max={uses12h ? 12 : 23}
+                        onChange={(h) => {
+                          if (uses12h) {
+                            const isPm = alarmHour >= 12;
+                            const h24 = (h % 12) + (isPm ? 12 : 0);
+                            setAlarmHour(h24);
+                          } else {
+                            setAlarmHour(h);
+                          }
+                        }}
+                        padZeros
+                      />
+
+                      <span className="ios-wheel-colon">:</span>
+
+                      <WheelPickerColumn
+                        value={alarmMinute}
+                        min={0}
+                        max={59}
+                        onChange={setAlarmMinute}
+                        padZeros
+                      />
+
+                      {uses12h && (
+                        <div className="ios-ampm-col">
+                          <button
+                            type="button"
+                            className={`ios-ampm-btn${alarmPeriod === 'AM' ? ' is-active' : ''}`}
+                            onClick={() => {
+                              if (alarmHour >= 12) {
+                                setAlarmHour((h) => h - 12);
+                                playWheelTick();
+                              }
+                            }}
+                          >
+                            AM
+                          </button>
+                          <button
+                            type="button"
+                            className={`ios-ampm-btn${alarmPeriod === 'PM' ? ' is-active' : ''}`}
+                            onClick={() => {
+                              if (alarmHour < 12) {
+                                setAlarmHour((h) => h + 12);
+                                playWheelTick();
+                              }
+                            }}
+                          >
+                            PM
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Repeat Days Row */}
+                    <div className="ios-repeat-group">
+                      <span className="ios-repeat-label">Repeat</span>
+                      <div className="ios-repeat-days">
+                        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            className={`ios-repeat-day-pill${alarmDays.includes(i) ? ' is-active' : ''}`}
+                            onClick={() => {
+                              toggleAlarmDay(i);
+                              playWheelTick();
+                            }}
+                            aria-pressed={alarmDays.includes(i)}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Side-by-Side Label & Sound Rows (Compact & Non-Cropped) */}
+                    <div className="ios-alarm-fields ios-alarm-fields--side-by-side">
+                      <div className="ios-alarm-field-card">
+                        <span className="ios-alarm-field-label">Label</span>
+                        <input
+                          type="text"
+                          className="ios-alarm-field-input"
+                          placeholder="Alarm label"
+                          value={alarmLabel}
+                          onChange={(e) => setAlarmLabel(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="ios-alarm-field-card" style={{ position: 'relative' }}>
+                        <span className="ios-alarm-field-label">Sound</span>
+                        <button
+                          type="button"
+                          className="ios-alarm-sound-selector"
+                          onClick={() => setIsSoundDropdownOpen(!isSoundDropdownOpen)}
+                        >
+                          <span className="ios-alarm-sound-name">{alarmSound}</span>
+                          <svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isSoundDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>
+                            <path d="m1 1 4 4 4-4" />
+                          </svg>
+                        </button>
+
+                        {/* Sound Dropdown Menu */}
+                        {isSoundDropdownOpen && (
+                          <div className="ios-alarm-sound-dropdown ios-glass-card">
+                            {ALARM_SOUND_OPTIONS.map((snd) => (
+                              <button
+                                key={snd}
+                                type="button"
+                                className={`ios-alarm-sound-option${snd === alarmSound ? ' is-selected' : ''}`}
+                                onClick={() => {
+                                  setAlarmSound(snd);
+                                  setIsSoundDropdownOpen(false);
+                                  playWheelTick();
+                                }}
+                              >
+                                {snd === alarmSound ? <span className="ios-sound-check">✓</span> : <span className="ios-sound-check-placeholder" />}
+                                <span>{snd}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bottom Save Button */}
+                    <button
+                      type="button"
+                      className="ios-alarm-save-pill"
+                      onClick={handleSaveAlarm}
+                    >
+                      Save alarm
+                    </button>
+                  </motion.div>
+                ) : (
+                  /* ALARMS LIST (Image 1) */
+                  <motion.div
+                    key="alarm-list"
+                    className="ios-alarms-screen"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <div className="ios-alarms-subheading">
+                      <Icon.AlarmClock width={13} height={13} />
+                      <span>Upcoming alarms</span>
+                    </div>
+
+                    <div className="ios-alarms-list">
+                      {alarmsList.length === 0 ? (
+                        <div className="ios-alarms-empty">
+                          <p>No upcoming alarms</p>
+                        </div>
+                      ) : (
+                        alarmsList.map((item, idx) => (
+                          <div key={item.id} className="ios-alarm-row-wrap">
+                            {idx > 0 && <div className="ios-alarm-divider" />}
+                            <div className={`ios-alarm-item${item.enabled ? '' : ' is-off'}`}>
+                              <div className="ios-alarm-item__info">
+                                <span className="ios-alarm-item__time">{formatAlarmTime(item.time)}</span>
+                                <span className="ios-alarm-item__sub">
+                                  {item.label || 'Wake up'} · {describeDays(item.days)}
+                                </span>
+                              </div>
+                              <div className="ios-alarm-item__actions">
+                                <Switch
+                                  checked={item.enabled}
+                                  label={`Toggle alarm at ${formatAlarmTime(item.time)}`}
+                                  onChange={(on) => island.scheduler.setEnabled(item.id, on)}
+                                />
+                                <button
+                                  type="button"
+                                  className="ios-alarm-delete-btn"
+                                  onClick={() => island.scheduler.remove(item.id)}
+                                  title="Delete alarm"
+                                  aria-label="Delete alarm"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {alarmsList.length < 3 && (
+                      <button
+                        type="button"
+                        className="ios-alarm-main-add-btn"
+                        onClick={() => setIsAddingAlarm(true)}
+                      >
+                        + Add alarm
+                      </button>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

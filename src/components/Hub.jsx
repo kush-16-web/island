@@ -43,6 +43,7 @@ export default function Hub({
   setTyping,
   accentColor,
   onLyricsViewChange,
+  activeLine,
   videoStream,
   videoStreamActive,
   youtubeId,
@@ -172,6 +173,7 @@ export default function Hub({
                 accentColor={accentColor}
                 companionMood={companionMood}
                 companionAnimations={companionAnimations}
+                activeLine={activeLine}
                 volume={volume}
                 onVolumeChange={onVolumeChange}
               />

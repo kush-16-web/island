@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Titlebar from '../common/Titlebar';
 import { useThemeMode } from '../common/useThemeMode';
 import { useWindowState } from '../common/useWindowState';
-import { getIdleNotchPrefs, setIdleNotchPrefs, IDLE_PRESETS } from '../../lib/idle-prefs';
+import { getIdleNotchPrefs, setIdleNotchPrefs, IDLE_PRESETS, IDLE_WIDGET_OPTIONS, IDLE_WIDGETS } from '../../lib/idle-prefs';
 import { Icon } from '../icons';
 import AuraStudio from './AuraStudio';
+import IdleWidget from '../IdleWidget';
+import CompanionEyes from '../CompanionEyes';
+import { computeNotchDimensions } from '../../lib/notch-state';
 import '../common/quiet-glass.css';
 import './settings-window.css';
 
@@ -32,6 +35,88 @@ const CATEGORIES = [
  * - Functional Desktop Pet companion toggle
  * - Monochrome icons, no nested card clutter, high contrast
  */
+function AppleDropdown({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const selectedOpt = options.find((o) => o.id === value) || options[0];
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div className="apple-dropdown-container" ref={dropdownRef}>
+      <button
+        type="button"
+        className={`apple-dropdown-btn${open ? ' is-open' : ''}`}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="apple-dropdown-btn__label">{selectedOpt?.label || value}</span>
+        <svg
+          className={`apple-dropdown-btn__chevron${open ? ' is-open' : ''}`}
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="apple-dropdown-menu" role="listbox">
+          {options.map((opt) => {
+            const isSelected = opt.id === value;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                className={`apple-dropdown-item${isSelected ? ' is-selected' : ''}`}
+                onClick={() => {
+                  onChange(opt.id);
+                  setOpen(false);
+                }}
+                role="option"
+                aria-selected={isSelected}
+              >
+                <span className="apple-dropdown-item__text">{opt.label}</span>
+                {isSelected && (
+                  <svg
+                    className="apple-dropdown-item__check"
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsApp() {
   const [activeCategory, setActiveCategory] = useState(() => {
     try {
@@ -405,53 +490,96 @@ export default function SettingsApp() {
                     )}
                   </div>
 
-                  <h3 className="settings-subhead" style={{ marginTop: 18 }}>Idle Notch Content</h3>
-                  <div className="settings-list-group">
-                    <div className="settings-item-row">
-                      <div className="settings-item-row__text">
-                        <span className="settings-item-row__label">Idle Layout Preset</span>
-                        <span className="settings-item-row__sub">Eyes remain centered in all eye presets.</span>
-                      </div>
-                      <select
-                        className="settings-select"
-                        value={idlePrefs.preset}
-                        onChange={(e) => handleUpdateIdlePrefs({ preset: e.target.value })}
-                        aria-label="Idle Layout Preset"
-                      >
-                        <option value={IDLE_PRESETS.EYES_ONLY}>Eyes only (Default)</option>
-                        <option value={IDLE_PRESETS.EYES_CLOCK}>Eyes + clock</option>
-                        <option value={IDLE_PRESETS.CLOCK_WEATHER}>Clock + weather</option>
-                        <option value={IDLE_PRESETS.EYES_WEATHER}>Eyes + compact weather</option>
-                        <option value={IDLE_PRESETS.CUSTOM}>Custom</option>
-                      </select>
+                  <h3 className="settings-subhead" style={{ marginTop: 22 }}>Customizable Widgets</h3>
+                  <div className="idle-concept-card">
+                    <div className="idle-concept-card__header">
+                      <span className="idle-concept-card__title">Interactive idle notch concept</span>
                     </div>
 
-                    {idlePrefs.preset === IDLE_PRESETS.CUSTOM && (
-                      <div className="settings-item-row">
-                        <div className="settings-item-row__text">
-                          <span className="settings-item-row__label">Custom Elements</span>
-                          <span className="settings-item-row__sub">Toggle individual idle indicators.</span>
+                    <div className="idle-concept-card__stage">
+                      <div
+                        className="idle-concept-notch"
+                        style={{
+                          width: computeNotchDimensions({ notchState: 'compact', mode: 'idle', idlePrefs }).width,
+                          height: computeNotchDimensions({ notchState: 'compact', mode: 'idle', idlePrefs }).height,
+                          borderBottomLeftRadius: computeNotchDimensions({ notchState: 'compact', mode: 'idle', idlePrefs }).bottomRadius,
+                          borderBottomRightRadius: computeNotchDimensions({ notchState: 'compact', mode: 'idle', idlePrefs }).bottomRadius,
+                        }}
+                      >
+                        <div className="idle__slot idle__slot--left">
+                          <IdleWidget
+                            type={idlePrefs.leftWidget || 'weather'}
+                            now={new Date()}
+                            weather={{ temp: 28, weatherCode: 0, isDay: true }}
+                            battery={{ level: 85, charging: false }}
+                            cpuPercent={14}
+                            taskStats={{ ratio: '2/7', completed: 2, total: 7 }}
+                            activeTimer={{ display: '04:15' }}
+                          />
                         </div>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {[
-                            { key: 'showEyes', label: 'Eyes' },
-                            { key: 'showTime', label: 'Time' },
-                            { key: 'showDate', label: 'Date' },
-                            { key: 'showWeather', label: 'Weather' },
-                          ].map((item) => (
-                            <button
-                              key={item.key}
-                              type="button"
-                              className={`settings-action-btn${idlePrefs[item.key] ? ' is-active' : ''}`}
-                              style={idlePrefs[item.key] ? { background: 'rgba(255,255,255,0.14)', borderColor: 'rgba(255,255,255,0.28)' } : undefined}
-                              onClick={() => handleUpdateIdlePrefs({ [item.key]: !idlePrefs[item.key] })}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
+
+                        {idlePrefs.showEyes !== false && (
+                          <div className="idle__center-eyes">
+                            <CompanionEyes
+                              mood="idle"
+                              size="md"
+                              animationsEnabled={idlePrefs.companionAnimations}
+                            />
+                          </div>
+                        )}
+
+                        <div className="idle__slot idle__slot--right">
+                          <IdleWidget
+                            type={idlePrefs.rightWidget || 'date'}
+                            now={new Date()}
+                            weather={{ temp: 28, weatherCode: 0, isDay: true }}
+                            battery={{ level: 85, charging: false }}
+                            cpuPercent={14}
+                            taskStats={{ ratio: '2/7', completed: 2, total: 7 }}
+                            activeTimer={{ display: '04:15' }}
+                          />
                         </div>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="idle-concept-card__controls">
+                      <div className="idle-concept-control">
+                        <label className="idle-concept-control__label">Left widget</label>
+                        <AppleDropdown
+                          value={idlePrefs.leftWidget || 'weather'}
+                          options={IDLE_WIDGET_OPTIONS}
+                          onChange={(val) => handleUpdateIdlePrefs({ leftWidget: val })}
+                        />
+                      </div>
+
+                      <div className="idle-concept-control">
+                        <label className="idle-concept-control__label">Right widget</label>
+                        <AppleDropdown
+                          value={idlePrefs.rightWidget || 'date'}
+                          options={IDLE_WIDGET_OPTIONS}
+                          onChange={(val) => handleUpdateIdlePrefs({ rightWidget: val })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-list-group" style={{ marginTop: 14 }}>
+                    <div className="settings-item-row">
+                      <div className="settings-item-row__text">
+                        <span className="settings-item-row__label">Companion Eyes</span>
+                        <span className="settings-item-row__sub">Show centered living companion eyes in idle state.</span>
+                      </div>
+                      <button
+                        type="button"
+                        className={`settings-toggle${idlePrefs.showEyes !== false ? ' is-on' : ''}`}
+                        onClick={() => handleUpdateIdlePrefs({ showEyes: idlePrefs.showEyes === false ? true : false })}
+                        role="switch"
+                        aria-checked={idlePrefs.showEyes !== false}
+                        aria-label="Toggle Companion Eyes"
+                      >
+                        <span className="settings-toggle__thumb" />
+                      </button>
+                    </div>
 
                     <div className="settings-item-row">
                       <div className="settings-item-row__text">

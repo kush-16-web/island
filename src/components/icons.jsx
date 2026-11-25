@@ -425,5 +425,23 @@ export const Icon = {
       <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
     </svg>
   ),
+  Clipboard: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--clipboard ${className}`} {...p}>
+      <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    </svg>
+  ),
+  Waveform: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--waveform ${className}`} {...p}>
+      <path d="M4 10v4M8 6v12M12 3v18M16 8v8M20 11v2" />
+    </svg>
+  ),
+  Dots: ({ className = '', ...p }) => (
+    <svg {...base} className={`lucide-icon lucide-icon--dots ${className}`} {...p}>
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    </svg>
+  ),
 };
 
