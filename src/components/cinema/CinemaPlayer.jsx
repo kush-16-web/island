@@ -470,8 +470,8 @@ export default function CinemaPlayer() {
     }
 
     const startTime = performance.now();
-    // Dynamic duration clamped between 140ms and 300ms matching Expanded Lyrics
-    const duration = Math.min(300, Math.max(140, Math.abs(change) * 0.7));
+    // Smooth cinematic glide tuned for Cinema's larger vertical pitch (clamped between 260ms and 360ms)
+    const duration = Math.min(360, Math.max(260, Math.abs(change) * 0.8));
     const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
     const step = (now) => {
