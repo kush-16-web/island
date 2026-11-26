@@ -31,6 +31,21 @@ export default function WeatherPanel({
   const activeW = propWeather || hookWeather || {};
 
   const [activeTab, setActiveTab] = useState('hourly'); // 'hourly' | 'weekly'
+  const [previewScene, setPreviewScene] = useState(null); // null | 'clear' | 'mostly-clear' | 'partly-cloudy' | 'mostly-cloudy' | 'overcast' | 'golden-hour' | 'sunset' | 'twilight'
+  const [showMenu, setShowMenu] = useState(false);
+  const [atmosphereState, setAtmosphereState] = useState({ active: true, type: 'daylight-webgl' });
+
+  // Development atmosphere preview scenarios (never persisted to storage or telemetry)
+  const PREVIEW_SCENARIOS = {
+    clear: { elev: 52, cloud: 4, code: 0, isDay: true, label: 'Clear Sky (Noon)' },
+    'mostly-clear': { elev: 38, cloud: 20, code: 1, isDay: true, label: 'Mostly Clear (Midday)' },
+    'partly-cloudy': { elev: 28, cloud: 48, code: 2, isDay: true, label: 'Partly Cloudy' },
+    'mostly-cloudy': { elev: 22, cloud: 75, code: 3, isDay: true, label: 'Mostly Cloudy' },
+    overcast: { elev: 16, cloud: 95, code: 3, isDay: true, label: 'Overcast Deck' },
+    'golden-hour': { elev: 6.5, cloud: 28, code: 1, isDay: true, label: 'Golden Hour' },
+    sunset: { elev: 1.0, cloud: 35, code: 1, isDay: true, label: 'Sunset Glow' },
+    twilight: { elev: -3.5, cloud: 15, code: 0, isDay: true, label: 'Civil Twilight (Blue Hour)' },
+  };
 
   // Telemetry resolution
   const city = activeW.city || activeW.location?.city || 'Local Weather';
@@ -45,6 +60,23 @@ export default function WeatherPanel({
   const windVal = activeW.windDisplay || (activeW.windSpeed ? `${activeW.windSpeed} km/h` : '5 km/h');
   const rainVal = activeW.rainChance ?? 0;
 
+  // Active atmospheric values modulated by development preview when active
+  const activeElev = previewScene
+    ? PREVIEW_SCENARIOS[previewScene].elev
+    : (activeW.astronomy?.solarElevation ?? (isDayVal ? 28 : -30));
+
+  const activeCloud = previewScene
+    ? PREVIEW_SCENARIOS[previewScene].cloud
+    : activeW.cloudCover;
+
+  const activeCode = previewScene
+    ? PREVIEW_SCENARIOS[previewScene].code
+    : codeVal;
+
+  const activeIsDay = previewScene
+    ? PREVIEW_SCENARIOS[previewScene].isDay
+    : isDayVal;
+
   const hourlyList = Array.isArray(activeW.hourlyForecast) ? activeW.hourlyForecast : [];
   const dailyList = Array.isArray(activeW.dailyForecasts) ? activeW.dailyForecasts : [];
 
@@ -58,7 +90,32 @@ export default function WeatherPanel({
   return (
     <div className="ios-weather-surface">
       {/* 1. Dynamic Atmospheric Background (strictly isolated to this surface) */}
-      <WeatherAtmosphere code={codeVal} isDay={isDayVal} />
+      <WeatherAtmosphere
+        code={activeCode}
+        isDay={activeIsDay}
+        solarElevation={activeElev}
+        cloudCover={activeCloud}
+        windSpeed={activeW.windSpeed ?? 10}
+        windDirectionDeg={activeW.windDirectionDeg ?? 45}
+        twilightPhase={activeW.astronomy?.twilightPhase}
+        onRendererState={setAtmosphereState}
+      />
+
+      {/* Ephemeral Dev Preview Indicator Banner */}
+      {previewScene && (
+        <div className="weather-surface__preview-banner">
+          <span className="weather-surface__preview-badge">Preview</span>
+          <span className="weather-surface__preview-name">{PREVIEW_SCENARIOS[previewScene]?.label}</span>
+          <button
+            type="button"
+            className="weather-surface__preview-reset"
+            onClick={() => setPreviewScene(null)}
+            title="Reset to live weather telemetry"
+          >
+            ✕ Exit
+          </button>
+        </div>
+      )}
 
       {/* 2. Top Header Bar (< Weather, Companion Eyes, Options) */}
       <div className="weather-surface__topbar">
@@ -93,22 +150,66 @@ export default function WeatherPanel({
           />
         </div>
 
-        <button
-          type="button"
-          className="weather-surface__options-btn"
-          onClick={() => {
-            if (typeof onOpenSettings === 'function') onOpenSettings();
-            else refresh();
-          }}
-          title="Refresh / Options"
-          aria-label="Refresh / Options"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <circle cx="5" cy="12" r="2" />
-            <circle cx="12" cy="12" r="2" />
-            <circle cx="19" cy="12" r="2" />
-          </svg>
-        </button>
+        <div className="weather-surface__options-wrap">
+          <button
+            type="button"
+            className="weather-surface__options-btn"
+            onClick={() => setShowMenu((prev) => !prev)}
+            title="Atmosphere Preview & Options"
+            aria-label="Atmosphere Preview & Options"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="19" cy="12" r="2" />
+            </svg>
+          </button>
+
+          {/* Options & Dev Atmosphere Preview Dropdown Menu */}
+          {showMenu && (
+            <div className="weather-surface__dropdown-menu">
+              <div className="weather-surface__dropdown-header">Daylight Atmosphere Preview</div>
+              <button
+                type="button"
+                className={`weather-surface__dropdown-item ${previewScene === null ? 'is-active' : ''}`}
+                onClick={() => {
+                  setPreviewScene(null);
+                  setShowMenu(false);
+                }}
+              >
+                <span>Live Weather Data</span>
+                {previewScene === null && <span className="weather-surface__dropdown-check">✓</span>}
+              </button>
+
+              {Object.entries(PREVIEW_SCENARIOS).map(([id, s]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`weather-surface__dropdown-item ${previewScene === id ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setPreviewScene(id);
+                    setShowMenu(false);
+                  }}
+                >
+                  <span>{s.label}</span>
+                  {previewScene === id && <span className="weather-surface__dropdown-check">✓</span>}
+                </button>
+              ))}
+
+              <div className="weather-surface__dropdown-divider" />
+              <button
+                type="button"
+                className="weather-surface__dropdown-item"
+                onClick={() => {
+                  refresh();
+                  setShowMenu(false);
+                }}
+              >
+                <span>Refresh Telemetry</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 3. Hero Weather Section */}
@@ -152,9 +253,15 @@ export default function WeatherPanel({
           </div>
         </div>
 
-        {/* Right Celestial Emblem (Apple SF Symbol sun.max.fill / moon) */}
+        {/* Right Celestial Emblem (Apple SF Symbol sun.max.fill / Real Moon / Fallback) */}
         <div className="weather-surface__hero-emblem">
-          <WeatherCelestialEmblem code={codeVal} isDay={isDayVal} size={74} />
+          <WeatherCelestialEmblem
+            code={activeCode}
+            isDay={activeIsDay}
+            lunar={activeW.astronomy?.lunar}
+            size={74}
+            atmosphereActive={atmosphereState.active && activeIsDay}
+          />
         </div>
       </div>
 
@@ -167,14 +274,28 @@ export default function WeatherPanel({
               className={`weather-surface__tab-btn ${activeTab === 'hourly' ? 'is-active' : ''}`}
               onClick={() => setActiveTab('hourly')}
             >
-              Hourly
+              {activeTab === 'hourly' && (
+                <motion.div
+                  layoutId="weather-tab-glider"
+                  className="weather-surface__tab-glider"
+                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                />
+              )}
+              <span className="weather-surface__tab-text">Hourly</span>
             </button>
             <button
               type="button"
               className={`weather-surface__tab-btn ${activeTab === 'weekly' ? 'is-active' : ''}`}
               onClick={() => setActiveTab('weekly')}
             >
-              7 days
+              {activeTab === 'weekly' && (
+                <motion.div
+                  layoutId="weather-tab-glider"
+                  className="weather-surface__tab-glider"
+                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                />
+              )}
+              <span className="weather-surface__tab-text">7 days</span>
             </button>
           </div>
 

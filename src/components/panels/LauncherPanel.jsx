@@ -65,6 +65,16 @@ export default function LauncherPanel({
       window.dispatchEvent(new CustomEvent('island:utility-change', { detail: { activeUtility: id } }));
     }
   };
+
+  useEffect(() => {
+    const handleExternalUtil = (e) => {
+      if (e.detail?.activeUtility !== undefined) {
+        setActiveUtility(e.detail.activeUtility);
+      }
+    };
+    window.addEventListener('island:utility-change', handleExternalUtil);
+    return () => window.removeEventListener('island:utility-change', handleExternalUtil);
+  }, []);
   const [assistantName, setAssistantNameState] = useState(getAssistantName);
   const [visibilityMode, setVisibilityMode] = useState('always');
   const [appearanceMode, setAppearanceMode] = useState('dynamic_frosted');

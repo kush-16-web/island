@@ -13268,7 +13268,7 @@ button:hover .lucide-icon--bell {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 10px 18px 12px;
+  padding: 12px 18px 12px;
   box-sizing: border-box;
   overflow: hidden;
   color: #ffffff;
@@ -13295,6 +13295,7 @@ button:hover .lucide-icon--bell {
   background: radial-gradient(ellipse at 88% 20%, #1e2954 0%, #0d1226 55%, #050711 100%);
 }
 
+.weather-atmosphere--daylight .weather-atmosphere__base-gradient,
 .weather-atmosphere--sunny .weather-atmosphere__base-gradient {
   background: radial-gradient(ellipse at 88% 18%, #1f62b8 0%, #0e3472 50%, #061530 100%);
 }
@@ -13363,13 +13364,23 @@ button:hover .lucide-icon--bell {
 }
 
 @keyframes driftCloud1 {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(18%); }
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(18%);
+  }
 }
 
 @keyframes driftCloud2 {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-15%); }
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-15%);
+  }
 }
 
 .weather-atmosphere__canvas {
@@ -13378,6 +13389,26 @@ button:hover .lucide-icon--bell {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.weather-atmosphere__gl-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.weather-atmosphere__scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(180deg,
+      rgba(0, 0, 0, 0.22) 0%,
+      rgba(0, 0, 0, 0.02) 40%,
+      rgba(0, 0, 0, 0.36) 100%);
 }
 
 /* 2. Top Header Bar (< Weather, Companion Eyes, Options) */
@@ -13420,6 +13451,12 @@ button:hover .lucide-icon--bell {
   justify-content: center;
 }
 
+.weather-surface__options-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .weather-surface__options-btn {
   display: flex;
   align-items: center;
@@ -13436,6 +13473,122 @@ button:hover .lucide-icon--bell {
 
 .weather-surface__options-btn:hover {
   color: #ffffff;
+}
+
+.weather-surface__preview-banner {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font-size: 11px;
+  color: #ffffff;
+  pointer-events: auto;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.weather-surface__preview-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #f59e0b;
+  color: #000;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.weather-surface__preview-name {
+  font-weight: 500;
+}
+
+.weather-surface__preview-reset {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.15s ease;
+}
+
+.weather-surface__preview-reset:hover {
+  color: #ffffff;
+}
+
+.weather-surface__dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 210px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weather-surface__dropdown-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 4px 8px 2px;
+}
+
+.weather-surface__dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.weather-surface__dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.10);
+  color: #ffffff;
+}
+
+.weather-surface__dropdown-item.is-active {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.weather-surface__dropdown-check {
+  font-size: 11px;
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.weather-surface__dropdown-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 4px 0;
 }
 
 /* 3. Hero Section */
@@ -13511,6 +13664,8 @@ button:hover .lucide-icon--bell {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 74px;
+  min-height: 74px;
   padding-right: 4px;
 }
 
@@ -13534,6 +13689,7 @@ button:hover .lucide-icon--bell {
 }
 
 .weather-surface__tabs {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -13543,6 +13699,7 @@ button:hover .lucide-icon--bell {
 }
 
 .weather-surface__tab-btn {
+  position: relative;
   background: none;
   border: none;
   font-size: 10px;
@@ -13552,10 +13709,35 @@ button:hover .lucide-icon--bell {
   border-radius: 999px;
   cursor: pointer;
   transition: all 0.15s ease;
+  transition: color 0.15s ease;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weather-surface__tab-text {
+  position: relative;
+  z-index: 2;
+  transition: color 0.15s ease;
+}
+
+.weather-surface__tab-glider {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 1;
+  pointer-events: none;
 }
 
 .weather-surface__tab-btn.is-active {
   background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.weather-surface__tab-btn.is-active .weather-surface__tab-text {
   color: #ffffff;
 }
 
@@ -13568,9 +13750,9 @@ button:hover .lucide-icon--bell {
 .weather-surface__forecast-body {
   position: relative;
   width: 100%;
-  height: 72px;
-  min-height: 72px;
-  max-height: 72px;
+  height: 86px;
+  min-height: 86px;
+  max-height: 86px;
   overflow: hidden;
 }
 
@@ -13626,7 +13808,7 @@ button:hover .lucide-icon--bell {
 
 .weather-spline__curve-container {
   width: 100%;
-  height: 28px;
+  height: 36px;
   margin-top: 1px;
 }
 
@@ -13693,7 +13875,7 @@ button:hover .lucide-icon--bell {
 .weather-surface__weekly-bar-track {
   position: relative;
   width: 4px;
-  height: 16px;
+  height: 20px;
   background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   overflow: hidden;

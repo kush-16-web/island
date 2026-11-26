@@ -19,6 +19,11 @@
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const telemetryCache = new Map();
+const {
+  calculateAstroMetrics,
+  getHourlySolarDetails,
+  getTwilightPhase,
+} = require('./weather-astro');
 
 // Map MSN Skycode to WMO weather condition code
 function mapMsnSkyCodeToWmo(skycode) {
@@ -158,6 +163,18 @@ function parseMsnXml(xml, queryCity) {
     attrs[m[1]] = m[2];
   }
 
+  const weatherTagMatch = xml.match(/<weather\s+([^>]+)>/);
+  let parsedLat = null;
+  let parsedLon = null;
+  if (weatherTagMatch) {
+    const wAttrs = {};
+    for (const m of weatherTagMatch[1].matchAll(/(\w+)="([^"]*)"/g)) {
+      wAttrs[m[1]] = m[2];
+    }
+    if (wAttrs.lat != null) parsedLat = Number(wAttrs.lat);
+    if (wAttrs.long != null) parsedLon = Number(wAttrs.long);
+  }
+
   const locMatch = xml.match(/weatherlocationname="([^"]*)"/);
   const locationName = locMatch ? locMatch[1] : queryCity;
   const temp = attrs.temperature != null ? Number(attrs.temperature) : null;
@@ -198,6 +215,8 @@ function parseMsnXml(xml, queryCity) {
     sourceAttribution: 'Microsoft Weather / Foreca',
     city,
     country,
+    lat: parsedLat,
+    lon: parsedLon,
     observedAt: attrs.date && attrs.observationtime ? `${attrs.date}T${attrs.observationtime}` : null,
     temperature: temp,
     temp,
@@ -229,15 +248,15 @@ function parseMsnXml(xml, queryCity) {
 }
 
 /**
- * Fetch raw telemetry from Open-Meteo.
+ * Fetch raw telemetry from Open-Meteo using Unix timestamps and coordinate timezone.
  */
-async function fetchOpenMeteoData(lat, lon) {
+async function fetchOpenMeteoData(lat, lon, observedGround = null) {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,is_day,precipitation,cloud_cover` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,precipitation,cloud_cover` +
     `&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,cloud_cover,visibility` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset` +
-    `&temperature_unit=celsius&wind_speed_unit=kmh&timezone=auto`;
+    `&temperature_unit=celsius&wind_speed_unit=kmh&timeformat=unixtime&timezone=auto`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 6000);
@@ -251,104 +270,172 @@ async function fetchOpenMeteoData(lat, lon) {
       throw new Error(`Open-Meteo HTTP error: ${res.status} ${res.statusText}`);
     }
     const data = await res.json();
-    return parseOpenMeteoJson(data, lat, lon);
+    return parseOpenMeteoJson(data, lat, lon, observedGround);
   } finally {
     clearTimeout(timer);
   }
 }
 
 /**
- * Parse and normalize Open-Meteo JSON structure.
+ * Parse and normalize Open-Meteo JSON structure with astronomical engine calculations.
  */
-function parseOpenMeteoJson(data, lat, lon) {
+function parseOpenMeteoJson(data, lat, lon, observedGround = null) {
   const cur = data.current || {};
   const hourly = data.hourly || {};
   const daily = data.daily || {};
+  const tz = data.timezone || 'UTC';
 
-  const temp = cur.temperature_2m != null ? Math.round(cur.temperature_2m) : null;
-  const feelsLike = cur.apparent_temperature != null ? Math.round(cur.apparent_temperature) : temp;
-  const code = cur.weather_code != null ? Number(cur.weather_code) : 0;
-  const windSpeed = cur.wind_speed_10m != null ? Math.round(cur.wind_speed_10m) : 0;
-  const windDeg = cur.wind_direction_10m != null ? Math.round(cur.wind_direction_10m) : null;
-  const windDir = degreesToCardinal(windDeg);
-  const isDay = cur.is_day !== undefined ? cur.is_day !== 0 : true;
+  // 1. Calculate Astronomical Solar & Lunar Foundations for the current moment
+  const astro = calculateAstroMetrics(lat, lon, new Date(), tz);
 
-  // Build normalized hourly strip (next 12 hours)
+  // 2. Resolve Current Observed State
+  // Prefer ground observation if passed (e.g. MSN/Foreca), fallback to Open-Meteo current sensor
+  const curTemp = cur.temperature_2m != null ? Math.round(cur.temperature_2m) : null;
+  const curFeelsLike = cur.apparent_temperature != null ? Math.round(cur.apparent_temperature) : curTemp;
+  const curCode = cur.weather_code != null ? Number(cur.weather_code) : 0;
+  const curWindSpeed = cur.wind_speed_10m != null ? Math.round(cur.wind_speed_10m) : 0;
+  const curWindDeg = cur.wind_direction_10m != null ? Math.round(cur.wind_direction_10m) : null;
+  const curWindDir = degreesToCardinal(curWindDeg);
+
+  const effectiveObserved = {
+    source: observedGround?.provider || 'open_meteo',
+    sourceAttribution: observedGround?.sourceAttribution || 'Open-Meteo (DWD / NOAA / ECMWF)',
+    stationTime: observedGround?.observedAt || (cur.time ? new Date(cur.time * 1000).toISOString() : new Date().toISOString()),
+    temperature: observedGround?.temperature != null ? observedGround.temperature : curTemp,
+    feelsLike: observedGround?.feelsLike != null ? observedGround.feelsLike : curFeelsLike,
+    condition: observedGround?.condition || WMO_CONDITIONS[curCode] || 'Clear',
+    weatherCode: observedGround?.weatherCode != null ? observedGround.weatherCode : curCode,
+    humidity: observedGround?.humidity != null ? observedGround.humidity : (cur.relative_humidity_2m != null ? Math.round(cur.relative_humidity_2m) : null),
+    windSpeed: observedGround?.windSpeed != null ? observedGround.windSpeed : curWindSpeed,
+    windDirection: observedGround?.windDirection || curWindDir,
+    windDirectionDeg: observedGround?.windDirectionDeg ?? curWindDeg,
+    windDisplay: observedGround?.windDisplay || (curWindDir ? `${curWindSpeed} km/h ${curWindDir}` : `${curWindSpeed} km/h`),
+    rainChance: observedGround?.rainChance != null ? observedGround.rainChance : (daily.precipitation_probability_max ? Number(daily.precipitation_probability_max[0]) : 0),
+  };
+
+  // 3. Build Normalized Hourly Strip using Unix Timestamps
   const hourlyForecast = [];
-  if (Array.isArray(hourly.time)) {
-    const nowIso = new Date().toISOString();
-    let startIdx = hourly.time.findIndex((t) => t >= nowIso.slice(0, 13));
-    if (startIdx < 0) startIdx = 0;
+  const times = Array.isArray(hourly.time) ? hourly.time : [];
+  if (times.length > 0) {
+    const nowSec = Math.floor(Date.now() / 1000);
 
-    for (let i = startIdx; i < Math.min(startIdx + 12, hourly.time.length); i++) {
-      const timeStr = hourly.time[i];
-      const hourDate = new Date(timeStr);
-      const isNow = i === startIdx;
+    // Locate current hour slot in local time coordinates
+    let nowIdx = times.findIndex((t, idx) => {
+      const nextT = times[idx + 1] || t + 3600;
+      return nowSec >= t && nowSec < nextT;
+    });
+    if (nowIdx < 0) {
+      nowIdx = times.findIndex((t) => t >= nowSec);
+    }
+    if (nowIdx < 0) nowIdx = 0;
+
+    for (let i = nowIdx; i < Math.min(nowIdx + 12, times.length); i++) {
+      const isNow = (i === nowIdx);
+      const tSec = times[i];
+      const hourDate = new Date(tSec * 1000);
       const hourLabel = isNow
         ? 'Now'
-        : hourDate.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+        : hourDate.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            hour12: true,
+            timeZone: tz,
+          });
+
+      // Calculate solar angle independently for each hourly forecast point
+      const hourlyAstro = isNow ? astro : getHourlySolarDetails(lat, lon, tSec);
+
+      // Now slot reflects current observed conditions; subsequent slots reflect pure forecast values
+      const hTemp = isNow && effectiveObserved.temperature != null
+        ? effectiveObserved.temperature
+        : Math.round(hourly.temperature_2m ? hourly.temperature_2m[i] : 20);
+
+      const hFeelsLike = isNow && effectiveObserved.feelsLike != null
+        ? effectiveObserved.feelsLike
+        : Math.round(hourly.apparent_temperature ? hourly.apparent_temperature[i] : hTemp);
+
+      const hCode = isNow && effectiveObserved.weatherCode != null
+        ? effectiveObserved.weatherCode
+        : (hourly.weather_code ? hourly.weather_code[i] : 0);
 
       hourlyForecast.push({
         time: hourLabel,
-        isoTime: timeStr,
-        temp: Math.round(hourly.temperature_2m ? hourly.temperature_2m[i] : 20),
-        apparentTemp: Math.round(hourly.apparent_temperature ? hourly.apparent_temperature[i] : 20),
-        weatherCode: hourly.weather_code ? hourly.weather_code[i] : 0,
+        timestamp: tSec,
+        isoTime: hourDate.toISOString(),
+        temp: hTemp,
+        apparentTemp: hFeelsLike,
+        weatherCode: hCode,
+        isDay: hourlyAstro.isDay,
+        solarElevation: hourlyAstro.solarElevation,
+        twilightPhase: hourlyAstro.twilightPhase,
         rainChance: hourly.precipitation_probability ? hourly.precipitation_probability[i] : 0,
         cloudCover: hourly.cloud_cover ? hourly.cloud_cover[i] : null,
         visibility: hourly.visibility ? Math.round(hourly.visibility[i] / 1000) : null, // km
         windSpeed: hourly.wind_speed_10m ? Math.round(hourly.wind_speed_10m[i]) : null,
-        isDay: hourDate.getHours() >= 6 && hourDate.getHours() < 19,
+        windDirectionDeg: hourly.wind_direction_10m ? hourly.wind_direction_10m[i] : null,
+        lunarPhase: astro.lunar.phaseName,
       });
     }
   }
 
-  // Build normalized 7-day strip
+  // 4. Build Normalized 7-Day Strip
   const dailyForecasts = [];
   if (Array.isArray(daily.time)) {
     for (let i = 0; i < Math.min(7, daily.time.length); i++) {
-      const d = new Date(daily.time[i] + 'T12:00:00Z');
-      const dayName = i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' });
+      const tSec = daily.time[i];
+      const d = new Date(tSec * 1000);
+      const dayName = i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short', timeZone: tz });
       const cCode = daily.weather_code ? daily.weather_code[i] : 0;
       dailyForecasts.push({
         day: dayName,
+        timestamp: tSec,
         high: Math.round(daily.temperature_2m_max ? daily.temperature_2m_max[i] : 25),
         low: Math.round(daily.temperature_2m_min ? daily.temperature_2m_min[i] : 18),
         condition: WMO_CONDITIONS[cCode] || 'Fair',
         weatherCode: cCode,
         precip: daily.precipitation_probability_max ? Number(daily.precipitation_probability_max[i]) : 0,
-        sunrise: daily.sunrise ? daily.sunrise[i] : null,
-        sunset: daily.sunset ? daily.sunset[i] : null,
+        sunrise: daily.sunrise ? new Date(daily.sunrise[i] * 1000).toISOString() : null,
+        sunset: daily.sunset ? new Date(daily.sunset[i] * 1000).toISOString() : null,
       });
     }
   }
 
   return {
-    provider: 'open_meteo',
-    sourceAttribution: 'Open-Meteo (DWD / NOAA / ECMWF)',
+    provider: effectiveObserved.source,
+    sourceAttribution: effectiveObserved.sourceAttribution,
     lat,
     lon,
-    timezone: data.timezone || 'auto',
-    observedAt: cur.time || null,
-    temperature: temp,
-    temp,
-    feelsLike,
-    high: daily.temperature_2m_max ? Math.round(daily.temperature_2m_max[0]) : temp,
-    low: daily.temperature_2m_min ? Math.round(daily.temperature_2m_min[0]) : temp,
-    condition: WMO_CONDITIONS[code] || 'Clear',
-    weatherCode: code,
-    isDay,
-    humidity: cur.relative_humidity_2m != null ? Math.round(cur.relative_humidity_2m) : null,
-    windSpeed,
-    windDirection: windDir,
-    windDirectionDeg: windDeg,
-    windDisplay: windDir ? `${windSpeed} km/h ${windDir}` : `${windSpeed} km/h`,
+    timezone: tz,
+    observedAt: effectiveObserved.stationTime,
+
+    // Semantically distinct sub-objects
+    observed: effectiveObserved,
+    astronomy: astro,
+    forecast: {
+      source: 'open_meteo',
+      hourly: hourlyForecast,
+      daily: dailyForecasts,
+    },
+
+    // Backwards-compatible top-level keys for existing UI
+    temperature: effectiveObserved.temperature,
+    temp: effectiveObserved.temperature,
+    feelsLike: effectiveObserved.feelsLike,
+    high: dailyForecasts[0]?.high ?? (daily.temperature_2m_max ? Math.round(daily.temperature_2m_max[0]) : effectiveObserved.temperature),
+    low: dailyForecasts[0]?.low ?? (daily.temperature_2m_min ? Math.round(daily.temperature_2m_min[0]) : effectiveObserved.temperature),
+    condition: effectiveObserved.condition,
+    weatherCode: effectiveObserved.weatherCode,
+    isDay: astro.isDay,
+    humidity: effectiveObserved.humidity,
+    windSpeed: effectiveObserved.windSpeed,
+    windDirection: effectiveObserved.windDirection,
+    windDirectionDeg: effectiveObserved.windDirectionDeg,
+    windDisplay: effectiveObserved.windDisplay,
     cloudCover: cur.cloud_cover != null ? Math.round(cur.cloud_cover) : null,
     visibility: hourly.visibility && hourly.visibility[0] != null ? Math.round(hourly.visibility[0] / 1000) : null,
     precipitationIntensity: cur.precipitation != null ? Number(cur.precipitation) : 0,
-    rainChance: daily.precipitation_probability_max ? Number(daily.precipitation_probability_max[0]) : 0,
-    sunrise: daily.sunrise ? daily.sunrise[0] : null,
-    sunset: daily.sunset ? daily.sunset[0] : null,
+    rainChance: effectiveObserved.rainChance,
+    sunrise: astro.sunrise || (daily.sunrise ? new Date(daily.sunrise[0] * 1000).toISOString() : null),
+    sunset: astro.sunset || (daily.sunset ? new Date(daily.sunset[0] * 1000).toISOString() : null),
     hourlyForecast,
     dailyForecasts,
   };
@@ -377,19 +464,14 @@ async function fetchWeatherTelemetry(params = {}) {
     };
   }
 
-  let resultData = null;
-  let activeProvider = null;
+  let msnResult = null;
   let fallbackReason = null;
 
   // 1. Try Microsoft MSN Weather first if city is provided and allowed
   if (provider === 'auto' || provider === 'msn_foreca') {
     if (city) {
       try {
-        const msnResult = await fetchMsnWeatherData(city);
-        if (msnResult && msnResult.temperature != null) {
-          resultData = msnResult;
-          activeProvider = 'msn_foreca';
-        }
+        msnResult = await fetchMsnWeatherData(city);
       } catch (err) {
         console.warn(`[weather-service] MSN Foreca query failed for "${city}": ${err.message}. Engaging Open-Meteo fallback.`);
         fallbackReason = `MSN: ${err.message}`;
@@ -397,35 +479,46 @@ async function fetchWeatherTelemetry(params = {}) {
     }
   }
 
-  // 2. Fetch Open-Meteo if needed (for fallback or for hourly/atmospheric enrichment)
-  const resolvedLat = lat != null ? lat : 21.1702; // Default to Surat if coordinates not passed
-  const resolvedLon = lon != null ? lon : 72.8311;
+  // 2. Resolve coordinates: priority explicit params > MSN parsed coordinates > Surat defaults
+  const resolvedLat = lat != null ? lat : (msnResult?.lat != null ? msnResult.lat : 21.1702);
+  const resolvedLon = lon != null ? lon : (msnResult?.lon != null ? msnResult.lon : 72.8311);
 
+  let resultData = null;
   try {
-    const omResult = await fetchOpenMeteoData(resolvedLat, resolvedLon);
-
-    if (!resultData) {
-      // Primary provider failed or open_meteo requested directly
-      resultData = omResult;
-      if (city) resultData.city = city;
-      activeProvider = 'open_meteo';
-    } else {
-      // Merge atmospheric details from Open-Meteo that MSN XML lacks (cloudCover, visibility, hourly strip, sunrise)
-      // Note: All sources remain semantically tracked and distinct!
-      resultData.hourlyForecast = omResult.hourlyForecast;
-      resultData.cloudCover = omResult.cloudCover;
-      resultData.visibility = omResult.visibility;
-      resultData.sunrise = omResult.sunrise;
-      resultData.sunset = omResult.sunset;
-      resultData.timezone = omResult.timezone;
-      resultData.isDay = omResult.isDay;
-      if (resultData.dailyForecasts.length === 0) {
-        resultData.dailyForecasts = omResult.dailyForecasts;
-      }
-    }
+    // Open-Meteo generates astronomical calculations, hourly strips, and atmospheric fields
+    const omResult = await fetchOpenMeteoData(resolvedLat, resolvedLon, msnResult);
+    resultData = omResult;
+    if (city) resultData.city = msnResult?.city || city;
+    if (msnResult?.country) resultData.country = msnResult.country;
   } catch (omErr) {
     console.warn(`[weather-service] Open-Meteo fetch failed: ${omErr.message}`);
-    if (!resultData) {
+    // If Open-Meteo failed but MSN succeeded, assemble fallback from MSN
+    if (msnResult) {
+      const astro = calculateAstroMetrics(resolvedLat, resolvedLon, new Date());
+      resultData = {
+        ...msnResult,
+        lat: resolvedLat,
+        lon: resolvedLon,
+        isDay: astro.isDay,
+        astronomy: astro,
+        observed: {
+          source: 'msn_foreca',
+          temperature: msnResult.temperature,
+          feelsLike: msnResult.feelsLike,
+          condition: msnResult.condition,
+          weatherCode: msnResult.weatherCode,
+          humidity: msnResult.humidity,
+          windSpeed: msnResult.windSpeed,
+          windDisplay: msnResult.windDisplay,
+          rainChance: msnResult.rainChance,
+        },
+        forecast: {
+          source: 'msn_foreca',
+          hourly: [],
+          daily: msnResult.dailyForecasts,
+        },
+      };
+    } else {
       return {
         ok: false,
         error: fallbackReason ? `${fallbackReason}; Open-Meteo: ${omErr.message}` : omErr.message,
@@ -435,7 +528,6 @@ async function fetchWeatherTelemetry(params = {}) {
 
   if (resultData) {
     resultData.updatedAt = now;
-    resultData.activeProvider = activeProvider;
     if (fallbackReason) resultData.fallbackReason = fallbackReason;
 
     telemetryCache.set(cacheKey, { timestamp: now, data: resultData });

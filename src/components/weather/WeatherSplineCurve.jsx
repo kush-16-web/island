@@ -53,20 +53,20 @@ export default function WeatherSplineCurve({
   const maxTemp = Math.max(...temps);
   const tempRange = maxTemp - minTemp;
 
-  // ViewBox coordinates
-  const svgWidth = 460;
-  const svgHeight = 32;
-  const paddingX = 36;
-  const usableWidth = svgWidth - paddingX * 2;
-  const stepX = items.length > 1 ? usableWidth / (items.length - 1) : 0;
+  // ViewBox coordinates precisely aligned to 6 column flex centers
+  const svgWidth = 480;
+  const svgHeight = 36;
+  const numItems = Math.max(1, items.length);
 
   const points = items.map((it, idx) => {
-    const x = paddingX + idx * stepX;
+    // Exact geometric column center: ((idx + 0.5) / numItems) * svgWidth
+    const x = ((idx + 0.5) / numItems) * svgWidth;
     let y = svgHeight / 2;
     if (tempRange > 0) {
       // Inverted Y: higher temp = smaller y (higher on the canvas)
+      // Generous 8px top and 8px bottom safety padding so curve peaks and dips never clip
       const ratio = (temps[idx] - minTemp) / tempRange;
-      y = 6 + (1 - ratio) * (svgHeight - 14);
+      y = 8 + (1 - ratio) * (svgHeight - 16);
     }
     return { x, y, temp: temps[idx] };
   });

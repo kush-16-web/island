@@ -666,13 +666,12 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       }
       if (startIdx < 0) startIdx = 0;
 
-      const baseModelTemp = hourly.temperature_2m[startIdx] ?? temp;
-      const offset = temp - baseModelTemp;
       for (let i = startIdx; i < Math.min(startIdx + 6, hourly.time.length); i++) {
         const rawTime = hourly.time[i];
         const hDate = new Date(rawTime);
         const hourLabel = i === startIdx ? 'Now' : hDate.toLocaleTimeString([], { hour: 'numeric' });
-        const projectedTemp = i === startIdx ? temp : Math.round((hourly.temperature_2m[i] ?? temp) + offset * 0.6);
+        // The Now slot reflects current observed temperature; subsequent slots show actual NWP forecast values
+        const projectedTemp = i === startIdx ? temp : Math.round(hourly.temperature_2m[i] ?? temp);
         hourlyForecast.push({
           time: hourLabel,
           temp: projectedTemp,

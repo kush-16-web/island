@@ -12,15 +12,35 @@ import React from 'react';
 export default function WeatherCelestialEmblem({
   code = 0,
   isDay = true,
+  lunar = null,
   size = 74,
+  atmosphereActive = false,
   className = '',
 }) {
   const c = Number(code) || 0;
 
-  // Night condition: crescent moon with soft glow
+  // Night condition: Real Moon with exact astronomical phase and illumination
   if (!isDay || (c === 0 && !isDay)) {
+    const fraction = typeof lunar?.fractionIlluminated === 'number' ? lunar.fractionIlluminated : 0.98;
+    const waxing = Boolean(lunar?.waxing ?? false);
+    const phaseName = lunar?.phaseName || 'Moon';
+    const percent = Math.round(fraction * 100);
+
+    const cx = 50;
+    const cy = 50;
+    const r = 26;
+    const isFull = fraction >= 0.97;
+    const isNew = fraction <= 0.03;
+    const rx = Math.abs(r * (2 * fraction - 1));
+    const sweepOuter = waxing ? 1 : 0;
+    const sweepInner = fraction > 0.5 ? (waxing ? 1 : 0) : (waxing ? 0 : 1);
+    const litPath = `M ${cx} ${cy - r} A ${r} ${r} 0 0 ${sweepOuter} ${cx} ${cy + r} A ${rx.toFixed(2)} ${r} 0 0 ${sweepInner} ${cx} ${cy - r} Z`;
+
     return (
-      <div className={`weather-celestial-emblem weather-celestial-emblem--night ${className}`.trim()}>
+      <div
+        className={`weather-celestial-emblem weather-celestial-emblem--night ${className}`.trim()}
+        title={`${phaseName} (${percent}% illuminated)`}
+      >
         <svg
           width={size}
           height={size}
@@ -30,28 +50,59 @@ export default function WeatherCelestialEmblem({
         >
           <defs>
             <radialGradient id="night-lunar-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#818cf8" stopOpacity="0.32" />
-              <stop offset="65%" stopColor="#4f46e5" stopOpacity="0.08" />
+              <stop offset="0%" stopColor="#818cf8" stopOpacity={0.25 + fraction * 0.15} />
+              <stop offset="65%" stopColor="#4f46e5" stopOpacity="0.06" />
               <stop offset="100%" stopColor="#4f46e5" stopOpacity="0" />
             </radialGradient>
             <linearGradient id="moon-surface-grad" x1="20%" y1="20%" x2="80%" y2="80%">
               <stop offset="0%" stopColor="#ffffff" />
+              <stop offset="50%" stopColor="#e2e8f0" />
               <stop offset="100%" stopColor="#cbd5e1" />
             </linearGradient>
+            <radialGradient id="moon-dark-surface" cx="40%" cy="40%" r="60%">
+              <stop offset="0%" stopColor="#1e293b" stopOpacity="0.85" />
+              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.95" />
+            </radialGradient>
           </defs>
 
           {/* Ambient lunar glow */}
           <circle cx="50" cy="50" r="44" fill="url(#night-lunar-glow)" />
 
           {/* Micro constellation stars */}
-          <circle cx="82" cy="28" r="1.5" fill="#ffffff" opacity="0.8" />
-          <circle cx="24" cy="32" r="1.2" fill="#ffffff" opacity="0.6" />
-          <circle cx="76" cy="74" r="1.3" fill="#ffffff" opacity="0.7" />
+          <circle cx="82" cy="24" r="1.5" fill="#ffffff" opacity="0.8" />
+          <circle cx="20" cy="30" r="1.2" fill="#ffffff" opacity="0.6" />
+          <circle cx="78" cy="76" r="1.4" fill="#ffffff" opacity="0.75" />
+          <circle cx="24" cy="72" r="1.0" fill="#ffffff" opacity="0.5" />
 
-          {/* Elegant crescent moon */}
-          <path
-            d="M58 22C43.5 22 32 33.5 32 48C32 62.5 43.5 74 58 74C64.8 74 71 71.3 75.6 67C60.2 65.5 50 54 50 40C50 32.2 53.6 25.4 58 22Z"
-            fill="url(#moon-surface-grad)"
+          {/* Base Dark Moon Sphere (Earthshine Disc) */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="url(#moon-dark-surface)"
+            stroke="rgba(148, 163, 184, 0.22)"
+            strokeWidth="0.8"
+          />
+
+          {/* Maria Crater Accents on unlit surface */}
+          <circle cx="44" cy="45" r="4" fill="rgba(0, 0, 0, 0.25)" />
+          <circle cx="53" cy="58" r="5" fill="rgba(0, 0, 0, 0.20)" />
+
+          {/* Illuminated Phase Geometry */}
+          {isFull ? (
+            <circle cx={cx} cy={cy} r={r} fill="url(#moon-surface-grad)" />
+          ) : isNew ? null : (
+            <path d={litPath} fill="url(#moon-surface-grad)" />
+          )}
+
+          {/* Subtle 3D Rim Sheen */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.35)"
+            strokeWidth="0.75"
           />
         </svg>
       </div>
@@ -128,7 +179,13 @@ export default function WeatherCelestialEmblem({
     );
   }
 
-  // Default: Sunny / Clear Day (Apple SF Symbol sun.max.fill with 8 tapered rays)
+  // Clear Day: When living atmosphere is actively rendering the celestial sky,
+  // the atmosphere owns the solitary sun disc and Mie corona. Suppress duplicate emblem.
+  if (atmosphereActive && isDay && (c === 0 || c === 1)) {
+    return null;
+  }
+
+  // Default / WebGL Fallback: Sunny / Clear Day (Volumetric Radiant Sun Orb)
   return (
     <div className={`weather-celestial-emblem weather-celestial-emblem--sunny ${className}`.trim()}>
       <svg
@@ -140,44 +197,26 @@ export default function WeatherCelestialEmblem({
       >
         <defs>
           <radialGradient id="apple-sun-corona" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#fde047" stopOpacity="0.35" />
-            <stop offset="60%" stopColor="#f59e0b" stopOpacity="0.1" />
+            <stop offset="0%" stopColor="#fef08a" stopOpacity="0.45" />
+            <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.15" />
             <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
           </radialGradient>
-          <linearGradient id="apple-sun-ray" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#ffedd5" />
-            <stop offset="100%" stopColor="#f59e0b" />
-          </linearGradient>
-          <radialGradient id="apple-sun-core" cx="38%" cy="35%" r="65%">
+          <radialGradient id="apple-sun-core" cx="36%" cy="32%" r="68%">
             <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="35%" stopColor="#fde047" />
-            <stop offset="100%" stopColor="#f59e0b" />
+            <stop offset="32%" stopColor="#fef08a" />
+            <stop offset="72%" stopColor="#f59e0b" />
+            <stop offset="100%" stopColor="#d97706" />
           </radialGradient>
         </defs>
 
-        {/* Ambient atmospheric solar halo */}
+        {/* Soft atmospheric solar halo */}
         <circle cx="50" cy="50" r="46" fill="url(#apple-sun-corona)" />
 
-        {/* Apple SF Symbol 8 Symmetrical Tapered Sun Rays */}
-        {/* 0 deg (Top) */}
-        <line x1="50" y1="14" x2="50" y2="25" stroke="url(#apple-sun-ray)" strokeWidth="3.2" strokeLinecap="round" />
-        {/* 180 deg (Bottom) */}
-        <line x1="50" y1="75" x2="50" y2="86" stroke="url(#apple-sun-ray)" strokeWidth="3.2" strokeLinecap="round" />
-        {/* 90 deg (Right) */}
-        <line x1="75" y1="50" x2="86" y2="50" stroke="url(#apple-sun-ray)" strokeWidth="3.2" strokeLinecap="round" />
-        {/* 270 deg (Left) */}
-        <line x1="14" y1="50" x2="25" y2="50" stroke="url(#apple-sun-ray)" strokeWidth="3.2" strokeLinecap="round" />
-        {/* 45 deg (Top-Right) */}
-        <line x1="68" y1="32" x2="76" y2="24" stroke="url(#apple-sun-ray)" strokeWidth="3.2" strokeLinecap="round" />
-        {/* 225 deg (Bottom-Left) */}
-        <line x1="24" y1="76" x2="32" y2="68" stroke="url(#apple-sun-ray)" strokeWidth="3.2" strokeLinecap="round" />
-        {/* 135 deg (Bottom-Right) */}
-        <line x1="68" y1="68" x2="76" y2="76" stroke="url(#apple-sun-ray)" strokeWidth="3.2" strokeLinecap="round" />
-        {/* 315 deg (Top-Left) */}
-        <line x1="24" y1="24" x2="32" y2="32" stroke="url(#apple-sun-ray)" strokeWidth="3.2" strokeLinecap="round" />
+        {/* 3D Volumetric Sun Sphere */}
+        <circle cx="50" cy="50" r="24" fill="url(#apple-sun-core)" />
 
-        {/* Luminous central sun sphere */}
-        <circle cx="50" cy="50" r="18" fill="url(#apple-sun-core)" />
+        {/* Specular sheen highlight */}
+        <ellipse cx="44" cy="40" rx="10" ry="6" fill="rgba(255, 255, 255, 0.40)" transform="rotate(-25 44 40)" />
       </svg>
     </div>
   );
