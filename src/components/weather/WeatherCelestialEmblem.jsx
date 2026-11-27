@@ -3,11 +3,17 @@ import React from 'react';
 /**
  * WeatherCelestialEmblem: Apple SF Symbols Inspired Weather Emblem.
  * 
- * - Sunny (Day): Authentic Apple SF Symbol `sun.max.fill` with radiant central disc
- *   and 8 symmetrical tapered rays with soft solar halo (no cartoon planetary orbit dots).
- * - Night: Elegant crescent moon with soft lunar glow.
- * - Rainy: Nimbus cloud with illuminated angled droplets.
- * - Cloudy: Layered soft cloud glyph with rim illumination.
+ * Single Celestial & Environmental Owner Contract:
+ * - When Living Atmosphere WebGL is active (`atmosphereActive === true`),
+ *   the WebGL atmosphere exclusively owns and renders the sun, real moon,
+ *   stars, cloud deck, rain, snow, lightning, and fog. The emblem is suppressed
+ *   to ensure single celestial ownership.
+ * - When WebGL is unavailable or failed (`atmosphereActive === false`),
+ *   this component provides the authentic Apple SF Symbol SVG fallbacks:
+ *   - Sunny: Apple SF Symbol `sun.max.fill` 3D orb.
+ *   - Night: Real Moon SVG with exact astronomical phase and illumination.
+ *   - Rainy: Nimbus cloud with illuminated angled droplets.
+ *   - Cloudy: Layered soft cloud glyph with rim illumination.
  */
 export default function WeatherCelestialEmblem({
   code = 0,
@@ -19,7 +25,16 @@ export default function WeatherCelestialEmblem({
 }) {
   const c = Number(code) || 0;
 
-  // Night condition: Real Moon with exact astronomical phase and illumination
+  // Solitary Living Atmosphere Ownership: When WebGL atmosphere is actively rendering,
+  // suppress static emblem completely (for clear daylight sun, night moon, and severe weather).
+  if (atmosphereActive && isDay && (c === 0 || c === 1)) {
+    return null;
+  }
+  if (atmosphereActive) {
+    return null;
+  }
+
+  // Fallback Night condition: Real Moon with exact astronomical phase and illumination
   if (!isDay || (c === 0 && !isDay)) {
     const fraction = typeof lunar?.fractionIlluminated === 'number' ? lunar.fractionIlluminated : 0.98;
     const waxing = Boolean(lunar?.waxing ?? false);
@@ -51,8 +66,8 @@ export default function WeatherCelestialEmblem({
           <defs>
             <radialGradient id="night-lunar-glow" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="#818cf8" stopOpacity={0.25 + fraction * 0.15} />
-              <stop offset="65%" stopColor="#4f46e5" stopOpacity="0.06" />
-              <stop offset="100%" stopColor="#4f46e5" stopOpacity="0" />
+              <stop offset="65%" stopColor="#4f46e5" stopOpacity={0.06} />
+              <stop offset="100%" stopColor="#4f46e5" stopOpacity={0} />
             </radialGradient>
             <linearGradient id="moon-surface-grad" x1="20%" y1="20%" x2="80%" y2="80%">
               <stop offset="0%" stopColor="#ffffff" />
@@ -60,8 +75,8 @@ export default function WeatherCelestialEmblem({
               <stop offset="100%" stopColor="#cbd5e1" />
             </linearGradient>
             <radialGradient id="moon-dark-surface" cx="40%" cy="40%" r="60%">
-              <stop offset="0%" stopColor="#1e293b" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.95" />
+              <stop offset="0%" stopColor="#1e293b" stopOpacity={0.85} />
+              <stop offset="100%" stopColor="#0f172a" stopOpacity={0.95} />
             </radialGradient>
           </defs>
 
@@ -109,7 +124,7 @@ export default function WeatherCelestialEmblem({
     );
   }
 
-  // Rainy condition
+  // Fallback Rainy condition
   if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95) {
     return (
       <div className={`weather-celestial-emblem weather-celestial-emblem--rainy ${className}`.trim()}>
@@ -122,8 +137,8 @@ export default function WeatherCelestialEmblem({
         >
           <defs>
             <radialGradient id="rain-cloud-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.25" />
-              <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+              <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.25} />
+              <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
             </radialGradient>
             <linearGradient id="rain-cloud-body" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#f1f5f9" />
@@ -146,7 +161,7 @@ export default function WeatherCelestialEmblem({
     );
   }
 
-  // Cloudy condition
+  // Fallback Cloudy condition
   if (c === 2 || c === 3 || c === 45 || c === 48) {
     return (
       <div className={`weather-celestial-emblem weather-celestial-emblem--cloudy ${className}`.trim()}>
@@ -159,8 +174,8 @@ export default function WeatherCelestialEmblem({
         >
           <defs>
             <radialGradient id="cloud-ambient-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#cbd5e1" stopOpacity="0.22" />
-              <stop offset="100%" stopColor="#64748b" stopOpacity="0" />
+              <stop offset="0%" stopColor="#cbd5e1" stopOpacity={0.22} />
+              <stop offset="100%" stopColor="#64748b" stopOpacity={0} />
             </radialGradient>
             <linearGradient id="cloud-body-grad" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#ffffff" />
@@ -179,13 +194,7 @@ export default function WeatherCelestialEmblem({
     );
   }
 
-  // Clear Day: When living atmosphere is actively rendering the celestial sky,
-  // the atmosphere owns the solitary sun disc and Mie corona. Suppress duplicate emblem.
-  if (atmosphereActive && isDay && (c === 0 || c === 1)) {
-    return null;
-  }
-
-  // Default / WebGL Fallback: Sunny / Clear Day (Volumetric Radiant Sun Orb)
+  // Fallback Sunny / Clear Day (Volumetric Radiant Sun Orb)
   return (
     <div className={`weather-celestial-emblem weather-celestial-emblem--sunny ${className}`.trim()}>
       <svg
@@ -197,9 +206,9 @@ export default function WeatherCelestialEmblem({
       >
         <defs>
           <radialGradient id="apple-sun-corona" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#fef08a" stopOpacity="0.45" />
-            <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+            <stop offset="0%" stopColor="#fef08a" stopOpacity={0.45} />
+            <stop offset="50%" stopColor="#f59e0b" stopOpacity={0.15} />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
           </radialGradient>
           <radialGradient id="apple-sun-core" cx="36%" cy="32%" r="68%">
             <stop offset="0%" stopColor="#ffffff" />

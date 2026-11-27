@@ -1,0 +1,32 @@
+{
+  "tag": "post",
+  "timestamp": "2026-11-26T09:01:28.278Z",
+  "frameTiming": {
+    "sampleCount": 120,
+    "avgFrameTimeMs": 16.667,
+    "minFrameTimeMs": 16.1,
+    "maxFrameTimeMs": 17.2,
+    "p95FrameTimeMs": 16.9,
+    "effectiveFps": 60,
+    "rendererMemory": {
+      "usedJSHeapMB": 14.5,
+      "totalJSHeapMB": 18.41
+    }
+  },
+  "gpuProcess": {
+    "pid": 15536,
+    "cpuPercent": 0,
+    "workingSetMB": 116.82,
+    "privateMB": 145.5
+  },
+  "rendererProcess": {
+    "pid": 3708,
+    "cpuPercent": 0,
+    "workingSetMB": 104.56,
+    "privateMB": 54.78
+  },
+  "mainProcess": {
+    "residentSetMB": 102.8,
+    "privateMB": 36.97
+  }
+}

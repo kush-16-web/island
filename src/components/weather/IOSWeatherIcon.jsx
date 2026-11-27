@@ -140,24 +140,33 @@ export function SFSunIcon({ size = 24, className = '', ...props }) {
 // 2. MOON (SF Symbol: moon.stars.fill)
 // ============================================================================
 export function SFMoonIcon({ size = 24, className = '', ...props }) {
+  const gradId = `sf-moon-grad-${size}`;
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 48 48"
+      viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-label="Clear Night"
       {...props}
     >
+      <defs>
+        <linearGradient id={gradId} x1="2" y1="3" x2="18" y2="21" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FFFBEB" />
+          <stop offset="35%" stopColor="#FDE68A" />
+          <stop offset="100%" stopColor="#F59E0B" />
+        </linearGradient>
+      </defs>
+      {/* Centered Apple SF Symbols Moon Crescent */}
       <path
-        d="M33 26.5C31.5 27.2 29.8 27.6 28 27.6C19.7 27.6 13 20.9 13 12.6C13 10.7 13.4 8.9 14.1 7.3C8.8 9.5 5 14.8 5 21C5 29.8 12.2 37 21 37C27.2 37 32.5 33.2 34.7 27.9C34.1 27.4 33.6 27 33 26.5Z"
-        fill="#E0E7FF"
+        d="M15.2 13.5C14.3 14.2 13.1 14.6 11.8 14.6C8.2 14.6 5.3 11.7 5.3 8.1C5.3 6.6 5.8 5.2 6.7 4C3.9 5.3 2 8.2 2 11.6C2 16.2 5.8 20 10.4 20C13.8 20 16.7 17.9 18 15C17.1 14.3 16.1 13.8 15.2 13.5Z"
+        fill={`url(#${gradId})`}
       />
       {/* 4-point sparkle stars */}
-      <path d="M37 10L37.8 12.5L40.3 13.3L37.8 14.1L37 16.6L36.2 14.1L33.7 13.3L36.2 12.5L37 10Z" fill="#FDE68A" />
-      <path d="M39 23L39.5 24.3L40.8 24.8L39.5 25.3L39 26.6L38.5 25.3L37.2 24.8L38.5 24.3L39 23Z" fill="#FFFFFF" opacity="0.8" />
+      <path d="M17.5 2.5L18.1 4L19.6 4.6L18.1 5.2L17.5 6.7L16.9 5.2L15.4 4.6L16.9 4L17.5 2.5Z" fill="#FFFFFF" />
+      <path d="M20.2 9L20.6 9.8L21.4 10.2L20.6 10.6L20.2 11.4L19.8 10.6L19 10.2L19.8 9.8L20.2 9Z" fill="#FDE68A" opacity="0.9" />
     </svg>
   );
 }
@@ -207,27 +216,34 @@ export function SFCloudSunIcon({ size = 24, className = '', ...props }) {
 // 4. CLOUD MOON (SF Symbol: cloud.moon.fill)
 // ============================================================================
 export function SFCloudMoonIcon({ size = 24, className = '', ...props }) {
+  const gradId = `sf-cloud-moon-grad-${size}`;
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 48 48"
+      viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-label="Partly Cloudy Night"
       {...props}
     >
-      {/* Moon Background */}
+      <defs>
+        <linearGradient id={gradId} x1="12" y1="3" x2="21" y2="13" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FFFBEB" />
+          <stop offset="50%" stopColor="#FDE68A" />
+          <stop offset="100%" stopColor="#F59E0B" />
+        </linearGradient>
+      </defs>
+      {/* Moon Background Peeking Over Cloud */}
       <path
-        d="M29 18C28 18.4 26.8 18.6 25.5 18.6C20.8 18.6 17 14.8 17 10.1C17 8.9 17.3 7.8 17.7 6.8C14.5 8.1 12.2 11.2 12.2 14.8C12.2 19.9 16.3 24 21.4 24C25 24 28.1 21.9 29.4 18.8C29.2 18.8 29.1 18.8 29 18Z"
-        fill="#E0E7FF"
-        transform="translate(11, 0)"
+        d="M19.2 8.5C18.6 9 17.8 9.2 17 9.2C14.8 9.2 13 7.4 13 5.2C13 4.2 13.3 3.3 13.9 2.5C12.1 3.3 10.8 5.1 10.8 7.2C10.8 10.1 13.2 12.5 16.1 12.5C18.2 12.5 20 11.2 20.8 9.4C20.3 9 19.7 8.7 19.2 8.5Z"
+        fill={`url(#${gradId})`}
       />
       {/* Cloud Foreground */}
       <path
-        d="M16.5 38C12.9 38 10 35.1 10 31.5C10 28.2 12.4 25.4 15.6 25C16.5 20.5 20.4 17 25.2 17C30.7 17 35.3 21.3 35.6 26.8C38.6 27.3 41 29.9 41 33C41 36.3 38.3 39 35 39L16.5 38Z"
-        fill="rgba(255, 255, 255, 0.88)"
+        d="M8.5 20C6.6 20 5 18.4 5 16.5C5 14.8 6.2 13.3 7.9 13.1C8.4 10.7 10.5 9 13 9C15.9 9 18.3 11.2 18.5 14.1C20.1 14.4 21.3 15.8 21.3 17.5C21.3 19.2 19.9 20 18.2 20H8.5Z"
+        fill="rgba(255, 255, 255, 0.95)"
       />
     </svg>
   );

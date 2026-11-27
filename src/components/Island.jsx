@@ -640,7 +640,6 @@ export default function Island() {
     }
 
     return () => {
-      window.removeEventListener('island:idle-prefs-changed', onIdlePrefsChanged);
       window.removeEventListener('island:tasks-changed', onTasksChanged);
       if (cpuTimer) clearInterval(cpuTimer);
     };

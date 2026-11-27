@@ -520,33 +520,12 @@
   line-height: var(--cinema-lyric-line-height, 1.35);
 }
 
-.cinema-lyric-row {
-  width: 100%;
-  max-width: 860px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.cinema-lyric-row.is-active-row {
-  pointer-events: auto;
-  cursor: default;
-}
-
-.cinema-lyric-row.is-prev-row,
-.cinema-lyric-row.is-next-row {
-  pointer-events: auto;
-  cursor: pointer;
-}
-
 .cinema-lyric-line {
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  line-height: var(--cinema-lyric-line-height, 1.35) !important;
-  font-weight: 700 !important;
+  font-size: var(--cinema-lyric-font-size, 21px);
+  line-height: var(--cinema-lyric-line-height, 1.35);
+  font-weight: 700;
   color: rgba(255, 255, 255, 0.45);
-  transition: color 0.28s ease, opacity 0.28s ease;
+  transition: color 0.28s ease, opacity 0.28s ease, font-size 0.28s ease;
   text-align: center;
   user-select: none;
   white-space: normal;
@@ -565,140 +544,126 @@
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   overflow: visible;
-}
-
-/* 3-Line Focused Presentation: Previous, Active Center, Next Upcoming */
-.cinema-lyric-line.is-active {
-  font-size: var(--cinema-lyric-font-size, 22px) !important;
-  font-weight: 700 !important;
-  color: #ffffff !important;
-  opacity: 1 !important;
-  cursor: default;
-  filter: none;
-  text-shadow: none;
-}
-
-.cinema-lyric-line.is-prev {
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  font-weight: 600 !important;
-  color: rgba(255, 255, 255, 0.65) !important;
-  opacity: 0.38 !important;
   cursor: pointer;
 }
 
-.cinema-lyric-line.is-next {
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  font-weight: 650 !important;
-  color: rgba(255, 255, 255, 0.78) !important;
-  opacity: 0.52 !important;
-  cursor: pointer;
-}
-
-.cinema-lyric-row.is-prev-row:hover .cinema-lyric-line,
-.cinema-lyric-row.is-next-row:hover .cinema-lyric-line {
-  opacity: 0.90 !important;
-  color: #ffffff !important;
-}
-
-/* Lines beyond prev/current/next are strictly hidden with zero pointer capture */
-.cinema-lyric-line.is-far {
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  opacity: 0 !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
-
-/* Precision lyric overrides inside Cinema Mode: lock dead center and smooth inline flow */
-.precision-lyric-container.cinema-lyric-line {
-  width: 100% !important;
-  max-width: 860px !important;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
-  text-align: center !important;
-  padding: 6px 16px !important;
-  min-height: 48px !important;
-  box-sizing: border-box !important;
-  overflow: visible !important;
-  white-space: normal !important;
-  word-spacing: 0.30em !important;
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  line-height: var(--cinema-lyric-line-height, 1.35) !important;
-  font-weight: 700 !important;
-}
-
-.precision-lyric-container.cinema-lyric-line .precision-lyric-content {
-  text-align: center !important;
-  white-space: normal !important;
-  word-break: break-word !important;
-  word-spacing: 0.30em !important;
-  display: inline-block !important;
-  width: auto !important;
-  max-width: 100% !important;
-  transform: none !important;
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  line-height: var(--cinema-lyric-line-height, 1.35) !important;
-  font-weight: 700 !important;
-}
-
-.precision-lyric-container.cinema-lyric-line .karaoke-words {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex-wrap: wrap !important;
-  gap: 0.30em !important;
-  white-space: normal !important;
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  line-height: var(--cinema-lyric-line-height, 1.35) !important;
-  font-weight: 700 !important;
-}
-
-.precision-lyric-container.cinema-lyric-line .k-word {
-  font: inherit !important;
-  font-size: var(--cinema-lyric-font-size, 21px) !important;
-  font-weight: 700 !important;
-  line-height: var(--cinema-lyric-line-height, 1.35) !important;
-  white-space: nowrap !important;
-  display: inline-block !important;
-  font-synthesis: none;
-}
-
-.precision-lyric-container.cinema-lyric-line .k-word:last-child {
-  margin-right: 0;
-}
-
-.cinema-lyrics-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  gap: 16px;
-  color: rgba(255, 255, 255, 0.45);
-  text-align: center;
-}
-
-.cinema-lyrics-empty__icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.cinema-lyrics-empty__title {
-  font-size: 18px;
+/* Continuous, Stable Lyrics Flow matching Expanded Lyrics (FullLyrics.jsx) */
+.cinema-lyric-line.is-past {
+  font-size: var(--cinema-lyric-font-size, 20px);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
-  margin: 0;
+  color: rgba(255, 255, 255, 0.45);
+  opacity: 0.30;
+  cursor: pointer;
 }
 
-.cinema-lyrics-empty__sub {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.45);
-  margin: 0;
-  max-width: 280px;
-}
+
+  .cinema-lyric-line.is-future {
+    font-size: var(--cinema-lyric-font-size, 20px);
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.45);
+    opacity: 0.38;
+    cursor: pointer;
+  }
+
+  .cinema-lyric-line.is-active {
+    font-size: var(--cinema-lyric-font-size, 23px);
+    font-weight: 700;
+    color: #ffffff !important;
+    opacity: 1 !important;
+    cursor: default;
+    filter: none;
+    text-shadow: none;
+  }
+
+
+    .cinema-lyric-line.is-plain {
+      font-size: var(--cinema-lyric-font-size, 21px);
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.82);
+      opacity: 0.9;
+      cursor: text;
+    }
+
+
+      .cinema-lyric-line .karaoke-words {
+        display: inline;
+        font: inherit;
+        font-family: inherit;
+        font-size: inherit;
+        font-weight: inherit;
+        letter-spacing: inherit;
+        line-height: inherit;
+      }
+
+        .cinema-lyric-line .k-word {
+          position: relative;
+          display: inline-block;
+          vertical-align: baseline;
+          font: inherit;
+          white-space: pre;
+          color: rgba(255, 255, 255, 0.44);
+          font-synthesis: none;
+          -webkit-font-smoothing: antialiased;
+          transition: none;
+        }
+
+          .cinema-lyric-line .k-word.is-sung {
+            background: #ffffff !important;
+            -webkit-background-clip: text !important;
+            background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: #ffffff !important;
+            opacity: 1;
+            transition: none !important;
+          }
+
+
+            .cinema-lyric-line .k-word.is-active-word {
+              background: linear-gradient(90deg,
+                  #ffffff 0%,
+                  #ffffff calc(var(--word-fill, 0%) - 4px),
+                  rgba(255, 255, 255, 0.44) calc(var(--word-fill, 0%) + 4px),
+                  rgba(255, 255, 255, 0.44) 100%);
+              -webkit-background-clip: text;
+              background-clip: text;
+              -webkit-text-fill-color: transparent;
+              color: #ffffff;
+              will-change: background;
+              transition: none !important;
+            }
+
+            .cinema-lyrics-empty {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              height: 100%;
+              gap: 16px;
+              color: rgba(255, 255, 255, 0.45);
+              text-align: center;
+            }
+
+            .cinema-lyrics-empty__icon {
+              width: 48px;
+              height: 48px;
+              border-radius: 50%;
+              background: rgba(255, 255, 255, 0.08);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: rgba(255, 255, 255, 0.65);
+            }
+
+            .cinema-lyrics-empty__title {
+              font-size: 18px;
+              font-weight: 600;
+              color: rgba(255, 255, 255, 0.85);
+              margin: 0;
+            }
+
+            .cinema-lyrics-empty__sub {
+              font-size: 13px;
+              color: rgba(255, 255, 255, 0.45);
+              margin: 0;
+              max-width: 280px;
+            }

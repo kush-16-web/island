@@ -594,10 +594,21 @@ export async function getCurrentWeather(locationQuery = null, options = {}) {
       `&temperature_unit=celsius&wind_speed_unit=kmh&timezone=auto`;
 
     let data = {};
+    let fetchError = null;
     try {
       const res = await fetch(forecastUrl, { headers: { Accept: 'application/json' } });
-      if (res.ok) data = await res.json();
-    } catch { }
+      if (res.ok) {
+        data = await res.json();
+      } else {
+        fetchError = new Error(`Open-Meteo returned status ${res.status}`);
+      }
+    } catch (err) {
+      fetchError = err;
+    }
+
+    if (!msnData && (!data || !data.current)) {
+      throw fetchError || new Error('Weather data unavailable from providers');
+    }
 
     const current = data.current || {};
     const daily = data.daily || {};

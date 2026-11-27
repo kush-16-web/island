@@ -320,6 +320,11 @@ export default function ClockPanel({ schedule = [], now = Date.now(), onBack, in
   const [isSoundDropdownOpen, setIsSoundDropdownOpen] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
 
+  const isAddingAlarmRef = useRef(isAddingAlarm);
+  useEffect(() => {
+    isAddingAlarmRef.current = isAddingAlarm;
+  }, [isAddingAlarm]);
+
   // Synchronize height state with Island
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -333,7 +338,7 @@ export default function ClockPanel({ schedule = [], now = Date.now(), onBack, in
 
   useEffect(() => {
     return () => {
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && !isAddingAlarmRef.current) {
         window.dispatchEvent(
           new CustomEvent('island:utility-change', {
             detail: { activeUtility: null },

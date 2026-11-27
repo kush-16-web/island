@@ -108,9 +108,15 @@ app.whenReady().then(async () => {
   });
 
   win.webContents.on('console-message', (_e, _level, message) => {
-    if (message.includes('DaylightSkyRenderer') || message.includes('WeatherAtmosphere')) {
-      console.log('[Renderer Log]', message);
-    }
+    console.log('[Renderer Log]', message);
+  });
+
+  win.webContents.on('did-finish-load', async () => {
+    await win.webContents.executeJavaScript(`
+      window.addEventListener('error', (e) => {
+        console.log('[STACK]', e.error ? (e.error.stack || e.error.message) : e.message);
+      });
+    `);
   });
 
   await win.loadFile(path.resolve(__dirname, '../dist/index.html'));
@@ -132,8 +138,8 @@ app.whenReady().then(async () => {
     })()
   `);
 
-  // Wait 1.4s for morph animation to complete and ResizeObserver to stabilize
-  await sleep(1400);
+  // Wait 1.8s for morph animation to complete and ResizeObserver to stabilize
+  await sleep(1800);
 
   // Capture helper targeting the exact Island Weather bounds
   async function captureWeatherNotch(filename, label, delayMs = 350) {
@@ -213,8 +219,9 @@ app.whenReady().then(async () => {
 
   console.log('[Phase B.2 Real Measured Metrics]:', JSON.stringify(metrics, null, 2));
 
-  // Capture Primary Corrected Surat Weather Scene
-  await captureWeatherNotch('weather-b2-real-surat-clear.png', 'Full-Surface Corrected Surat (Single Celestial Sun, Full Canvas)');
+  // Capture Primary Refined Surat Weather Scene
+  await captureWeatherNotch('weather-b2-real-surat-clear.png', 'Refined Surat Clear (Brilliant Core, Natural Solar Sunbeams, Cirrus Wisps)');
+  await captureWeatherNotch('weather-refined-daylight-surat.png', 'Refined Surat Clear (Brilliant Core, Natural Solar Sunbeams, Cirrus Wisps)');
 
   // 2. Toggle to 7 days forecast and measure
   await win.webContents.executeJavaScript(`
@@ -259,13 +266,22 @@ app.whenReady().then(async () => {
   `);
   await sleep(350);
 
-  // 3. Test Preview Scenarios across continuous daylight states
+  // 3. Test Preview Scenarios across continuous daylight, night, and severe weather states
   const previewScenes = [
-    { label: 'Golden Hour', file: 'weather-b2-real-golden-hour.png' },
-    { label: 'Sunset Glow', file: 'weather-b2-real-sunset.png' },
-    { label: 'Civil Twilight (Blue Hour)', file: 'weather-b2-real-twilight.png' },
-    { label: 'Overcast Deck', file: 'weather-b2-real-overcast.png' },
-    { label: 'Partly Cloudy', file: 'weather-b2-real-partly-cloudy.png' },
+    { label: 'Clear Night (Full Moon)', file: 'weather-final-real-night-fullmoon.png' },
+    { label: 'Clear Night (Crescent Moon)', file: 'weather-final-real-night-crescent.png' },
+    { label: 'Cloudy Night', file: 'weather-final-real-night-cloudy.png' },
+    { label: 'Light Rain', file: 'weather-final-real-rain-light.png' },
+    { label: 'Heavy Rain', file: 'weather-final-real-rain-heavy.png' },
+    { label: 'Thunderstorm', file: 'weather-final-real-thunderstorm.png' },
+    { label: 'Snow', file: 'weather-final-real-snow.png' },
+    { label: 'Fog & Mist', file: 'weather-final-real-fog.png' },
+    { label: 'Golden Hour', file: 'weather-final-real-golden-hour.png' },
+    { label: 'Sunset Glow', file: 'weather-final-real-sunset.png' },
+    { label: 'Civil Twilight (Blue Hour)', file: 'weather-final-real-twilight.png' },
+    { label: 'Overcast Deck', file: 'weather-final-real-overcast.png' },
+    { label: 'Partly Cloudy', file: 'weather-final-real-partly-cloudy.png' },
+    { label: 'Clear Daylight (Ice Halo)', file: 'weather-final-real-ice-halo.png' },
   ];
 
   for (const scene of previewScenes) {

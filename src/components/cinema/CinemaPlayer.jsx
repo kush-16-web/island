@@ -4,7 +4,6 @@ import AmbientLiquidMetaballs from '../AmbientLiquidMetaballs';
 import SongProgressBar from '../SongProgressBar';
 import MusicVolumeControl from '../MusicVolumeControl';
 import CompanionEyes from '../CompanionEyes';
-import PrecisionLyricLine from '../PrecisionLyricLine';
 import { useHighResArt } from '../../hooks/useHighResArt';
 import { useLyrics } from '../../hooks/useLyrics';
 import { extractCoverColor } from '../../lib/colorExtract';
@@ -38,14 +37,7 @@ export default function CinemaPlayer() {
     }
   });
 
-  const [isPlaying, setIsPlaying] = useState(() => {
-    try {
-      const saved = localStorage.getItem('island_media_cache');
-      return saved ? JSON.parse(saved)?.status === 'playing' : false;
-    } catch {
-      return false;
-    }
-  });
+  const isPlaying = media?.status === 'playing';
   const [localNow, setLocalNow] = useState(Date.now);
   const [optimisticSeek, setOptimisticSeek] = useState(null); // { posMs, timestamp }
 
@@ -176,7 +168,7 @@ export default function CinemaPlayer() {
     }
   }, [media?.positionMs, optimisticSeek]);
 
-  const pausedPositionRef = useRef(null);
+  const lastValidPosRef = useRef(0);
 
   const basePosMs = Number.isFinite(media?.positionMs)
     ? media.positionMs
@@ -191,20 +183,32 @@ export default function CinemaPlayer() {
   const hasDuration = effectiveDurationMs > 0;
   const rawPosition = Math.min(hasDuration ? effectiveDurationMs : Infinity, Math.max(0, basePosMs + elapsed));
 
+  if (isPlaying && rawPosition > 0) {
+    lastValidPosRef.current = rawPosition;
+  }
+
   let displayPositionMs = rawPosition;
-  if (!isPlaying && pausedPositionRef.current != null) {
-    displayPositionMs = pausedPositionRef.current;
-  } else if (optimisticSeek && Date.now() - optimisticSeek.timestamp < 3000) {
+  if (optimisticSeek && Date.now() - optimisticSeek.timestamp < 3000) {
     const optElapsed = isPlaying ? Date.now() - optimisticSeek.timestamp : 0;
     displayPositionMs = Math.min(hasDuration ? effectiveDurationMs : Infinity, Math.max(0, optimisticSeek.posMs + optElapsed));
+  } else if (rawPosition === 0 && lastValidPosRef.current > 0) {
+    displayPositionMs = lastValidPosRef.current;
+  }
+  if (displayPositionMs > 0) {
+    lastValidPosRef.current = displayPositionMs;
   }
 
   // Real-time Synced Lyrics
   const [injectedLyrics, setInjectedLyrics] = useState(() => (typeof window !== 'undefined' && window.__mockLyricsData ? window.__mockLyricsData : null));
   const { lyricsData: realLyricsData, activeLineIndex: realActiveLineIndex } = useLyrics(media, displayPositionMs);
+  const lastLyricsDataRef = useRef(null);
+  if (realLyricsData && realLyricsData.found && realLyricsData.lines?.length > 0) {
+    lastLyricsDataRef.current = realLyricsData;
+  }
   const effectiveLyrics = (realLyricsData && realLyricsData.found && realLyricsData.lines?.length > 0)
     ? realLyricsData
-    : (injectedLyrics || realLyricsData);
+    : (injectedLyrics || realLyricsData || lastLyricsDataRef.current);
+
   const activeLineIndex = useMemo(() => {
     if (realActiveLineIndex >= 0 && (!injectedLyrics || (realLyricsData && realLyricsData.found))) {
       return realActiveLineIndex;
@@ -239,7 +243,6 @@ export default function CinemaPlayer() {
       window.island.getState().then((s) => {
         if (s?.media) {
           setMedia(s.media);
-          setIsPlaying(s.media.status === 'playing');
         }
       }).catch(() => {});
     }
@@ -248,13 +251,6 @@ export default function CinemaPlayer() {
       const unsubMedia = window.island.on('media', (m) => {
         if (m) {
           setMedia(m);
-          setIsPlaying(m.status === 'playing');
-          if (m.status !== 'playing' && pausedPositionRef.current != null) {
-            const diff = Math.abs((m.positionMs || 0) - pausedPositionRef.current);
-            if (diff < 2500) {
-              pausedPositionRef.current = null;
-            }
-          }
         }
       });
       const unsubAura = window.island.on('aura:settings-changed', (s) => {
@@ -377,18 +373,6 @@ export default function CinemaPlayer() {
   }, [displayPositionMs, isPlaying, effectiveDurationMs]);
 
   const handleControl = (action) => {
-    if (action === 'playpause') {
-      setIsPlaying((prev) => {
-        const next = !prev;
-        if (!next) {
-          // Freezing position at the exact current position so it doesn't jump backward
-          pausedPositionRef.current = displayPositionMs;
-        } else {
-          pausedPositionRef.current = null;
-        }
-        return next;
-      });
-    }
     if (window.island?.media?.control) {
       window.island.media.control(action);
     }
@@ -396,10 +380,8 @@ export default function CinemaPlayer() {
 
   const handleSeek = (posSec) => {
     const targetMs = Math.max(0, Math.min(hasDuration ? effectiveDurationMs : Infinity, posSec * 1000));
+    userScrollingRef.current = false;
     setOptimisticSeek({ posMs: targetMs, timestamp: Date.now() });
-    if (!isPlaying) {
-      pausedPositionRef.current = targetMs;
-    }
     if (window.island?.media?.seek) {
       window.island.media.seek(posSec);
     }
@@ -407,10 +389,8 @@ export default function CinemaPlayer() {
 
   const handleSkip = (deltaSec) => {
     const targetMs = Math.max(0, Math.min(hasDuration ? effectiveDurationMs : Infinity, displayPositionMs + deltaSec * 1000));
+    userScrollingRef.current = false;
     setOptimisticSeek({ posMs: targetMs, timestamp: Date.now() });
-    if (!isPlaying) {
-      pausedPositionRef.current = targetMs;
-    }
     if (window.island?.media?.seek) {
       window.island.media.seek(targetMs / 1000);
     }
@@ -430,7 +410,8 @@ export default function CinemaPlayer() {
 
   const lines = effectiveLyrics?.lines || [];
   const hasLyrics = lines.length > 0;
-  const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lines.length;
+  const isSynced = Boolean(effectiveLyrics?.isSynced ?? (lines.some((l) => l.timeMs != null || l.startTimeMs != null)));
+  const hasWordSync = Boolean(effectiveLyrics?.hasWordSync ?? (lines.some((l) => (l.syncType === 'word' || (!l.syncType && l.words)) && l.words && l.words.length > 0)));
 
   const containerRef = useRef(null);
   const activeLineRef = useRef(null);
@@ -443,8 +424,10 @@ export default function CinemaPlayer() {
     && window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const scrollToActiveLine = useCallback((immediate = false) => {
-    if (!containerRef.current || !activeLineRef.current) return;
+  // Fluid cubic-bezier auto-scroll exactly matching FullLyrics.jsx
+  useEffect(() => {
+    if (!containerRef.current || !activeLineRef.current || userScrollingRef.current) return;
+
     const container = containerRef.current;
     const activeEl = activeLineRef.current;
 
@@ -452,57 +435,43 @@ export default function CinemaPlayer() {
     const activeOffset = activeEl.offsetTop;
     const activeHeight = activeEl.clientHeight;
 
-    // Exact constant document coordinate matching Expanded Lyrics (FullLyrics.jsx)
     const targetScroll = Math.max(0, activeOffset - containerHeight / 2 + activeHeight / 2);
 
-    if (scrollAnimRef.current) {
-      cancelAnimationFrame(scrollAnimRef.current);
-      scrollAnimRef.current = null;
-    }
+    if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
 
     const start = container.scrollTop;
     const change = targetScroll - start;
     if (Math.abs(change) < 1) return;
 
-    if (immediate || isReducedMotion) {
+    if (isReducedMotion) {
       container.scrollTop = targetScroll;
       return;
     }
 
     const startTime = performance.now();
-    // Smooth cinematic glide tuned for Cinema's larger vertical pitch (clamped between 260ms and 360ms)
-    const duration = Math.min(360, Math.max(260, Math.abs(change) * 0.8));
+    const duration = Math.min(300, Math.max(140, Math.abs(change) * 0.7));
     const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
     const step = (now) => {
       const elapsed = now - startTime;
       const progress = Math.min(1, elapsed / duration);
-      isProgrammaticScrollRef.current = true;
       container.scrollTop = start + change * easeOutCubic(progress);
 
       if (progress < 1) {
         scrollAnimRef.current = requestAnimationFrame(step);
       } else {
         scrollAnimRef.current = null;
-        // Keep flag true briefly to safely swallow browser's trailing asynchronous scroll events
-        setTimeout(() => {
-          isProgrammaticScrollRef.current = false;
-        }, 100);
+        isProgrammaticScrollRef.current = false;
       }
     };
 
     isProgrammaticScrollRef.current = true;
     scrollAnimRef.current = requestAnimationFrame(step);
-  }, [isReducedMotion]);
 
-  // Fluid cubic-bezier auto-scroll on activeLineIndex change or seek
-  useEffect(() => {
-    if (userScrollingRef.current) return;
-    scrollToActiveLine();
     return () => {
       if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
     };
-  }, [activeLineIndex, scrollToActiveLine]);
+  }, [activeLineIndex, isReducedMotion]);
 
   // Detect user manual scroll to pause auto-scroll for 2.8s
   const handleLyricsScroll = useCallback(() => {
@@ -775,23 +744,23 @@ export default function CinemaPlayer() {
             >
               <div className="cinema-lyrics-reel__inner">
                 {lines.map((line, idx) => {
-                  const isActive = hasActiveLine && idx === activeLineIndex;
-                  const isWordSynced = Boolean(line?.syncType === 'word' || (line?.words && line.words.length > 0));
+                  const isActive = isSynced && idx === activeLineIndex;
+                  const isPast = isSynced && idx < activeLineIndex;
+                  const isFuture = isSynced && idx > activeLineIndex;
+
                   let lineClass = 'cinema-lyric-line';
-                  if (isWordSynced) lineClass += ' is-word-synced';
+                  if (!isSynced) lineClass += ' is-plain';
+                  else if (isActive) lineClass += ' is-active';
+                  else if (isPast) lineClass += ' is-past';
+                  else if (isFuture) lineClass += ' is-future';
 
-                  const isPrev = hasActiveLine && idx === activeLineIndex - 1;
-                  const isNext = hasActiveLine && idx === activeLineIndex + 1;
-
-                  if (isActive) {
-                    lineClass += ' is-active';
-                  } else if (isPrev) {
-                    lineClass += ' is-prev';
-                  } else if (isNext) {
-                    lineClass += ' is-next';
-                  } else {
-                    lineClass += ' is-far';
-                  }
+                  const showWordKaraoke =
+                    isSynced &&
+                    hasWordSync &&
+                    (line?.syncType === 'word' || (!line?.syncType && line?.words)) &&
+                    isActive &&
+                    line.words &&
+                    line.words.length > 0;
 
                   const lineKey = line.id ?? line.timeMs ?? idx;
                   const lineTimeMs = typeof line.timeMs === 'number'
@@ -801,35 +770,53 @@ export default function CinemaPlayer() {
                         : (Number(line.time) || 0) * 1000);
 
                   const handleClick = () => {
-                    if (Number.isFinite(lineTimeMs)) {
+                    if (isSynced && Number.isFinite(lineTimeMs)) {
                       handleSeek(lineTimeMs / 1000);
                     }
                   };
-
-                  let rowClass = 'cinema-lyric-row';
-                  if (isActive) rowClass += ' is-active-row';
-                  else if (isPrev) rowClass += ' is-prev-row';
-                  else if (isNext) rowClass += ' is-next-row';
 
                   return (
                     <div
                       key={lineKey}
                       ref={isActive ? activeLineRef : null}
-                      className={rowClass}
+                      className={lineClass}
                       onClick={handleClick}
-                      title={isActive ? undefined : 'Click to jump to lyric'}
+                      style={{ cursor: isSynced ? 'pointer' : 'default' }}
                     >
-                      {isActive ? (
-                        <PrecisionLyricLine
-                          line={line}
-                          currentPositionMs={displayPositionMs}
-                          playing={isPlaying}
-                          className={lineClass}
-                        />
+                      {showWordKaraoke ? (
+                        <span className="karaoke-words">
+                          {line.words.map((w, wIdx) => {
+                            const isWordPast = displayPositionMs >= w.endMs;
+                            const isWordCurrent =
+                              displayPositionMs >= w.startMs && displayPositionMs < w.endMs;
+                            const fillProgress = isWordCurrent && w.durationMs > 0
+                              ? Math.min(1, Math.max(0, (displayPositionMs - w.startMs) / w.durationMs))
+                              : isWordPast ? 1 : 0;
+
+                            let wordClass = 'k-word';
+                            if (isWordPast) wordClass += ' is-sung';
+                            else if (isWordCurrent) wordClass += ' is-active-word';
+
+                            const wordStyle = isWordCurrent
+                              ? {
+                                  '--word-fill': `${Math.round(fillProgress * 100)}%`,
+                                  '--word-idx': wIdx,
+                                }
+                              : { '--word-idx': wIdx };
+
+                            return (
+                              <span key={wIdx}>
+                                <span className={wordClass} style={wordStyle}>
+                                  <span className="k-word__base">{w.text}</span>
+                                  <span className="k-word__fill" aria-hidden="true">{w.text}</span>
+                                </span>
+                                {' '}
+                              </span>
+                            );
+                          })}
+                        </span>
                       ) : (
-                        <div className={lineClass}>
-                          {line.text || '...'}
-                        </div>
+                        line.text || '...'
                       )}
                     </div>
                   );

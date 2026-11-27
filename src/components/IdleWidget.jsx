@@ -65,8 +65,8 @@ export function IdleWidget({
       const isDay = weather?.isDay ?? true;
       return (
         <span className="idle-widget idle-widget--weather idle__weather" title="Local Weather">
-          <IOSWeatherIcon code={code} isDay={isDay} size={14} />
-          <span>{temp != null ? `${temp}°` : '--°'}</span>
+          <IOSWeatherIcon code={code} isDay={isDay} size={15} />
+          <span className="idle-widget__temp">{temp != null ? `${temp}°` : '--°'}</span>
         </span>
       );
     }
@@ -74,30 +74,34 @@ export function IdleWidget({
     case 'battery': {
       const level = Math.max(0, Math.min(100, Math.round(battery?.level ?? 85)));
       const isCharging = Boolean(battery?.charging);
+      const isLow = level <= 20 && !isCharging;
       return (
-        <span className="idle-widget idle-widget--battery" title={`Battery: ${level}%${isCharging ? ' (Charging)' : ''}`}>
-          <svg
-            className="idle-widget__icon"
-            viewBox="0 0 18 12"
-            width={14}
-            height={10}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            aria-hidden="true"
-          >
-            <rect x="1" y="1" width="13.5" height="10" rx="2" stroke="rgba(255,255,255,0.7)" />
-            <path d="M16 4v4" stroke="rgba(255,255,255,0.5)" strokeLinecap="round" />
-            <rect
-              x="2.5"
-              y="2.5"
-              width={Math.max(1, (10.5 * level) / 100)}
-              height="7"
-              rx="1"
-              fill={level <= 20 ? '#ef4444' : isCharging ? '#10b981' : '#ffffff'}
+        <span
+          className={`idle-widget idle-widget--battery ios-battery ${isCharging ? 'ios-battery--charging' : ''} ${isLow ? 'ios-battery--low' : ''}`}
+          title={`Battery: ${level}%${isCharging ? ' (Charging)' : ''}`}
+        >
+          <span className="ios-battery__capsule">
+            <span
+              className="ios-battery__fill"
+              style={{ width: `${Math.max(4, level)}%` }}
             />
-          </svg>
-          <span>{level}%</span>
+            <span className={`ios-battery__label ${level >= 45 || isCharging ? 'ios-battery__label--dark' : 'ios-battery__label--light'}`}>
+              {isCharging && (
+                <svg
+                  className="ios-battery__bolt"
+                  viewBox="0 0 10 14"
+                  width={5.5}
+                  height={8}
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M5.5 0L0 7.5H4L3 14L10 5.5H5.5L6.5 0H5.5Z" />
+                </svg>
+              )}
+              <span>{level}</span>
+            </span>
+            <span className="ios-battery__cap" />
+          </span>
         </span>
       );
     }

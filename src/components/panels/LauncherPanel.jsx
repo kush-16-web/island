@@ -178,7 +178,7 @@ export default function LauncherPanel({
     return `${visibilityMode === 'always' ? 'Always' : visibilityMode === 'smart_hide' ? 'Smart' : 'Peek'} · ${volume}%`;
   };
 
-  const activeMeta = UTILITIES.find((u) => u.id === activeUtility) || (activeUtility === 'tasks' ? { title: "Clipboard" } : activeUtility === 'clock' || activeUtility === 'timer' ? { title: "Alarms" } : null);
+  const activeMeta = UTILITIES.find((u) => u.id === activeUtility) || (activeUtility === 'tasks' ? { title: "Clipboard" } : activeUtility === 'clock' || activeUtility === 'timer' || activeUtility === 'new_alarm' ? { title: "Alarms" } : null);
 
   const dateObj = new Date(now || Date.now());
   const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -435,8 +435,8 @@ export default function LauncherPanel({
           <AnimatePresence>
             {activeUtility && (
               <motion.div
-                key={`utility-active-${activeUtility}`}
-                layoutId={`utility-surface-${activeUtility}`}
+                key={`utility-active-${(activeUtility === 'new_alarm' || activeUtility === 'timer') ? 'clock' : activeUtility}`}
+                layoutId={`utility-surface-${(activeUtility === 'new_alarm' || activeUtility === 'timer') ? 'clock' : activeUtility}`} /* layoutId={`utility-surface-${activeUtility}`} */
                 className="utility-surface"
                 transition={morphTransition}
                 style={{
@@ -454,7 +454,7 @@ export default function LauncherPanel({
                   exit={{ opacity: 0 }}
                   transition={contentTransition}
                 >
-                  {(activeUtility === 'timer' || activeUtility === 'clock') && (
+                  {(activeUtility === 'timer' || activeUtility === 'clock' || activeUtility === 'new_alarm') && (
                     <div className="utility-pane utility-pane--timer">
                       <ClockPanel schedule={schedule} now={now} onBack={() => selectUtility(null)} initialMode="alarms" />
                     </div>

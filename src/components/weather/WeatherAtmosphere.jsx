@@ -4,12 +4,14 @@ import { DaylightSkyRenderer } from './DaylightSkyRenderer';
 /**
  * WeatherAtmosphere: Dynamic atmospheric background layer inspired by Apple Weather.
  * 
- * Living Daylight Architecture (Phase B):
- * - Day: Continuous atmospheric Rayleigh & Mie scattering shader via OGL WebGL,
- *   with dual-depth seamless cloud parallax and celestial solar lighting.
- * - Night: Preserves starry midnight atmosphere until Phase C.
- * - Performance: Automatically pauses when hidden, throttles resolution,
- *   and frees GPU contexts on unmount.
+ * Living Atmosphere Architecture:
+ * - Unified full-surface WebGL rendering via OGL for Day, Sunset, Twilight, Night,
+ *   Stars, Real Moon, Clouds, Rain, Snow, Lightning, and Fog.
+ * - Continuous smooth interpolation across weather states without context teardowns.
+ * - Single celestial & environmental ownership: all atmospheric phenomena rendered inside canvas.
+ * - Robust ResizeObserver + RAF synchronization across Island layout transitions.
+ * - Fallback: graceful degradation to static CSS gradient and SVG emblem if WebGL fails.
+ * - Performance: auto-pauses when hidden, caps DPR at 1.5, cleans up GPU context on unmount.
  */
 export default function WeatherAtmosphere({
   code = 0,
@@ -19,40 +21,35 @@ export default function WeatherAtmosphere({
   windSpeed = 10,
   windDirectionDeg = null,
   twilightPhase = 'daylight',
+  lunar = null,
+  precip = 0,
+  visibility = 10000,
+  temperature = 20,
+  forceHalo = false,
   onRendererState = null,
   className = '',
 }) {
   const containerRef = useRef(null);
   const glCanvasRef = useRef(null);
-  const nightCanvasRef = useRef(null);
-  const daylightRendererRef = useRef(null);
+  const rendererRef = useRef(null);
 
   const c = Number(code) || 0;
   const isDaytime = Boolean(isDay);
 
-  // 1. Daylight OGL Atmosphere Lifecycle with Robust Full-Surface ResizeObserver
+  // 1. WebGL Living Atmosphere Lifecycle with Full-Surface ResizeObserver
   useEffect(() => {
-    if (!isDaytime) {
-      if (daylightRendererRef.current) {
-        daylightRendererRef.current.destroy();
-        daylightRendererRef.current = null;
-      }
-      onRendererState?.({ active: false, type: 'night' });
-      return;
-    }
-
     const container = containerRef.current;
     const canvas = glCanvasRef.current;
     if (!canvas) return;
 
-    let renderer = daylightRendererRef.current;
+    let renderer = rendererRef.current;
     if (!renderer) {
       try {
         renderer = new DaylightSkyRenderer(canvas);
-        daylightRendererRef.current = renderer;
-        onRendererState?.({ active: true, type: 'daylight-webgl' });
+        rendererRef.current = renderer;
+        onRendererState?.({ active: true, type: isDaytime ? 'daylight-webgl' : 'night-webgl' });
       } catch (err) {
-        console.warn('[WeatherAtmosphere] DaylightSkyRenderer init failed, falling back to CSS:', err);
+        console.warn('[WeatherAtmosphere] Renderer init failed, falling back to CSS:', err);
         onRendererState?.({ active: false, type: 'fallback' });
         return;
       }
@@ -60,11 +57,17 @@ export default function WeatherAtmosphere({
 
     // Set telemetry params
     renderer.setTelemetry({
-      solarElevation: typeof solarElevation === 'number' ? solarElevation : 25,
+      isDay: isDaytime,
+      solarElevation: typeof solarElevation === 'number' ? solarElevation : (isDaytime ? 25 : -30),
       cloudCover,
       windSpeed,
       windDirectionDeg,
       weatherCode: c,
+      lunar,
+      precip,
+      visibility,
+      temperature,
+      forceHalo,
     });
 
     const syncDimensions = (wOverride, hOverride) => {
@@ -96,7 +99,7 @@ export default function WeatherAtmosphere({
       resizeObserver.observe(container);
     }
 
-    // Continuous RAF synchronization during initial Framer Motion morphing transition (400ms)
+    // Continuous RAF synchronization during initial Framer Motion morphing transition (420ms)
     let morphRafId = null;
     const morphStartTime = performance.now();
     const tickMorph = (now) => {
@@ -110,7 +113,7 @@ export default function WeatherAtmosphere({
     const handleWindowResize = () => syncDimensions();
     window.addEventListener('resize', handleWindowResize);
 
-    // Pause animation when tab or window is hidden
+    // Pause animation when tab or window is hidden to save GPU cycles
     const handleVisibility = () => {
       if (document.hidden) renderer.stop();
       else renderer.start();
@@ -124,85 +127,28 @@ export default function WeatherAtmosphere({
       document.removeEventListener('visibilitychange', handleVisibility);
       if (renderer) {
         renderer.destroy();
-        daylightRendererRef.current = null;
+        rendererRef.current = null;
       }
     };
-  }, [isDaytime]);
+  }, []);
 
-  // Update telemetry values on active renderer without re-creating WebGL context
+  // 2. Smoothly Update Telemetry on Active Renderer without Context Re-creation
   useEffect(() => {
-    if (daylightRendererRef.current && isDaytime) {
-      daylightRendererRef.current.setTelemetry({
-        solarElevation: typeof solarElevation === 'number' ? solarElevation : 25,
+    if (rendererRef.current) {
+      rendererRef.current.setTelemetry({
+        isDay: isDaytime,
+        solarElevation: typeof solarElevation === 'number' ? solarElevation : (isDaytime ? 25 : -30),
         cloudCover,
         windSpeed,
         windDirectionDeg,
         weatherCode: c,
+        lunar,
+        precip,
+        visibility,
       });
+      onRendererState?.({ active: true, type: isDaytime ? 'daylight-webgl' : 'night-webgl' });
     }
-  }, [solarElevation, cloudCover, windSpeed, windDirectionDeg, c, isDaytime]);
-
-  // 2. Nighttime Starfield Canvas (Preserved for Phase C)
-  useEffect(() => {
-    if (isDaytime) return;
-
-    const canvas = nightCanvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animId = null;
-    let width = (canvas.width = canvas.offsetWidth || 500);
-    let height = (canvas.height = canvas.offsetHeight || 340);
-
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = canvas.offsetWidth || 500;
-      height = canvas.height = canvas.offsetHeight || 340;
-    };
-    window.addEventListener('resize', handleResize);
-
-    const starCount = 22;
-    const stars = Array.from({ length: starCount }, () => ({
-      x: Math.random() * width,
-      y: Math.random() * (height * 0.75),
-      radius: 0.7 + Math.random() * 1.1,
-      alpha: 0.2 + Math.random() * 0.6,
-      alphaSpeed: 0.008 + Math.random() * 0.012,
-      growing: Math.random() > 0.5,
-    }));
-
-    const renderStars = () => {
-      ctx.clearRect(0, 0, width, height);
-
-      for (let i = 0; i < stars.length; i++) {
-        const s = stars[i];
-        if (s.growing) {
-          s.alpha += s.alphaSpeed;
-          if (s.alpha >= 0.8) s.growing = false;
-        } else {
-          s.alpha -= s.alphaSpeed;
-          if (s.alpha <= 0.15) s.growing = true;
-        }
-
-        ctx.beginPath();
-        ctx.globalAlpha = s.alpha;
-        ctx.fillStyle = '#ffffff';
-        ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      animId = requestAnimationFrame(renderStars);
-    };
-
-    animId = requestAnimationFrame(renderStars);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (animId) cancelAnimationFrame(animId);
-    };
-  }, [isDaytime]);
+  }, [isDaytime, solarElevation, cloudCover, windSpeed, windDirectionDeg, c, lunar, precip, visibility]);
 
   return (
     <div
@@ -210,21 +156,14 @@ export default function WeatherAtmosphere({
       className={`weather-atmosphere weather-atmosphere--${isDaytime ? 'daylight' : 'night'} ${className}`.trim()}
       aria-hidden="true"
     >
-      {/* Fallback CSS base gradient */}
+      {/* Coherent Fallback CSS base gradient when WebGL unavailable */}
       <div className="weather-atmosphere__base-gradient" />
 
-      {/* Living Daylight WebGL Sky Layer */}
-      {isDaytime ? (
-        <>
-          <canvas ref={glCanvasRef} className="weather-atmosphere__gl-canvas" />
-          <div className="weather-atmosphere__scrim" />
-        </>
-      ) : (
-        <>
-          <div className="weather-atmosphere__glow" />
-          <canvas ref={nightCanvasRef} className="weather-atmosphere__canvas" />
-        </>
-      )}
+      {/* Living Atmospheric WebGL Sky Surface */}
+      <canvas ref={glCanvasRef} className="weather-atmosphere__gl-canvas" />
+
+      {/* Atmospheric depth scrim */}
+      <div className="weather-atmosphere__scrim" />
     </div>
   );
 }

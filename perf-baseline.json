@@ -1,0 +1,32 @@
+{
+  "tag": "baseline",
+  "timestamp": "2026-11-26T09:00:58.190Z",
+  "frameTiming": {
+    "sampleCount": 120,
+    "avgFrameTimeMs": 16.666,
+    "minFrameTimeMs": 15.8,
+    "maxFrameTimeMs": 17.4,
+    "p95FrameTimeMs": 17,
+    "effectiveFps": 60,
+    "rendererMemory": {
+      "usedJSHeapMB": 14.5,
+      "totalJSHeapMB": 18.41
+    }
+  },
+  "gpuProcess": {
+    "pid": 616,
+    "cpuPercent": 0,
+    "workingSetMB": 150.36,
+    "privateMB": 188.98
+  },
+  "rendererProcess": {
+    "pid": 24556,
+    "cpuPercent": 0,
+    "workingSetMB": 123.3,
+    "privateMB": 53.05
+  },
+  "mainProcess": {
+    "residentSetMB": 122.14,
+    "privateMB": 36.71
+  }
+}

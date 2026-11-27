@@ -37,14 +37,38 @@ export default function WeatherPanel({
 
   // Development atmosphere preview scenarios (never persisted to storage or telemetry)
   const PREVIEW_SCENARIOS = {
-    clear: { elev: 52, cloud: 4, code: 0, isDay: true, label: 'Clear Sky (Noon)' },
-    'mostly-clear': { elev: 38, cloud: 20, code: 1, isDay: true, label: 'Mostly Clear (Midday)' },
-    'partly-cloudy': { elev: 28, cloud: 48, code: 2, isDay: true, label: 'Partly Cloudy' },
-    'mostly-cloudy': { elev: 22, cloud: 75, code: 3, isDay: true, label: 'Mostly Cloudy' },
-    overcast: { elev: 16, cloud: 95, code: 3, isDay: true, label: 'Overcast Deck' },
-    'golden-hour': { elev: 6.5, cloud: 28, code: 1, isDay: true, label: 'Golden Hour' },
+    clear: { elev: 54, cloud: 2, code: 0, isDay: true, label: 'Clear Noon' },
+    'clear-ice-halo': { elev: 48, cloud: 12, code: 0, isDay: true, temp: -2, visibility: 10000, forceHalo: true, label: 'Clear Daylight (Ice Halo)' },
+    'partly-cloudy': { elev: 32, cloud: 45, code: 2, isDay: true, label: 'Partly Cloudy' },
+    overcast: { elev: 18, cloud: 95, code: 3, isDay: true, label: 'Overcast Deck' },
+    'golden-hour': { elev: 6.5, cloud: 25, code: 1, isDay: true, label: 'Golden Hour' },
     sunset: { elev: 1.0, cloud: 35, code: 1, isDay: true, label: 'Sunset Glow' },
-    twilight: { elev: -3.5, cloud: 15, code: 0, isDay: true, label: 'Civil Twilight (Blue Hour)' },
+    twilight: { elev: -3.5, cloud: 15, code: 0, isDay: false, label: 'Civil Twilight (Blue Hour)' },
+    'clear-night-full': {
+      elev: -28, cloud: 0, code: 0, isDay: false,
+      lunar: { fractionIlluminated: 0.99, waxing: true, phaseName: 'Full Moon', altitude: 48 },
+      label: 'Clear Night (Full Moon)',
+    },
+    'clear-night-crescent': {
+      elev: -32, cloud: 5, code: 0, isDay: false,
+      lunar: { fractionIlluminated: 0.22, waxing: true, phaseName: 'Waxing Crescent', altitude: 38 },
+      label: 'Clear Night (Crescent Moon)',
+    },
+    'clear-night-quarter': {
+      elev: -30, cloud: 8, code: 0, isDay: false,
+      lunar: { fractionIlluminated: 0.52, waxing: false, phaseName: 'Third Quarter', altitude: 42 },
+      label: 'Clear Night (Quarter Moon)',
+    },
+    'cloudy-night': {
+      elev: -25, cloud: 68, code: 2, isDay: false,
+      lunar: { fractionIlluminated: 0.85, waxing: true, phaseName: 'Waxing Gibbous', altitude: 35 },
+      label: 'Cloudy Night',
+    },
+    'light-rain': { elev: 22, cloud: 85, code: 61, isDay: true, precip: 40, label: 'Light Rain' },
+    'heavy-rain': { elev: 18, cloud: 96, code: 65, isDay: true, precip: 90, label: 'Heavy Rain' },
+    thunderstorm: { elev: 14, cloud: 98, code: 95, isDay: true, precip: 95, label: 'Thunderstorm' },
+    snow: { elev: 15, cloud: 88, code: 71, isDay: true, precip: 75, label: 'Snow' },
+    fog: { elev: 20, cloud: 75, code: 45, isDay: true, visibility: 800, label: 'Fog & Mist' },
   };
 
   // Telemetry resolution
@@ -77,6 +101,18 @@ export default function WeatherPanel({
     ? PREVIEW_SCENARIOS[previewScene].isDay
     : isDayVal;
 
+  const activeLunar = previewScene && PREVIEW_SCENARIOS[previewScene].lunar
+    ? PREVIEW_SCENARIOS[previewScene].lunar
+    : activeW.astronomy?.lunar;
+
+  const activePrecip = previewScene && PREVIEW_SCENARIOS[previewScene].precip !== undefined
+    ? PREVIEW_SCENARIOS[previewScene].precip
+    : rainVal;
+
+  const activeVisibility = previewScene && PREVIEW_SCENARIOS[previewScene].visibility !== undefined
+    ? PREVIEW_SCENARIOS[previewScene].visibility
+    : (activeW.visibility ?? 10000);
+
   const hourlyList = Array.isArray(activeW.hourlyForecast) ? activeW.hourlyForecast : [];
   const dailyList = Array.isArray(activeW.dailyForecasts) ? activeW.dailyForecasts : [];
 
@@ -98,6 +134,11 @@ export default function WeatherPanel({
         windSpeed={activeW.windSpeed ?? 10}
         windDirectionDeg={activeW.windDirectionDeg ?? 45}
         twilightPhase={activeW.astronomy?.twilightPhase}
+        lunar={activeLunar}
+        precip={activePrecip}
+        visibility={activeVisibility}
+        temperature={previewScene && PREVIEW_SCENARIOS[previewScene]?.temp !== undefined ? PREVIEW_SCENARIOS[previewScene].temp : tempVal}
+        forceHalo={Boolean(previewScene && PREVIEW_SCENARIOS[previewScene]?.forceHalo)}
         onRendererState={setAtmosphereState}
       />
 
@@ -258,9 +299,9 @@ export default function WeatherPanel({
           <WeatherCelestialEmblem
             code={activeCode}
             isDay={activeIsDay}
-            lunar={activeW.astronomy?.lunar}
+            lunar={activeLunar}
             size={74}
-            atmosphereActive={atmosphereState.active && activeIsDay}
+            atmosphereActive={atmosphereState.active}
           />
         </div>
       </div>

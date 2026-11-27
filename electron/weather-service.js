@@ -369,7 +369,8 @@ function parseOpenMeteoJson(data, lat, lon, observedGround = null) {
         twilightPhase: hourlyAstro.twilightPhase,
         rainChance: hourly.precipitation_probability ? hourly.precipitation_probability[i] : 0,
         cloudCover: hourly.cloud_cover ? hourly.cloud_cover[i] : null,
-        visibility: hourly.visibility ? Math.round(hourly.visibility[i] / 1000) : null, // km
+        visibility: hourly.visibility && hourly.visibility[i] != null ? Math.round(hourly.visibility[i]) : 10000, // normalized meters (SI)
+        visibilityKm: hourly.visibility && hourly.visibility[i] != null ? Math.round(hourly.visibility[i] / 1000) : 10, // km
         windSpeed: hourly.wind_speed_10m ? Math.round(hourly.wind_speed_10m[i]) : null,
         windDirectionDeg: hourly.wind_direction_10m ? hourly.wind_direction_10m[i] : null,
         lunarPhase: astro.lunar.phaseName,
@@ -431,7 +432,8 @@ function parseOpenMeteoJson(data, lat, lon, observedGround = null) {
     windDirectionDeg: effectiveObserved.windDirectionDeg,
     windDisplay: effectiveObserved.windDisplay,
     cloudCover: cur.cloud_cover != null ? Math.round(cur.cloud_cover) : null,
-    visibility: hourly.visibility && hourly.visibility[0] != null ? Math.round(hourly.visibility[0] / 1000) : null,
+    visibility: hourly.visibility && hourly.visibility[0] != null ? Math.round(hourly.visibility[0]) : 10000,
+    visibilityKm: hourly.visibility && hourly.visibility[0] != null ? Math.round(hourly.visibility[0] / 1000) : 10,
     precipitationIntensity: cur.precipitation != null ? Number(cur.precipitation) : 0,
     rainChance: effectiveObserved.rainChance,
     sunrise: astro.sunrise || (daily.sunrise ? new Date(daily.sunrise[0] * 1000).toISOString() : null),
